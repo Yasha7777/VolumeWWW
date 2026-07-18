@@ -1,0 +1,150 @@
+/* ============================================================
+   report-panel.css — выдвижное окно отчёта (ReportPanel)
+   ------------------------------------------------------------
+   Самодостаточный, темо-агностичный: цвета берёт из токенов
+   (--bg-card / --border / --green / --text / --muted), поэтому
+   корректен в light / dark / gtc без отдельных переопределений.
+   Импортить в main.jsx ПОСЛЕ styles.css и swag.css.
+   ============================================================ */
+
+:root {
+  --rp-w: clamp(400px, 36vw, 540px);
+  --rp-gap: 18px;                 /* зазор от краёв экрана — «парящая» карточка */
+}
+
+/* десктоп: пока панель открыта — тесним весь контент влево.
+   Освобождаем ширину карточки + зазоры с обеих сторон, чтобы
+   между контентом и карточкой остался «воздух». */
+@media (min-width: 769px) {
+  body { transition: margin-right .34s cubic-bezier(.4, 0, .2, 1); }
+  body.rp-open { margin-right: calc(var(--rp-w) + var(--rp-gap) * 2); }
+}
+
+/* ---------- панель (парящая карточка) ---------- */
+.rp {
+  position: fixed; z-index: 95;
+  top: var(--rp-gap); right: var(--rp-gap); bottom: var(--rp-gap);
+  width: var(--rp-w); height: auto;
+  display: flex; flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;               /* скругляем углы у PDF/контента внутри */
+  box-shadow: 0 28px 64px -16px rgba(0, 0, 0, .30), 0 6px 18px rgba(0, 0, 0, .10);
+  transform: translateX(calc(100% + var(--rp-gap) + 28px));
+  transition: transform .34s cubic-bezier(.4, 0, .2, 1);
+  will-change: transform;
+}
+.rp.is-open { transform: translateX(0); }
+
+/* шапка панели */
+.rp__head {
+  flex: none;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.rp__title {
+  font: 600 12px/1 var(--sans);
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted);
+}
+.rp__actions { display: flex; align-items: center; gap: 8px; }
+.rp__dl { padding: 7px 16px; font-size: 13px; }
+
+.rp__collapse {
+  width: 32px; height: 32px; flex: none;
+  display: grid; place-items: center;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: transparent; color: var(--muted);
+  cursor: pointer; transition: background .18s, color .18s, border-color .18s;
+}
+.rp__collapse:hover { background: var(--bg); color: var(--text); border-color: var(--dash); }
+
+/* тело: тут живёт PDFViewer (iframe) */
+.rp__body { flex: 1; min-height: 0; background: var(--bg); }
+.rp__viewer { width: 100%; height: 100%; border: none; display: block; }
+
+/* ---------- язычок «развернуть» (десктоп) ---------- */
+.rp-handle {
+  position: fixed; top: 50%; right: 0; z-index: 94;
+  transform: translateY(-50%);
+  padding: 16px 9px;
+  border: none; border-radius: 10px 0 0 10px;
+  background: var(--green); color: #fff;
+  writing-mode: vertical-rl;
+  font: 600 12px/1 var(--sans); letter-spacing: .12em;
+  cursor: pointer;
+  box-shadow: -4px 0 18px rgba(0, 0, 0, .14);
+  transition: padding-right .18s var(--ease);
+}
+.rp-handle:hover { padding-right: 14px; }
+[data-theme="gtc"] .rp-handle { color: #eceef2; }
+
+/* ---------- затемнение (только мобильная шторка) ---------- */
+.rp-backdrop {
+  position: fixed; inset: 0; z-index: 1099;
+  background: rgba(20, 20, 12, .5);
+  opacity: 0; pointer-events: none;
+  transition: opacity .3s var(--ease);
+}
+.rp-backdrop.is-open { opacity: 1; pointer-events: auto; }
+@media (min-width: 769px) { .rp-backdrop { display: none; } }
+
+/* ---------- мобила: шторка снизу ---------- */
+@media (max-width: 768px) {
+  .rp {
+    top: auto; bottom: 0; left: 0; right: 0;
+    width: 100%; height: 84vh; z-index: 1100;
+    border: none; border-top: 1px solid var(--border);
+    border-radius: 18px 18px 0 0;
+    transform: translateY(100%);
+    box-shadow: 0 -14px 44px rgba(0, 0, 0, .2);
+  }
+  .rp.is-open { transform: translateY(0); }
+
+  .rp__grab {
+    flex: none; width: 40px; height: 4px; border-radius: 2px;
+    background: var(--dash); margin: 8px auto 2px;
+  }
+  .rp__body { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+}
+
+/* ---------- мобильная сводка ---------- */
+.rp__sum { padding: 18px 18px 28px; }
+.rp__sum-title {
+  font-family: var(--serif); font-weight: 600; font-size: 22px;
+  color: var(--text); line-height: 1.15;
+}
+.rp__sum-no { font: 400 13px/1.4 var(--sans); color: var(--muted); margin-top: 4px; }
+.rp__sum-obj {
+  margin-top: 14px; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--bg);
+  font: 500 14px/1.4 var(--sans); color: var(--text);
+}
+.rp__sum-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px;
+}
+.rp__sum-cell {
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 12px 14px; background: var(--bg-card);
+}
+.rp__sum-cell span {
+  display: block; font: 600 10px/1 var(--sans);
+  letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+  margin-bottom: 7px;
+}
+.rp__sum-cell b { font: 600 19px/1 var(--sans); color: var(--text); }
+.rp__sum-cell--accent { border-left: 3px solid var(--gold); }
+
+.rp__sum-meta { margin-top: 12px; font: 400 13px/1.5 var(--sans); color: var(--muted); }
+.rp__sum-hint {
+  margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border);
+  font: 400 12px/1.5 var(--sans); color: var(--light);
+}
+
+/* меньше движения — без выезжаний */
+@media (prefers-reduced-motion: reduce) {
+  .rp, body, .rp-backdrop, .rp-handle { transition: none !important; }
+}

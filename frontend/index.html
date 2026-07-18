@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Карелия Строй — оценка объёма и массы строительных материалов по фотографиям: 3D-реконструкция DUSt3R и ИИ-определение материала."
+    />
+    <title>Карелия Строй — AI анализ фото</title>
+
+    <!-- ранний коннект к Google Fonts: экономит ~500-700 мс на TLS-рукопожатии -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- инлайн-полифилл (window.global / window.process) переехал в
+         src/polyfills.js — первый импорт main.jsx. Так CSP работает
+         со script-src 'self' без 'unsafe-inline'. -->
+  <meta name="theme-color" content="#122018">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
