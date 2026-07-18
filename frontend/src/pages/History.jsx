@@ -272,6 +272,39 @@ const navBtn = (side) => ({
   display: 'flex', alignItems: 'center', justifyContent: 'center',
 });
 
+// Фото лежат на другом origin (Supabase Storage), поэтому обычный <a download>
+// их не скачает, а откроет. Тянем как blob и отдаём через object-URL; если
+// CORS не даёт — мягкий фолбэк на открытие в новой вкладке.
+async function downloadPhoto(url, filename) {
+  try {
+    const res = await fetch(url, { mode: 'cors' });
+    if (!res.ok) throw new Error('fetch failed');
+    const blob = await res.blob();
+    const obj = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = obj; a.download = filename || 'photo.jpg';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(obj), 1000);
+  } catch {
+    window.open(url, '_blank', 'noopener');
+  }
+}
+
+function photoName(url, i) {
+  try {
+    const base = decodeURIComponent(new URL(url).pathname.split('/').pop() || '');
+    if (base && /\.\w+$/.test(base)) return base;
+  } catch {}
+  return `karelia-photo-${i + 1}.jpg`;
+}
+
+const DownloadIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+  </svg>
+);
+
 function Lightbox({ photos, index, onClose, onNav }) {
   useEffect(() => {
     const onKey = (e) => {
@@ -316,6 +349,11 @@ function Lightbox({ photos, index, onClose, onNav }) {
           </div>
         </>
       )}
+      <button
+        onClick={(e) => { e.stopPropagation(); downloadPhoto(photos[index], photoName(photos[index], index)); }}
+        style={{ ...navBtn('right'), right: 84, top: 28, transform: 'none', width: 44, height: 44 }}
+        aria-label="Скачать фото"
+      ><DownloadIcon /></button>
       <button
         onClick={(e) => { e.stopPropagation(); onClose(); }}
         style={{ ...navBtn('right'), right: 28, top: 28, transform: 'none', width: 44, height: 44 }}
@@ -381,17 +419,26 @@ function ExpandedContent({ item, onPhoto }) {
           <p className="kh-expand__sub">Фотографии</p>
           <div className="kh-expand__photos">
             {photos.map((url, i) => (
-              <img
-                key={i}
-                className="kh-expand__photo"
-                src={thumbAt(i)}
-                alt=""
-                loading="lazy"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onPhoto(photos, i);
-                }}
-              />
+              <div key={i} className="kh-photo-cell">
+                <img
+                  className="kh-expand__photo"
+                  src={thumbAt(i)}
+                  alt=""
+                  loading="lazy"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPhoto(photos, i);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="kh-photo-dl"
+                  aria-label={`Скачать фото ${i + 1}`}
+                  onClick={(e) => { e.stopPropagation(); downloadPhoto(url, photoName(url, i)); }}
+                >
+                  <DownloadIcon />
+                </button>
+              </div>
             ))}
           </div>
         </>

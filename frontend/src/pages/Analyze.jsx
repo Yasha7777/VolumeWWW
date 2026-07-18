@@ -7,6 +7,7 @@ import ReportPanel from '../components/ReportPanel'   // ← выдвижное 
 import { parseWebhookResult } from '../components/RaschetDownloadButton' // ← общий парсер (объём DUSt3R, масса = V×ρ)
 import { useTheme } from '../theme/ThemeProvider'   // ← только ради свага-лейбла кнопки
 import { enqueue, flushItem } from '../queue/queue'  // ← офлайн-очередь (PWA)
+import Reveal from '../components/Reveal'  // ← лёгкое scroll/stagger-проявление
 
 const MAX_PHOTOS = 100
 const MAX_DIM    = 1600
@@ -363,21 +364,31 @@ export default function Analyze() {
   const has3d   = plyUrl || glbUrl
 
   // Текущий шаг процесса — выводится из состояния, без отдельного state.
-  const currentStep = (result || has3d) ? 3 : busy ? 2 : 1
+  // Когда результат готов — уводим за 3, чтобы шаг «Объём и вес» тоже стал
+  // галочкой (done), а не завис на числе (active).
+  const finished = !!(result || has3d)
+  const currentStep = finished ? 4 : busy ? 2 : 1
 
   return (
     <div className="page content" style={{ paddingTop: 0 }}>
 
       {/* HERO */}
       <div className="hero">
-        <div className="badge">
-          <span className="badge-dot" />
-          КАРЕЛИЯ · ФОТОГРАММЕТРИЯ · 2026
-        </div>
-        <h1>Фото — и готов<em>материал, объём и вес</em></h1>
-        <p>Загрузите фото строительного материала — система построит 3D-модель, определит тип, объём и приблизительный вес.</p>
+        <Reveal delay={0} y={12}>
+          <div className="badge">
+            <span className="badge-dot" />
+            КАРЕЛИЯ · ФОТОГРАММЕТРИЯ · 2026
+          </div>
+        </Reveal>
+        <Reveal delay={90} y={18}>
+          <h1>Фото — и готов<em>материал, объём и вес</em></h1>
+        </Reveal>
+        <Reveal delay={180} y={14}>
+          <p>Загрузите фото строительного материала — система построит 3D-модель, определит тип, объём и приблизительный вес.</p>
+        </Reveal>
 
         {/* Реальная последовательность процесса — подсветка текущего шага */}
+        <Reveal delay={270} y={14}>
         <div className="steps">
           {STEPS.map((label, i) => {
             const n = i + 1
@@ -399,8 +410,10 @@ export default function Analyze() {
             )
           })}
         </div>
+        </Reveal>
       </div>
 
+      <Reveal delay={60} y={22}>
       <div className="card">
         {/* UPLOAD SECTION */}
         <div className="card-sec">
@@ -644,6 +657,7 @@ export default function Analyze() {
           )}
         </div>
       </div>
+      </Reveal>
 
       {/* выдвижное окно отчёта (рендерится порталом в body) */}
       {result && (

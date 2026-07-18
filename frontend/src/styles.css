@@ -48,6 +48,18 @@ body {
 @keyframes blink     { 0%,100%{opacity:1} 50%{opacity:0} }
 @keyframes thumbIn   { from{opacity:0;transform:scale(.85)} to{opacity:1;transform:scale(1)} }
 
+/* ─── SCROLL REVEAL (компонент Reveal) ───────────────────── */
+.kb-reveal {
+  opacity: 0;
+  transform: translateY(var(--kb-reveal-y, 16px));
+  transition: opacity .55s var(--ease), transform .55s var(--ease);
+  will-change: opacity, transform;
+}
+.kb-reveal.is-in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .kb-reveal { opacity: 1; transform: none; transition: none; }
+}
+
 /* ─── LAYOUT ─────────────────────────────────────────────── */
 .page { animation: fadeUp 0.4s var(--ease); }
 
@@ -1053,6 +1065,22 @@ footer { border-top: 1px solid var(--border); padding: 20px 32px; display: flex;
   transition: transform 0.18s var(--ease);
 }
 .kh-expand__photo:hover { transform: scale(1.02); }
+
+/* плашка фото + кнопка «скачать» (появляется на hover, на тач — всегда видна) */
+.kh-photo-cell { position: relative; }
+.kh-photo-dl {
+  position: absolute; top: 6px; right: 6px;
+  width: 34px; height: 34px; border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(26,26,10,.55); color: #fff; border: none; cursor: pointer;
+  opacity: 0; transform: translateY(-2px);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  transition: opacity .18s var(--ease), transform .18s var(--ease), background .18s var(--ease);
+}
+.kh-photo-cell:hover .kh-photo-dl,
+.kh-photo-dl:focus-visible { opacity: 1; transform: none; }
+.kh-photo-dl:hover { background: rgba(26,26,10,.82); }
+@media (hover: none) { .kh-photo-dl { opacity: 1; transform: none; } }
 .kh-viewer {
   width: 100%;
   margin-top: 4px;
