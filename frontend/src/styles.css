@@ -117,11 +117,21 @@ nav { display: flex; gap: 4px; justify-self: center; }
   background: radial-gradient(ellipse at center, rgba(30,61,18,.07), rgba(184,122,24,.05) 42%, transparent 72%);
   filter: blur(6px);
 }
+/* тот же контурный мотив, что на экране входа — единый фирменный почерк */
+.hero::after {
+  content: ''; position: absolute; z-index: 0; pointer-events: none;
+  top: -24px; right: -10px; width: 300px; height: 300px; opacity: .045;
+  background: no-repeat center / contain
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='520' height='520' viewBox='0 0 520 520'%3E%3Cg fill='none' stroke='%231E3D12' stroke-width='1.4'%3E%3Cpath d='M260 165c58 0 100 38 100 92s-46 84-100 84-100-34-100-84 42-92 100-92z'/%3E%3Cpath d='M262 125c88 0 152 56 152 138s-70 128-154 128-150-50-150-130 64-136 152-136z'/%3E%3Cpath d='M258 82c118 0 205 74 205 182s-92 174-206 174S52 356 52 250 140 82 258 82z'/%3E%3C/g%3E%3C/svg%3E");
+}
 .hero > * { position: relative; z-index: 1; }
 .badge {
   display: inline-flex; align-items: center; gap: 7px;
   padding: 6px 16px; border-radius: 999px;
-  border: 1px solid var(--dash); background: rgba(255,255,255,.7);
+  border: 1px solid var(--dash);
+  background: rgba(255,255,255,.55);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 1px 2px rgba(30,61,18,.05);
   font-size: 11px; font-weight: 500; letter-spacing: .12em;
   color: var(--muted); text-transform: uppercase; margin-bottom: 28px;
 }
@@ -256,9 +266,17 @@ nav { display: flex; gap: 4px; justify-self: center; }
   transition: all 0.2s var(--ease);
   touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
-.btn-primary { background: var(--green); color: #fff; }
-.btn-primary:hover:not(:disabled) { background: var(--green-hover); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(30,61,18,.25); }
-.btn-primary:active { transform: none; box-shadow: none; }
+.btn-primary {
+  background: linear-gradient(165deg, #274b18, var(--green));
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.10), 0 2px 8px rgba(30,61,18,.14);
+}
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(165deg, #22421a, var(--green-hover));
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.10), 0 8px 22px -6px rgba(30,61,18,.32);
+}
+.btn-primary:active { transform: translateY(0); box-shadow: inset 0 1px 3px rgba(0,0,0,.18); }
 .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
 .btn-secondary { border: 1px solid var(--border); background: #fff; color: var(--text); padding: 14px 20px; }
 .btn-secondary:hover { border-color: var(--dash); background: var(--bg); }
@@ -311,12 +329,51 @@ nav { display: flex; gap: 4px; justify-self: center; }
 .result-body { padding: 16px 18px; font-size: 14px; line-height: 1.8; color: var(--text); white-space: pre-wrap; font-variant-numeric: tabular-nums; }
 
 /* ─── AUTH PAGES ─────────────────────────────────────────── */
-.auth-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--bg); }
-.auth-card { width: 100%; max-width: 420px; background: var(--bg-card); border-radius: var(--r); box-shadow: var(--shadow); border: 1px solid var(--border); padding: 40px 36px; animation: fadeUp .5s var(--ease); }
-.auth-logo { display: flex; justify-content: center; margin-bottom: 28px; }
-.auth-logo-icon { width: 52px; height: 52px; border-radius: 14px; background: var(--green); display: flex; align-items: center; justify-content: center; }
+/* Атмосферный экран: базовый крем + два мягких фирменных свечения (лес/охра),
+   а поверх — топографические контуры как отсылка к сути продукта (объём/рельеф).
+   Никаких «ИИ-градиентов»: только зелёный и охра из палитры. */
+.auth-wrap {
+  position: relative; isolation: isolate; overflow: hidden;
+  min-height: 100vh; min-height: 100dvh;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  background:
+    radial-gradient(620px 440px at 18% 88%, rgba(30,61,18,.10), transparent 70%),
+    radial-gradient(560px 400px at 84% 8%, rgba(184,122,24,.09), transparent 70%),
+    var(--bg);
+}
+/* контурные линии — тонкий землистый узор в углу */
+.auth-wrap::before {
+  content: ''; position: absolute; z-index: -1; pointer-events: none;
+  top: -140px; right: -140px; width: 560px; height: 560px; opacity: .06;
+  background: no-repeat center / contain
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='520' height='520' viewBox='0 0 520 520'%3E%3Cg fill='none' stroke='%231E3D12' stroke-width='1.2'%3E%3Cpath d='M260 165c58 0 100 38 100 92s-46 84-100 84-100-34-100-84 42-92 100-92z'/%3E%3Cpath d='M262 125c88 0 152 56 152 138s-70 128-154 128-150-50-150-130 64-136 152-136z'/%3E%3Cpath d='M258 82c118 0 205 74 205 182s-92 174-206 174S52 356 52 250 140 82 258 82z'/%3E%3C/g%3E%3C/svg%3E");
+}
+.auth-card {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 420px;
+  background: var(--bg-card); border-radius: var(--r);
+  border: 1px solid var(--border); padding: 44px 36px 38px;
+  box-shadow:
+    0 1px 2px rgba(30,61,18,.05),
+    0 18px 40px -18px rgba(30,61,18,.20),
+    0 48px 90px -46px rgba(30,61,18,.16);
+  animation: fadeUp .5s var(--ease);
+}
+/* золотая волосяная линия по верхней кромке карточки */
+.auth-card::before {
+  content: ''; position: absolute; top: 0; left: 28px; right: 28px; height: 2px;
+  border-radius: 0 0 2px 2px; opacity: .85;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+.auth-logo { display: flex; justify-content: center; margin-bottom: 24px; }
+.auth-logo-icon {
+  width: 54px; height: 54px; border-radius: 15px;
+  background: linear-gradient(160deg, var(--green), var(--green-hover));
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 0 1px rgba(184,122,24,.35), 0 10px 22px -10px rgba(30,61,18,.55);
+}
 .auth-logo-icon svg { width: 26px; height: 26px; color: #fff; }
-.auth-h1 { font-family: var(--serif); font-size: 28px; font-weight: 600; text-align: center; margin-bottom: 8px; }
+.auth-h1 { font-family: var(--serif); font-size: 30px; font-weight: 600; text-align: center; margin-bottom: 8px; letter-spacing: -0.01em; }
 .auth-sub { font-size: 14px; color: var(--muted); text-align: center; margin-bottom: 28px; }
 .auth-field { margin-bottom: 16px; }
 .auth-field label { display: block; font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }

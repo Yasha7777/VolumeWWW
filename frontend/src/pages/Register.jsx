@@ -63,7 +63,13 @@ export default function Register() {
   if (done) return (
     <div className="auth-wrap">
       <div className="auth-card" style={{ textAlign:'center' }}>
-        <div style={{ fontSize:48, marginBottom:16 }}>✉️</div>
+        <div className="auth-logo">
+          <div className="auth-logo-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>
+            </svg>
+          </div>
+        </div>
         <h1 className="auth-h1">Проверьте почту</h1>
         <p className="auth-sub">Мы отправили письмо с подтверждением на <strong>{email}</strong>.<br/>После подтверждения вы сможете войти.</p>
       </div>
