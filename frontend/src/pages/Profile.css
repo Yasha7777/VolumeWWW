@@ -45,9 +45,67 @@
 }
 
 .kb-id-head { position: relative; line-height: 0; }
-.kb-scene { width: 100%; height: 168px; display: block; }
-.kb-sun { transform-origin: 332px 54px; animation: kb-breathe 6s ease-in-out infinite; }
-.kb-ripple { animation: kb-drift 7s ease-in-out infinite; }
+
+/* Регистрируем цветовые токены сцены как <color> — только так CSS умеет ПЛАВНО
+   перетекать между значениями кастомных свойств при смене времени суток. */
+@property --kb-sky-top  { syntax: '<color>'; inherits: true; initial-value: #c8d6d2; }
+@property --kb-sky-bot  { syntax: '<color>'; inherits: true; initial-value: #e7e1d0; }
+@property --kb-sun-core { syntax: '<color>'; inherits: true; initial-value: #ebc75a; }
+@property --kb-sun-edge { syntax: '<color>'; inherits: true; initial-value: #f1d98c; }
+@property --kb-sun-glow { syntax: '<color>'; inherits: true; initial-value: #f3e2a6; }
+@property --kb-hill-far { syntax: '<color>'; inherits: true; initial-value: #9db08c; }
+@property --kb-hill-near{ syntax: '<color>'; inherits: true; initial-value: #2f4a1c; }
+@property --kb-lake-top { syntax: '<color>'; inherits: true; initial-value: #a6b6ae; }
+@property --kb-lake-bot { syntax: '<color>'; inherits: true; initial-value: #bcc4b2; }
+@property --kb-ripple   { syntax: '<color>'; inherits: true; initial-value: #ffffff; }
+
+.kb-scene {
+  width: 100%; height: 168px; display: block;
+  transition-property: --kb-sky-top, --kb-sky-bot, --kb-sun-core, --kb-sun-edge,
+    --kb-sun-glow, --kb-hill-far, --kb-hill-near, --kb-lake-top, --kb-lake-bot, --kb-ripple;
+  transition-duration: .8s;
+  transition-timing-function: var(--ease);
+}
+
+/* светило: позиция едет по дуге (transform в inline-style), клик меняет фазу */
+.kb-body { cursor: pointer; transition: transform .9s var(--ease); }
+.kb-body:focus { outline: none; }
+.kb-body:focus-visible .kb-orb { stroke: #fff; stroke-width: 2; }
+.kb-body:hover .kb-orb { transform: scale(1.06); }
+.kb-orb { transition: transform .2s var(--ease); }
+.kb-orb-glow { transform-origin: center; }
+
+.kb-aurora { opacity: 0; transition: opacity 1s var(--ease); pointer-events: none; }
+.kb-aurora.is-on { opacity: 1; }
+.kb-aur { transform-box: fill-box; transform-origin: center bottom; }
+
+/* плавающая плашка времени суток — тёмный скрим ради контраста на любом небе */
+.kb-time-btn {
+  position: absolute; left: 14px; bottom: 14px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 13px 6px 10px; border-radius: 999px;
+  background: rgba(12, 20, 12, .46); color: #fff;
+  border: 1px solid rgba(255, 255, 255, .22);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  font-family: var(--sans); font-size: 11.5px; font-weight: 600; letter-spacing: .04em;
+  line-height: 1; cursor: pointer;
+  transition: background .2s var(--ease), transform .2s var(--ease);
+}
+.kb-time-btn:hover { background: rgba(12, 20, 12, .62); transform: translateY(-1px); }
+.kb-time-ico { display: flex; line-height: 0; }
+
+/* непрерывное движение — только если пользователь не просил его убрать */
+@media (prefers-reduced-motion: no-preference) {
+  .kb-orb-glow { animation: kb-breathe 6s ease-in-out infinite; }
+  .kb-ripple   { animation: kb-drift 7s ease-in-out infinite; }
+  .kb-aurora.is-on .kb-aur-a { animation: kb-aur1 9s  ease-in-out infinite; }
+  .kb-aurora.is-on .kb-aur-b { animation: kb-aur2 11s ease-in-out infinite; }
+  .kb-aurora.is-on .kb-aur-c { animation: kb-aur1 13s ease-in-out infinite reverse; }
+  .kb-stars { animation: kb-twinkle 4s ease-in-out infinite; }
+}
+@keyframes kb-aur1 { 0%,100% { transform: translateX(0) scaleY(1);    opacity:.7 } 50% { transform: translateX(9px) scaleY(1.08);  opacity:1 } }
+@keyframes kb-aur2 { 0%,100% { transform: translateX(0) scaleY(1);    opacity:.5 } 50% { transform: translateX(-11px) scaleY(1.12); opacity:.85 } }
+@keyframes kb-twinkle { 0%,100% { opacity:.45 } 50% { opacity:1 } }
 
 .kb-avatar-wrap { position: absolute; left: 50%; bottom: -34px; transform: translateX(-50%); }
 .kb-avatar {
@@ -132,6 +190,7 @@
 .kb-email-row input { flex: 1; }
 .kb-icon-btn {
   width: 46px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--border); background: var(--bg-card); border-radius: var(--r-sm);
   color: var(--muted); font-size: 13px; cursor: pointer;
   transition: color .18s var(--ease), border-color .18s var(--ease), background .18s var(--ease);

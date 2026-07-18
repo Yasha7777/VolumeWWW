@@ -38,6 +38,12 @@ User Browser ──────▶│  nginx (80)                      │
 
 Dashboard → SQL Editor → вставьте содержимое `supabase/schema.sql` → Run.
 
+Если нужна поддержка миниатюр (thumbnails):
+
+```sql
+-- supabase/migration_thumbnails.sql
+```
+
 ### 1.3 Получите ключи
 
 Dashboard → Settings → API:
@@ -65,14 +71,14 @@ cp .env.example .env
 
 ### Требования
 - Docker + Docker Compose v2
-- 2GB RAM минимум (для background tasks)
+- 2GB RAM минимум
 - Порт 80 открыт
 
 ### Запуск
 
 ```bash
 git clone <your-repo>
-cd karelia-ai
+cd VolumeWWW
 cp .env.example .env
 # заполнить .env
 
@@ -120,40 +126,61 @@ npm run dev
 ## 5. Структура проекта
 
 ```
-karelia-ai/
-├── .env.example              ← шаблон переменных
+VolumeWWW/
+├── .env.example
 ├── docker-compose.yml
 ├── supabase/
-│   └── schema.sql            ← SQL для Supabase
+│   ├── schema.sql                    ← SQL для Supabase
+│   └── migration_thumbnails.sql      ← добавляет колонку thumbnail
 ├── backend/
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   └── app/
-│       ├── main.py           ← FastAPI app
-│       ├── config.py         ← настройки из env
-│       ├── auth.py           ← проверка JWT
-│       ├── supabase_client.py
+│       ├── main.py                   ← FastAPI app, CORS, роутеры
+│       ├── config.py                 ← настройки из env (pydantic-settings)
+│       ├── auth.py                   ← проверка JWT через Supabase
+│       ├── imaging.py                ← Pillow: обработка / миниатюры
+│       ├── supabase_client.py        ← service-role клиент
 │       └── routers/
-│           ├── analyses.py   ← загрузка фото, n8n, polling
-│           └── profile.py    ← профиль пользователя
+│           ├── analyses.py           ← загрузка фото, n8n webhook, polling
+│           └── profile.py            ← профиль пользователя
 └── frontend/
     ├── Dockerfile
     ├── nginx.conf
     ├── vite.config.js
     └── src/
-        ├── api.js            ← клиент к backend
-        ├── supabase.js       ← клиент к Supabase
-        ├── context/AuthContext.jsx
+        ├── api.js                    ← все fetch-вызовы к /api/*
+        ├── supabase.js               ← Supabase anon клиент (только auth)
+        ├── sw.js                     ← Service Worker (vite-plugin-pwa)
+        ├── polyfills.js
+        ├── context/
+        │   └── AuthContext.jsx       ← глобальное auth-состояние
+        ├── queue/
+        │   ├── queue.js              ← offline-first очередь загрузки
+        │   └── db.js                 ← IndexedDB backing store
+        ├── theme/
+        │   └── ThemeProvider.jsx     ← gothic "swag" тема
         ├── components/
-        │   ├── Layout.jsx    ← header + footer
+        │   ├── Layout.jsx
         │   ├── PrivateRoute.jsx
-        │   └── Timer.jsx     ← таймер ожидания (до 1ч)
+        │   ├── Timer.jsx             ← таймер ожидания (до 1ч)
+        │   ├── ReportPanel.jsx       ← рендер AI-результата
+        │   ├── PlyViewer.jsx         ← lazy-обёртка Three.js PLY viewer
+        │   ├── PlyViewerImpl.jsx     ← реализация (react-three-fiber/drei)
+        │   ├── RaschetDownloadButton.jsx
+        │   └── raschet/
+        │       ├── RaschetDocument.jsx  ← PDF-отчёт (@react-pdf/renderer)
+        │       ├── raschetData.js       ← формулы и константы расчётов
+        │       ├── PdfDownload.jsx
+        │       └── PdfPreview.jsx
         └── pages/
             ├── Login.jsx
             ├── Register.jsx
-            ├── Analyze.jsx   ← главная страница
-            ├── History.jsx   ← история с авто-обновлением
-            └── Profile.jsx
+            ├── Analyze.jsx           ← главная: загрузка фото, polling
+            ├── History.jsx           ← история анализов, авто-обновление
+            ├── Profile.jsx
+            ├── Privacy.jsx
+            └── NotFound.jsx
 ```
 
 ---
@@ -162,15 +189,19 @@ karelia-ai/
 
 ```
 1. Пользователь загружает фото → браузер сжимает до 1600px / JPEG 85%
-2. POST /api/analyses/ (multipart/form-data) → FastAPI
-3. FastAPI загружает каждое фото в Supabase Storage
-4. FastAPI создаёт запись analyses с status="pending"
-5. FastAPI запускает background task: вызывает n8n webhook (timeout=1h)
-6. Клиент получает {id, status:"pending"} и запускает polling
-7. GET /api/analyses/{id} каждые 5 секунд
-8. Клиент показывает таймер (00:00 → 60:00)
-9. Background task получает ответ от n8n → обновляет запись → status="completed"
-10. Следующий poll видит completed → показывает результат
+2. Если оффлайн — фото попадает в IndexedDB очередь (queue/queue.js)
+   и синхронизируется через Background Sync API (Chromium) или
+   BroadcastChannel при следующем открытии вкладки
+3. POST /api/analyses/ (multipart/form-data) → FastAPI
+4. FastAPI загружает каждое фото в Supabase Storage, генерирует миниатюру
+5. FastAPI создаёт запись analyses с status="pending"
+6. FastAPI запускает background task: вызывает n8n webhook (timeout=1h)
+7. Клиент получает {id, status:"pending"} и запускает polling
+8. GET /api/analyses/{id} каждые 5 секунд
+9. Клиент показывает таймер (00:00 → 60:00)
+10. n8n отвечает → backend обновляет запись → status="completed"
+11. Следующий poll показывает результат в ReportPanel
+12. Доступен PDF-отчёт (raschet/) и 3D PLY-просмотр (PlyViewer)
 ```
 
 ---
@@ -190,7 +221,18 @@ karelia-ai/
 
 ---
 
-## 8. HTTPS (рекомендуется для продакшн)
+## 8. Ключевые возможности фронтенда
+
+- **Offline-first очередь** — фото ставятся в IndexedDB, автоматически отправляются при восстановлении сети. Cross-tab синхронизация через `BroadcastChannel`. `client_id` используется как будущий UUID анализа для идемпотентности.
+- **Service Worker** (`sw.js`, vite-plugin-pwa) — обрабатывает сообщение `kb-flush` для триггера ручной очистки очереди.
+- **PLY-просмотр** — `PlyViewer.jsx` lazy-загружает `PlyViewerImpl.jsx` с Three.js / react-three-fiber для рендера 3D-сетки.
+- **PDF-отчёт** — `raschet/RaschetDocument.jsx` генерирует отчёт через `@react-pdf/renderer`; формулы и константы вынесены в `raschetData.js`.
+- **Gothic тема** — `ThemeProvider.jsx` + компоненты `SwagAtmosphere`, `IntroVeil`, `Fracture` в `components/swag/`.
+- **Code splitting** — каждая страница lazy-загружается; Login статически импортирован (LCP-страница).
+
+---
+
+## 9. HTTPS (рекомендуется для продакшн)
 
 Используйте nginx reverse proxy с Let's Encrypt снаружи контейнера:
 
@@ -204,7 +246,7 @@ karelia-ai/
 
 ---
 
-## 9. Известные ограничения
+## 10. Известные ограничения
 
-- Background tasks живут только пока жив процесс uvicorn. При рестарте сервера pending анализы зависнут. Для надёжности добавьте Redis + Celery (следующий шаг).
-- Фото хранятся в Supabase Storage — учитывайте лимиты free tier (1GB).
+- Background tasks живут только пока жив процесс uvicorn. При рестарте сервера pending анализы зависнут. Для надёжности нужен Redis + Celery.
+- Фото хранятся в Supabase Storage — free tier: 1GB.

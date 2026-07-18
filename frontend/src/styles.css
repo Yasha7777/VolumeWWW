@@ -206,7 +206,7 @@ nav { display: flex; gap: 4px; justify-self: center; }
 .thumb img { width: 100%; height: 100%; object-fit: cover; }
 .thumb-n   { position: absolute; bottom: 4px; left: 4px; background: rgba(0,0,0,.55); color: #fff; font-size: 10px; font-weight: 600; width: 18px; height: 18px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
 .thumb-sz  { position: absolute; bottom: 4px; right: 4px; background: rgba(0,0,0,.45); color: rgba(255,255,255,.85); font-size: 9px; padding: 1px 4px; border-radius: 3px; }
-.thumb-geo { position: absolute; top: 3px; left: 3px; background: rgba(0,0,0,.55); font-size: 9px; line-height: 1; padding: 3px; border-radius: 5px; cursor: help; }
+.thumb-geo { position: absolute; top: 3px; left: 3px; background: rgba(0,0,0,.55); line-height: 0; padding: 3px; border-radius: 5px; cursor: help; color: #fff; display: flex; }
 .thumb-rm  { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,.55); color: #fff; border: none; font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .2s; }
 .thumb:hover .thumb-rm { opacity: 1; }
 /* на тач-устройствах нет :hover — крестик удаления виден всегда */

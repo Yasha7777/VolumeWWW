@@ -76,6 +76,10 @@ export default function Analyze() {
   const [showRaw, setShowRaw]   = useState(false)      // сырой ответ пайплайна (для отладки)
   const [online, setOnline]     = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
   const pollRef                 = useRef(null)
+  // Метаданные текущего опроса: id анализа, крайний срок и счётчик подряд
+  // неудачных запросов. Держим в ref, чтобы интервал видел свежие значения
+  // без пересоздания и чтобы cleanup на unmount мог всё погасить.
+  const pollMetaRef             = useRef({ id: null, deadline: 0, fails: 0 })
   const fileInputRef            = useRef(null)
   // Синхронный замок сабмита. setBusy(true) — асинхронный стейт React: два
   // быстрых тапа/двойной клик успевают оба пройти `if (busy) return` до
@@ -157,10 +161,36 @@ export default function Analyze() {
   }
 
   // ─── Polling ────────────────────────────────────────────────────────────────
+  // Бэкенд может считать до часа — задаём потолок с запасом, чтобы страница
+  // не опрашивала сервер бесконечно, если анализ завис.
+  const POLL_MAX_MS   = 65 * 60 * 1000
+  // ~12 подряд неудачных ответов (≈1 мин) при живой сети → сдаёмся, чтобы не
+  // крутить спиннер вечно на 404/500. Офлайн за неудачу не считаем.
+  const POLL_MAX_FAILS = 12
+
   const startPolling = (id) => {
-    pollRef.current = setInterval(async () => {
-      try {
-        const data = await api.getAnalysis(id)
+    if (pollRef.current) clearInterval(pollRef.current)
+    pollMetaRef.current = { id, deadline: Date.now() + POLL_MAX_MS, fails: 0 }
+    pollRef.current = setInterval(pollOnce, POLL_MS)
+  }
+
+  const pollOnce = async () => {
+    const meta = pollMetaRef.current
+    if (!meta.id) return
+
+    // Потолок по времени — анализ явно завис.
+    if (Date.now() > meta.deadline) {
+      stopPolling()
+      setStatus({ type:'error', title:'Время вышло', msg:'Анализ занял слишком долго. Проверьте статус в Истории.' })
+      setAId(null)
+      return
+    }
+    // Вкладка скрыта — не жжём батарею/трафик, вернёмся когда станет видимой.
+    if (typeof document !== 'undefined' && document.hidden) return
+
+    try {
+        const data = await api.getAnalysis(meta.id)
+        meta.fails = 0
         if (data.status === 'completed') {
           stopPolling()
 
@@ -208,15 +238,31 @@ export default function Analyze() {
           setStatus({ type:'error', title:'Ошибка анализа', msg: data.result || 'Неизвестная ошибка' })
           setAId(null)
         }
-      } catch (e) {}
-    }, POLL_MS)
+    } catch (e) {
+      // Офлайн — не наша вина, ждём восстановления сети без штрафа.
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return
+      meta.fails += 1
+      if (meta.fails >= POLL_MAX_FAILS) {
+        stopPolling()
+        setStatus({ type:'error', title:'Нет ответа сервера', msg:'Не удаётся получить статус анализа. Загляните в Историю позже.' })
+        setAId(null)
+      }
+    }
   }
 
   const stopPolling = () => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+    pollMetaRef.current.id = null
     setBusy(false)
     setStart(null)
   }
+
+  // Гасим интервал при уходе со страницы — иначе он продолжит опрашивать
+  // сервер в фоне после размонтирования (утечка + расход батареи/трафика).
+  useEffect(() => () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+    pollMetaRef.current.id = null
+  }, [])
 
   // ─── Запуск анализа ─────────────────────────────────────────────────────────
   // «Анализировать»: кладём в очередь и сразу отправляем, ждём результат здесь.
@@ -421,9 +467,18 @@ export default function Analyze() {
                     <span
                       className="thumb-geo"
                       title={`${Number(p.exifData.latitude.toFixed(5))}, ${Number(p.exifData.longitude.toFixed(5))}`}
-                    >📍</span>
+                      aria-label="Есть GPS-координаты"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                    </span>
                   )}
-                  <button className="thumb-rm" onClick={e => { e.stopPropagation(); removePhoto(i) }}>✕</button>
+                  <button
+                    className="thumb-rm"
+                    onClick={e => { e.stopPropagation(); removePhoto(i) }}
+                    aria-label={`Удалить фото ${i + 1}`}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                  </button>
                 </div>
               ))}
             </div>
