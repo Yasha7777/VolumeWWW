@@ -29,6 +29,11 @@ MAX_FILES = 100
 MAX_FILE_BYTES = 20 * 1024 * 1024  # 20 МБ
 COLMAP_BUCKET = "colmap"
 
+# Параметры калибровочного куба по умолчанию (стандарт: 4×4 клетки, клетка 17.5 мм).
+# Используются, если фронт не прислал/прислал невалидный блок cube.
+CUBE_DEFAULT_SQUARES = 4
+CUBE_DEFAULT_SIZE_M  = 0.0175
+
 
 # ─── SUPERADMIN ──────────────────────────────────────────────────────────────
 #
@@ -63,6 +68,7 @@ async def _call_n8n_and_save(
     exif_list: list,
     photo_b64_list: list,        # base64-строки фото для n8n
     user_info: dict,
+    cube: dict,                  # параметры калибровочного куба {squares_per_side, square_size_m}
     webhook_url: str,
 ):
     payload = {
@@ -71,6 +77,7 @@ async def _call_n8n_and_save(
         "exif":       exif_list,
         "photos_b64": photo_b64_list,
         "user":       user_info,
+        "cube":       cube,
         "meta": {
             "analysis_id": analysis_id,
             "photo_ids":   photo_ids,
@@ -128,6 +135,7 @@ async def create_analysis(
     notes: str = Form(""),
     is_prod: bool = Form(False),
     exif_data: str = Form("[]"),
+    cube: str = Form(""),        # ← параметры калибровочного куба (JSON), см. CubeSettings.jsx
     client_id: str = Form(""),   # ← идемпотентность: UUID из очереди (queue.js)
     files: List[UploadFile] = File(...),
     current_user: dict = Depends(get_current_user),
@@ -145,6 +153,31 @@ async def create_analysis(
         exif_list = json.loads(exif_data)
     except Exception:
         exif_list = []
+
+    # ── Параметры калибровочного куба ────────────────────────────────────────
+    #   Фронт (CubeSettings.jsx) уже переводит сторону клетки в метры и шлёт
+    #   готовый блок. Берём только два обязательных поля; конвертацию из мм не
+    #   дублируем. Панель не трогали / прислали мусор → стандартный куб.
+    try:
+        cube_raw = json.loads(cube) if cube else None
+    except Exception:
+        cube_raw = None
+    if not isinstance(cube_raw, dict):
+        cube_raw = {}
+
+    try:
+        cube_squares = int(cube_raw.get("squares_per_side"))
+    except (TypeError, ValueError):
+        cube_squares = CUBE_DEFAULT_SQUARES
+    try:
+        cube_size_m = round(float(cube_raw.get("square_size_m")), 5)
+    except (TypeError, ValueError):
+        cube_size_m = CUBE_DEFAULT_SIZE_M
+
+    cube_block = {
+        "squares_per_side": cube_squares,
+        "square_size_m":    cube_size_m,
+    }
 
     # ── 0. Идемпотентность по client_id ──────────────────────────────────────
     #   Фронт (queue.js) при постановке в очередь генерит UUID и шлёт его как
@@ -329,6 +362,7 @@ async def create_analysis(
             "name":    profile.get("name", ""),
             "company": profile.get("company", ""),
         },
+        cube_block,
         webhook_url,
     )
 

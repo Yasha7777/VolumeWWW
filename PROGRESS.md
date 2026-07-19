@@ -47,3 +47,4 @@
 - CubeSettings: убрана блокировка полей, живая двусторонняя синхронизация «Сторона квадрата» ↔ «Длина грани» (грань=сторона×N, сторона=грань/N), lastEdited для пересчёта при смене N, visual pulse на пересчитанном поле — `CubeSettings.jsx`, `styles.css`
 - CubeSettings: ошибки валидации очеловечены и вынесены под конкретное невалидное поле вместо общего дампа диапазонов — `CubeSettings.jsx`, `styles.css`
 - CubeSettings: убрана текстовая подпись «Параметры куба» рядом с шестерёнкой (осталась только иконка-триггер); подтверждено, что блок cube {square_size_m, squares_per_side} уходит в payload обеих кнопок через enqueue→flushItem — `CubeSettings.jsx`, `styles.css`
+- backend/analyses.py: n8n-payload теперь содержит блок "cube" {squares_per_side, square_size_m}. Эндпоинт POST /analyses/ принимает cube из FormData (его уже слал queue.js), нормализует с дефолтами (4 клетки, 0.0175 м), округляет square_size_m до 5 знаков и пробрасывает в _call_n8n_and_save
