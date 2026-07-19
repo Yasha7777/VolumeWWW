@@ -1666,8 +1666,6 @@ footer { border-top: 1px solid var(--border); padding: 20px 32px; display: flex;
   background: var(--gold); box-shadow: 0 0 0 2px var(--bg-card);
 }
 
-.cube-trigger-label { font-size: 12px; color: var(--muted); letter-spacing: .02em; }
-
 /* Сворачиваемая панель — на всю ширину сетки .actions */
 .cube-panel {
   grid-column: 1 / -1;

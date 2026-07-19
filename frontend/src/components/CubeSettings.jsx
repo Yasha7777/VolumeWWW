@@ -145,7 +145,6 @@ export default function CubeSettings({ onChange }) {
           {changed ? <UserCog size={18} /> : <Settings size={18} />}
           {changed && <span className="cube-dot" aria-hidden="true" />}
         </button>
-        <span className="cube-trigger-label">Параметры куба</span>
       </div>
 
       <div className={`cube-panel ${open ? 'is-open' : ''}`}>

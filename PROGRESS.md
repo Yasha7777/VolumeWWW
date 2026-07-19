@@ -46,3 +46,4 @@
 - CubeSettings: шестерёнка перенесена в пустой слот колонки «В очередь» (`.cube` → display:contents в сетке .actions, панель на всю ширину) — `Analyze.jsx`, `styles.css`
 - CubeSettings: убрана блокировка полей, живая двусторонняя синхронизация «Сторона квадрата» ↔ «Длина грани» (грань=сторона×N, сторона=грань/N), lastEdited для пересчёта при смене N, visual pulse на пересчитанном поле — `CubeSettings.jsx`, `styles.css`
 - CubeSettings: ошибки валидации очеловечены и вынесены под конкретное невалидное поле вместо общего дампа диапазонов — `CubeSettings.jsx`, `styles.css`
+- CubeSettings: убрана текстовая подпись «Параметры куба» рядом с шестерёнкой (осталась только иконка-триггер); подтверждено, что блок cube {square_size_m, squares_per_side} уходит в payload обеих кнопок через enqueue→flushItem — `CubeSettings.jsx`, `styles.css`
