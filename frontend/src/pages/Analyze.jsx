@@ -8,6 +8,7 @@ import { parseWebhookResult } from '../components/RaschetDownloadButton' // ← 
 import { useTheme } from '../theme/ThemeProvider'   // ← только ради свага-лейбла кнопки
 import { enqueue, flushItem } from '../queue/queue'  // ← офлайн-очередь (PWA)
 import Reveal from '../components/Reveal'  // ← лёгкое scroll/stagger-проявление
+import PointCloudHero from '../components/PointCloudHero'  // ← 3D-облако точек (собирается по скроллу)
 
 const MAX_PHOTOS = 100
 const MAX_DIM    = 1600
@@ -374,6 +375,7 @@ export default function Analyze() {
 
       {/* HERO */}
       <div className="hero">
+        <PointCloudHero />
         <Reveal delay={0} y={12}>
           <div className="badge">
             <span className="badge-dot" />

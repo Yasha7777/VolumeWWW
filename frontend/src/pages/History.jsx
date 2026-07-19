@@ -5,6 +5,7 @@ import PlyViewer from '../components/PlyViewer';
 import { subscribe, listQueue, retryItem, removeItem } from '../queue/queue'; // ← офлайн-очередь (PWA)
 import Reveal from '../components/Reveal';
 import { MeasureCardSkeleton } from '../components/Skeleton';
+import KareliaTerrain from '../components/KareliaTerrain';  // ← 3D-рельеф, облёт по скроллу
 
 // Декор по бокам — base64 из отдельных файлов (Vite ?raw)
 // декор загружается отдельными файлами из public/decor/*.png —
@@ -927,6 +928,7 @@ export default function History() {
             для навбара сайта. Если сделать тут <header>, блок схватит и его, и .kh-head —
             высота схлопнется в 64px, overflow:hidden обрежет заголовок, и всё наедет. */}
         <div className="kh-head">
+          <KareliaTerrain />
           <svg className="kh-head__art" viewBox="0 0 900 120" preserveAspectRatio="none">
             <path d="M0 92 C 150 70, 320 110, 520 84 C 700 62, 820 96, 900 78" />
             <path d="M0 70 C 160 52, 330 84, 540 62 C 720 44, 830 72, 900 56" />
