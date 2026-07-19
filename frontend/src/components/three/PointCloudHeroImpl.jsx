@@ -32,6 +32,23 @@ export default function PointCloudHeroImpl() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     mount.appendChild(renderer.domElement)
 
+    // круглый мягкий спрайт: без него three рисует точки КВАДРАТАМИ
+    const sprite = (() => {
+      const s = 64
+      const cv = document.createElement('canvas')
+      cv.width = cv.height = s
+      const c = cv.getContext('2d')
+      const g = c.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2)
+      g.addColorStop(0, 'rgba(255,255,255,1)')
+      g.addColorStop(0.45, 'rgba(255,255,255,0.85)')
+      g.addColorStop(1, 'rgba(255,255,255,0)')
+      c.fillStyle = g
+      c.fillRect(0, 0, s, s)
+      const t = new THREE.CanvasTexture(cv)
+      t.needsUpdate = true
+      return t
+    })()
+
     // ── позиции: рассыпано (сфера) → собрано (конус-куча) ──
     const scattered = new Float32Array(COUNT * 3)
     const assembled = new Float32Array(COUNT * 3)
@@ -76,11 +93,13 @@ export default function PointCloudHeroImpl() {
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
 
     const mat = new THREE.PointsMaterial({
-      size: 0.032,
+      size: 0.05,
+      map: sprite,
+      alphaTest: 0.02,
       sizeAttenuation: true,
       vertexColors: true,
       transparent: true,
-      opacity: 0.92,
+      opacity: 0.95,
       depthWrite: false,
     })
     const points = new THREE.Points(geo, mat)
@@ -88,11 +107,12 @@ export default function PointCloudHeroImpl() {
     // bloom-подобное свечение: второй слой крупных точек с аддитивным блендингом
     // (тот же geo → двигается синхронно). Безопасно для прозрачного фона.
     const glowMat = new THREE.PointsMaterial({
-      size: 0.11,
+      size: 0.16,
+      map: sprite,
       sizeAttenuation: true,
       vertexColors: true,
       transparent: true,
-      opacity: 0.22,
+      opacity: 0.25,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     })
@@ -103,23 +123,10 @@ export default function PointCloudHeroImpl() {
     group.add(points)
     scene.add(group)
 
-    // ── прогресс сборки от скролла (0 вверху → 1 при прокрутке героя) ──
-    let scrollP = 0
-    const readScroll = () => {
-      const rect = mount.getBoundingClientRect()
-      const vh = window.innerHeight || 1
-      scrollP = Math.min(Math.max(-rect.top / (vh * 0.8), 0), 1)
-    }
-    readScroll()
-    let ticking = false
-    const onScroll = () => {
-      if (ticking) return
-      ticking = true
-      requestAnimationFrame(() => { readScroll(); ticking = false })
-    }
-    window.addEventListener('scroll', onScroll, { passive: true })
-
-    // при reduced-motion сразу показываем собранную кучу, без вращения
+    // Сборка кучи — разовая интро-анимация при появлении (всегда видимая,
+    // без завязки на прокрутку). reduced-motion → сразу собрано.
+    const INTRO_MS = 2400
+    const t0 = performance.now()
     let shownP = reduce ? 1 : 0
     const arr = posAttr.array
 
@@ -129,9 +136,8 @@ export default function PointCloudHeroImpl() {
       const dt = Math.min((now - last) / 1000, 0.05)
       last = now
 
-      const targetP = reduce ? 1 : scrollP
-      shownP += (targetP - shownP) * Math.min(dt * 4, 1)   // сглаживание
-      const e = EASE(shownP)
+      if (!reduce) shownP = EASE(Math.min((now - t0) / INTRO_MS, 1))
+      const e = shownP
 
       for (let i = 0; i < COUNT; i++) {
         const j = i * 3
@@ -156,11 +162,11 @@ export default function PointCloudHeroImpl() {
 
     return () => {
       cancelAnimationFrame(raf)
-      window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onResize)
       geo.dispose()
       mat.dispose()
       glowMat.dispose()
+      sprite.dispose()
       renderer.dispose()
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement)
     }

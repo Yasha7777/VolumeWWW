@@ -155,8 +155,13 @@ nav { display: flex; gap: 4px; justify-self: center; }
   background: radial-gradient(ellipse at center, rgba(30,61,18,.07), rgba(184,122,24,.05) 42%, transparent 72%);
   filter: blur(6px);
 }
-/* 3D-облако точек героя — за текстом, кликов не ловит */
-.hero .kb-hero3d { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+/* 3D-облако точек героя — за текстом, кликов не ловит.
+   mask растушёвывает края → нет жёсткого «обрезанного прямоугольника». */
+.hero .kb-hero3d {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  -webkit-mask-image: radial-gradient(ellipse 82% 78% at 50% 42%, #000 45%, transparent 100%);
+          mask-image: radial-gradient(ellipse 82% 78% at 50% 42%, #000 45%, transparent 100%);
+}
 .hero { min-height: 460px; }
 
 /* тот же контурный мотив, что на экране входа — единый фирменный почерк */
@@ -636,11 +641,10 @@ footer { border-top: 1px solid var(--border); padding: 20px 32px; display: flex;
 .kh-head {
   position: relative;
   overflow: hidden;
-  min-height: 150px;
-  padding: 8px 0 4px;
+  padding: 20px 0 8px;
   margin-bottom: 28px;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 24px;
   flex-wrap: wrap;
@@ -654,10 +658,16 @@ footer { border-top: 1px solid var(--border); padding: 20px 32px; display: flex;
   pointer-events: none;
   z-index: 0;
 }
-/* 3D-рельеф — самый нижний слой шапки Истории */
-.kh-terrain3d { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
 .kh-head__art path { fill: none; stroke: var(--dash); stroke-width: 1; }
-.kh-head__text { position: relative; z-index: 1; }
+/* заголовок на плашке — читается поверх «волн», выровнен по левому краю */
+.kh-head__text {
+  position: relative; z-index: 1; text-align: left;
+  background: rgba(244,240,232,.72);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  padding: 12px 20px; border-radius: 14px;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(30,61,18,.04);
+}
 .kh-eyebrow {
   display: inline-flex;
   align-items: center;
