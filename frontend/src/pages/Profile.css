@@ -37,7 +37,7 @@
 .kb-id-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--r);
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow);
   overflow: hidden;
   position: sticky;
@@ -83,11 +83,11 @@
 .kb-time-btn {
   position: absolute; left: 14px; bottom: 14px; z-index: 2;
   display: inline-flex; align-items: center; gap: 7px;
-  padding: 6px 13px 6px 10px; border-radius: 999px;
+  padding: 6px 13px 6px 10px; border-radius: var(--r-pill);
   background: rgba(12, 20, 12, .46); color: #fff;
   border: 1px solid rgba(255, 255, 255, .22);
   backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-  font-family: var(--sans); font-size: 11.5px; font-weight: 600; letter-spacing: .04em;
+  font-family: var(--sans); font-size: 12px; font-weight: 600; letter-spacing: .04em;
   line-height: 1; cursor: pointer;
   transition: background .2s var(--ease), transform .2s var(--ease);
 }
@@ -124,7 +124,7 @@
   display: inline-flex; align-items: center; gap: 6px;
   margin-top: 18px; padding: 7px 15px;
   background: rgba(30, 61, 18, .07); color: var(--green);
-  border-radius: 999px; font-size: 13px; font-weight: 500;
+  border-radius: var(--r-pill); font-size: 13px; font-weight: 500;
 }
 
 .kb-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 28px; }
@@ -133,8 +133,8 @@
   padding: 16px 16px 18px; text-align: left;
   transition: transform .18s var(--ease), box-shadow .18s var(--ease);
 }
-.kb-stat:hover { transform: translateY(-2px); box-shadow: 0 6px 20px -12px rgba(30,61,18,.3); }
-.kb-stat-label { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.kb-stat:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+.kb-stat-label { display: block; font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .kb-stat-value { display: block; margin-top: 8px; font-size: 28px; font-weight: 600; line-height: 1; color: var(--text); }
 .kb-stat-ok { color: #1A6B3C; }
 
@@ -142,7 +142,7 @@
 .kb-form-card {
   position: relative;
   background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--r); box-shadow: var(--shadow);
+  border-radius: var(--r-lg); box-shadow: var(--shadow);
   padding: clamp(28px, 3.2vw, 44px); overflow: hidden;
 }
 
@@ -158,7 +158,7 @@
   background: var(--bg);
   border: 1px solid var(--border);
   border-left: 3px solid var(--gold);
-  border-radius: var(--r);
+  border-radius: var(--r-lg);
 }
 .kb-title {
   margin: 0; font-family: var(--serif);
@@ -172,19 +172,19 @@
 .kb-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-bottom: 26px; }
 .kb-field { display: flex; flex-direction: column; }
 .kb-field--full { grid-column: 1 / -1; }
-.kb-field > label { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 9px; }
+.kb-field > label { font-size: var(--label-size); font-weight: var(--label-weight); letter-spacing: var(--label-spacing); text-transform: uppercase; color: var(--muted); margin-bottom: 9px; }
 
 .kb-field input,
 .kb-email-row input {
   width: 100%; background: var(--bg);
-  border: 1px solid var(--border); border-radius: var(--r-sm);
-  padding: 13px 15px; font-family: var(--sans); font-size: 14px; color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--control-radius);
+  padding: var(--control-pad); font-family: var(--sans); font-size: var(--control-font); font-weight: var(--control-weight); color: var(--text);
   outline: none; transition: border-color .2s var(--ease), box-shadow .2s var(--ease);
 }
 .kb-field input::placeholder,
-.kb-email-row input::placeholder { color: var(--light); }
+.kb-email-row input::placeholder { color: var(--muted); }
 .kb-field input:focus,
-.kb-email-row input:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(30,61,18,.08); }
+.kb-email-row input:focus { border-color: var(--green); box-shadow: var(--control-focus); }
 
 .kb-email-row { display: flex; gap: 10px; margin-bottom: 10px; animation: fadeIn .22s var(--ease); }
 .kb-email-row input { flex: 1; }
@@ -206,7 +206,7 @@
 }
 .kb-add-email:hover { border-color: var(--green); color: var(--green); background: rgba(30,61,18,.04); }
 .kb-add-plus { font-size: 18px; line-height: 1; }
-.kb-hint { margin: 12px 0 0; font-size: 12.5px; color: var(--light); }
+.kb-hint { margin: 12px 0 0; font-size: 12px; color: var(--muted); }
 
 /* кнопка/статусы — из styles.css (.btn .btn-primary, .spinner, .status).
    строка появляется только при изменениях → плавный вход */
@@ -216,7 +216,7 @@
 
 .kb-account { margin-top: 32px; padding: 22px 24px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); }
 .kb-account-title { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
-.kb-account p { margin: 0; font-size: 13.5px; color: var(--muted); line-height: 1.7; }
+.kb-account p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.7; }
 .kb-account strong { color: var(--text); }
 
 @keyframes kb-breathe { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.06); opacity: .92; } }

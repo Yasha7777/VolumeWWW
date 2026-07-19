@@ -28,7 +28,7 @@
   display: flex; flex-direction: column;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   overflow: hidden;               /* скругляем углы у PDF/контента внутри */
   box-shadow: 0 28px 64px -16px rgba(0, 0, 0, .30), 0 6px 18px rgba(0, 0, 0, .10);
   transform: translateX(calc(100% + var(--rp-gap) + 28px));
@@ -55,7 +55,7 @@
 .rp__collapse {
   width: 32px; height: 32px; flex: none;
   display: grid; place-items: center;
-  border: 1px solid var(--border); border-radius: 8px;
+  border: 1px solid var(--border); border-radius: var(--r-xs);
   background: transparent; color: var(--muted);
   cursor: pointer; transition: background .18s, color .18s, border-color .18s;
 }
@@ -141,7 +141,7 @@
 .rp__sum-meta { margin-top: 12px; font: 400 13px/1.5 var(--sans); color: var(--muted); }
 .rp__sum-hint {
   margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border);
-  font: 400 12px/1.5 var(--sans); color: var(--light);
+  font: 400 12px/1.5 var(--sans); color: var(--muted);
 }
 
 /* меньше движения — без выезжаний */
