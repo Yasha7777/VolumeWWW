@@ -1,0 +1,27 @@
+# Зависимости и артефакты сборки не должны попадать в build-контекст:
+# npm ci внутри контейнера ставит их сам, а копирование локальных node_modules
+# (собранных под другую ОС) раздувает образ и ломает нативные бинарники.
+node_modules
+dist
+dist-ssr
+
+# Vite / кеши
+.vite
+*.local
+
+# Логи и мусор ОС
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Локальные секреты (env бакаются через build-args, файлы не нужны)
+.env
+.env.*
+!.env.example
+
+# VCS и IDE
+.git
+.gitignore
+.vscode
+.idea
