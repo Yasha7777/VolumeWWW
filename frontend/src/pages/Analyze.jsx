@@ -9,6 +9,7 @@ import { useTheme } from '../theme/ThemeProvider'   // ← только ради
 import { enqueue, flushItem } from '../queue/queue'  // ← офлайн-очередь (PWA)
 import Reveal from '../components/Reveal'  // ← лёгкое scroll/stagger-проявление
 import CubesHero from '../components/CubesHero'  // ← реальная 3D-модель кубов (GLB)
+import CubeSettings, { CUBE_DEFAULT } from '../components/CubeSettings'  // ← настраиваемый калибровочный куб
 
 const MAX_PHOTOS = 100
 const MAX_DIM    = 1600
@@ -77,6 +78,12 @@ export default function Analyze() {
   const [reportOpen, setReportOpen] = useState(false)  // выдвижное окно отчёта
   const [showRaw, setShowRaw]   = useState(false)      // сырой ответ пайплайна (для отладки)
   const [online, setOnline]     = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
+  // Блок cube для payload + валидность параметров куба (из CubeSettings).
+  const [cube, setCube]         = useState(CUBE_DEFAULT)
+  const [cubeValid, setCubeValid] = useState(true)
+  const onCubeChange = useCallback(({ payload, valid }) => {
+    setCube(payload); setCubeValid(valid)
+  }, [])
   const pollRef                 = useRef(null)
   // Метаданные текущего опроса: id анализа, крайний срок и счётчик подряд
   // неудачных запросов. Держим в ref, чтобы интервал видел свежие значения
@@ -272,6 +279,7 @@ export default function Analyze() {
   const runAnalysis = async () => {
     if (busy || submittingRef.current) return
     if (!photos.length) { setStatus({ type:'error', title:'Нет фото', msg:'Добавьте хотя бы одно фото' }); return }
+    if (!cubeValid) { setStatus({ type:'error', title:'Параметры куба', msg:'Исправьте значения калибровочного куба' }); return }
 
     submittingRef.current = true
     setBusy(true)
@@ -285,7 +293,7 @@ export default function Analyze() {
 
     let id
     try {
-      id = await enqueue({ title, notes, isProd, photos: payload })
+      id = await enqueue({ title, notes, isProd, photos: payload, cube })
     } catch (err) {
       submittingRef.current = false
       setBusy(false)
@@ -318,13 +326,14 @@ export default function Analyze() {
   const addToQueue = async () => {
     if (busy || submittingRef.current) return
     if (!photos.length) { setStatus({ type:'error', title:'Нет фото', msg:'Добавьте хотя бы одно фото' }); return }
+    if (!cubeValid) { setStatus({ type:'error', title:'Параметры куба', msg:'Исправьте значения калибровочного куба' }); return }
 
     submittingRef.current = true
     try {
       const payload = photos.map(p => ({ blob: p.blob, name: p.name, exif: p.exifData ?? null }))
       let id
       try {
-        id = await enqueue({ title, notes, isProd, photos: payload })
+        id = await enqueue({ title, notes, isProd, photos: payload, cube })
       } catch (err) {
         setStatus({ type:'error', title:'Ошибка', msg: err.message })
         return
@@ -563,6 +572,9 @@ export default function Analyze() {
             </button>
             <button className="btn btn-secondary" onClick={reset}>Сбросить</button>
           </div>
+
+          {/* Настраиваемый калибровочный куб — шестерёнка под кнопками */}
+          <CubeSettings onChange={onCubeChange} />
 
           {busy && startTime && <Timer startTime={startTime} />}
 

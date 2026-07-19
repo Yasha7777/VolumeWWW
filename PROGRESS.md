@@ -38,3 +38,8 @@
   - A1 --light как цвет ТЕКСТА → --muted (18+ мест), --light оставлен только для бордеров/hairline;
   - A2 .field input font-weight 300→400; A3 явное animation:none для .page/header/.badge-dot в reduced-motion.
   - Hero не тронут: единственная ссылка (.badge box-shadow) заменена 1-в-1 на --shadow-sm с тем же значением. Проверка целостности токенов: все var(--*) резолвятся; сборка зелёная.
+
+- Калибровочный куб: новый `frontend/src/components/CubeSettings.jsx` — icon-button (Settings/UserCog из lucide-react) + сворачиваемая панель «Параметры калибровочного куба» (клеток на грани, взаимоисключающие поля квадрат/грань, live computed square_size_m в метрах, валидация N 2..10 / квадрат 3..60мм / грань 15..300мм, индикатор «изменено» + бейдж-точка + «Сбросить к стандартным»).
+- `pages/Analyze.jsx`: подключён CubeSettings под кнопками, невалидный куб блокирует runAnalysis/addToQueue, блок `cube` прокинут в enqueue.
+- `queue/queue.js`: `cube` сохраняется в item и уходит в payload вебхука как FormData-поле `cube` (JSON). Бэкенд/n8n не тронуты.
+- Добавлены стили `.cube*` в `styles.css`; установлен `lucide-react`.
