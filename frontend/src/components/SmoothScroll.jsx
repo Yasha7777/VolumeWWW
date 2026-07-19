@@ -9,7 +9,11 @@ export default function SmoothScroll() {
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
 
     const lenis = new Lenis({
-      duration: 1.05,
+      // резче: короче инерция и более «прямой» easing, чтобы скролл-скраб героя
+      // ощущался чётким, а не «плавающим»
+      duration: 0.6,
+      lerp: 0.12,
+      easing: (t) => 1 - Math.pow(1 - t, 3),
       smoothWheel: true,
       // на тач оставляем нативный скролл — он и так плавный, а перехват мешает
       syncTouch: false,

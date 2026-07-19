@@ -89,3 +89,19 @@ Frontend build args / `frontend/.env.local`: `VITE_SUPABASE_URL`, `VITE_SUPABASE
 
 - Background tasks die with the uvicorn process — pending analyses hang on restart (Redis + Celery would fix this)
 - Supabase Storage free tier: 1GB limit
+
+## Frontend Stack & Design
+
+**Стек фронта:** React · @react-three/fiber · drei · three · Lenis (плавный скролл) · PWA-очередь (IndexedDB + BroadcastChannel + Background Sync) · Supabase · пайплайн n8n + DUSt3R.
+
+**Дизайн-направление:** премиальный вид «на десятки тысяч $», карельский вайб.
+Цвета: лес `#2f4a1c`, охра `#c98a24`, камень (нейтральный серый). Контурный (line/outline) мотив.
+
+**Ключевые файлы hero/эффектов:**
+- `frontend/src/pages/Analyze.jsx` — главная страница, hero
+- `frontend/src/components/three/CubesHeroImpl.jsx` — 3D-эффект hero
+- `frontend/src/styles.css` — глобальные стили
+
+## Workflow Rule
+
+После каждой значимой правки дописывай строку в `PROGRESS.md`: что изменил и в каком файле.

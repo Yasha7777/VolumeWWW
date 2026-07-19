@@ -158,7 +158,8 @@ nav { display: flex; gap: 4px; justify-self: center; }
 /* 3D-облако точек героя — за текстом, кликов не ловит.
    mask растушёвывает края → нет жёсткого «обрезанного прямоугольника». */
 .hero .kb-hero3d {
-  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  will-change: opacity;
   -webkit-mask-image: radial-gradient(ellipse 82% 78% at 50% 42%, #000 45%, transparent 100%);
           mask-image: radial-gradient(ellipse 82% 78% at 50% 42%, #000 45%, transparent 100%);
 }
