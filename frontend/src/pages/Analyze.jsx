@@ -571,10 +571,10 @@ export default function Analyze() {
               В очередь
             </button>
             <button className="btn btn-secondary" onClick={reset}>Сбросить</button>
+            {/* Шестерёнка — в пустом слоте колонки «В очередь», на одном уровне
+                со «Сбросить»; панель раскрывается на всю ширину под кнопками. */}
+            <CubeSettings onChange={onCubeChange} />
           </div>
-
-          {/* Настраиваемый калибровочный куб — шестерёнка под кнопками */}
-          <CubeSettings onChange={onCubeChange} />
 
           {busy && startTime && <Timer startTime={startTime} />}
 

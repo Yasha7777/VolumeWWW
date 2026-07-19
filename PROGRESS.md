@@ -43,3 +43,6 @@
 - `pages/Analyze.jsx`: подключён CubeSettings под кнопками, невалидный куб блокирует runAnalysis/addToQueue, блок `cube` прокинут в enqueue.
 - `queue/queue.js`: `cube` сохраняется в item и уходит в payload вебхука как FormData-поле `cube` (JSON). Бэкенд/n8n не тронуты.
 - Добавлены стили `.cube*` в `styles.css`; установлен `lucide-react`.
+- CubeSettings: шестерёнка перенесена в пустой слот колонки «В очередь» (`.cube` → display:contents в сетке .actions, панель на всю ширину) — `Analyze.jsx`, `styles.css`
+- CubeSettings: убрана блокировка полей, живая двусторонняя синхронизация «Сторона квадрата» ↔ «Длина грани» (грань=сторона×N, сторона=грань/N), lastEdited для пересчёта при смене N, visual pulse на пересчитанном поле — `CubeSettings.jsx`, `styles.css`
+- CubeSettings: ошибки валидации очеловечены и вынесены под конкретное невалидное поле вместо общего дампа диапазонов — `CubeSettings.jsx`, `styles.css`

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Settings, UserCog } from 'lucide-react'
 
 // ─── Параметры калибровочного куба ───────────────────────────────────────────
@@ -20,49 +20,84 @@ const DEF_EDGE   = '70'     // мм
 
 // Границы валидации
 const N_MIN = 2,  N_MAX = 10
-const SQ_MIN = 3, SQ_MAX = 60      // сторона квадрata, мм
+const SQ_MIN = 3, SQ_MAX = 60      // сторона квадрата, мм
 const ED_MIN = 15, ED_MAX = 300    // длина грани, мм
 
 const round5 = (v) => Math.round(v * 1e5) / 1e5
+
+// Аккуратный вывод числа: до 2 знаков после запятой, без хвостовых нулей.
+const fmt = (v) => (Number.isFinite(v) ? String(Math.round(v * 100) / 100) : '')
 
 /**
  * @param {(state: { payload: object, valid: boolean }) => void} onChange
  *   Вызывается при каждом изменении — отдаёт готовый блок cube и флаг валидности.
  */
 export default function CubeSettings({ onChange }) {
-  const [open, setOpen]       = useState(false)
-  const [nStr, setNStr]       = useState(String(DEF_N))
+  const [open, setOpen]        = useState(false)
+  const [nStr, setNStr]        = useState(String(DEF_N))
   const [squareStr, setSquare] = useState(DEF_SQUARE)  // сторона квадрата, мм
-  const [edgeStr, setEdge]     = useState('')          // длина грани, мм
+  const [edgeStr, setEdge]     = useState(DEF_EDGE)    // длина грани, мм
 
-  // Активный режим: пока заполнено поле квадрата — «square», иначе «edge».
-  const mode = squareStr.trim() !== '' ? 'square'
-             : edgeStr.trim()   !== '' ? 'edge'
-             : 'square'
+  // Какое поле пользователь редактировал вручную последним — от него ведём
+  // пересчёт при смене N, чтобы N не «наступал» на только что введённое значение.
+  const [lastEdited, setLastEdited] = useState('square')  // 'square' | 'edge'
 
-  // ─── Вычисления и валидация ────────────────────────────────────────────────
+  // Поле, которое только что пересчиталось автоматически — для лёгкой подсветки.
+  const [pulse, setPulse]  = useState(null)               // 'square' | 'edge' | null
+  const pulseTimer         = useRef(null)
+  const firePulse = (field) => {
+    setPulse(field)
+    if (pulseTimer.current) clearTimeout(pulseTimer.current)
+    pulseTimer.current = setTimeout(() => setPulse(null), 450)
+  }
+  useEffect(() => () => { if (pulseTimer.current) clearTimeout(pulseTimer.current) }, [])
+
+  // ─── Живая двусторонняя синхронизация ──────────────────────────────────────
+  // Оба поля всегда активны. При правке одного второе пересчитывается как
+  // производное: грань = сторона × N, сторона = грань / N.
+  const onSquareChange = (val) => {
+    setSquare(val)
+    setLastEdited('square')
+    const sq = Number(val), n = Number(nStr)
+    if (val.trim() !== '' && Number.isFinite(sq) && Number.isInteger(n) && n > 0) {
+      setEdge(fmt(sq * n)); firePulse('edge')
+    }
+  }
+  const onEdgeChange = (val) => {
+    setEdge(val)
+    setLastEdited('edge')
+    const ed = Number(val), n = Number(nStr)
+    if (val.trim() !== '' && Number.isFinite(ed) && Number.isInteger(n) && n > 0) {
+      setSquare(fmt(ed / n)); firePulse('square')
+    }
+  }
+  const onNChange = (val) => {
+    setNStr(val)
+    const n = Number(val)
+    if (val.trim() === '' || !Number.isInteger(n) || n <= 0) return
+    // Пересчитываем то поле, которое НЕ редактировали вручную последним.
+    if (lastEdited === 'square') {
+      const sq = Number(squareStr)
+      if (squareStr.trim() !== '' && Number.isFinite(sq)) { setEdge(fmt(sq * n)); firePulse('edge') }
+    } else {
+      const ed = Number(edgeStr)
+      if (edgeStr.trim() !== '' && Number.isFinite(ed)) { setSquare(fmt(ed / n)); firePulse('square') }
+    }
+  }
+
+  // ─── Валидация и payload ────────────────────────────────────────────────────
   const derived = useMemo(() => {
     const n = Number(nStr)
     const nValid = Number.isInteger(n) && n >= N_MIN && n <= N_MAX
 
-    let square_size_m = null
-    let raw_value_mm  = null
-    let fieldValid    = false
+    const sq = Number(squareStr)
+    const squareValid = squareStr.trim() !== '' && Number.isFinite(sq) && sq >= SQ_MIN && sq <= SQ_MAX
 
-    if (mode === 'square') {
-      const sq = Number(squareStr)
-      const ok = squareStr.trim() !== '' && Number.isFinite(sq) && sq >= SQ_MIN && sq <= SQ_MAX
-      fieldValid = ok
-      if (ok) { square_size_m = sq / 1000; raw_value_mm = sq }
-    } else {
-      const ed = Number(edgeStr)
-      const ok = edgeStr.trim() !== '' && Number.isFinite(ed) && ed >= ED_MIN && ed <= ED_MAX
-      fieldValid = ok && nValid
-      if (ok && nValid) { square_size_m = (ed / n) / 1000; raw_value_mm = ed }
-    }
+    const ed = Number(edgeStr)
+    const edgeValid = edgeStr.trim() !== '' && Number.isFinite(ed) && ed >= ED_MIN && ed <= ED_MAX
 
-    const valid = nValid && fieldValid
-    const sizeM = valid ? round5(square_size_m) : null
+    const valid = nValid && squareValid && edgeValid
+    const sizeM = squareValid ? round5(sq / 1000) : null
 
     const is_custom = valid && (sizeM !== CUBE_DEFAULT.square_size_m || n !== CUBE_DEFAULT.squares_per_side)
 
@@ -70,12 +105,12 @@ export default function CubeSettings({ onChange }) {
       square_size_m:    valid ? sizeM : CUBE_DEFAULT.square_size_m,
       squares_per_side: nValid ? n : CUBE_DEFAULT.squares_per_side,
       is_custom:        !!is_custom,
-      input_mode:       mode,
-      raw_value_mm:     valid ? raw_value_mm : CUBE_DEFAULT.raw_value_mm,
+      input_mode:       lastEdited,
+      raw_value_mm:     squareValid ? sq : CUBE_DEFAULT.raw_value_mm,
     }
 
-    return { payload, valid, nValid, fieldValid, is_custom: !!is_custom, sizeM }
-  }, [nStr, squareStr, edgeStr, mode])
+    return { payload, valid, nValid, squareValid, edgeValid, is_custom: !!is_custom, sizeM }
+  }, [nStr, squareStr, edgeStr, lastEdited])
 
   // Пробрасываем наверх результат при каждом изменении.
   useEffect(() => {
@@ -85,17 +120,16 @@ export default function CubeSettings({ onChange }) {
   const reset = () => {
     setNStr(String(DEF_N))
     setSquare(DEF_SQUARE)
-    setEdge('')
+    setEdge(DEF_EDGE)
+    setLastEdited('square')
   }
 
   const changed = derived.is_custom
-  const squareDisabled = mode === 'edge'
-  const edgeDisabled   = mode === 'square'
 
-  // Подсветка невалидных полей
+  // Подсветка невалидных полей (показываем ошибку, когда поле реально не в порядке).
   const nBad      = !derived.nValid
-  const squareBad = mode === 'square' && !derived.fieldValid && squareStr.trim() !== ''
-  const edgeBad   = mode === 'edge' && (edgeStr.trim() === '' ? false : !derived.fieldValid && derived.nValid)
+  const squareBad = !derived.squareValid
+  const edgeBad   = !derived.edgeValid
 
   return (
     <div className="cube">
@@ -125,8 +159,9 @@ export default function CubeSettings({ onChange }) {
                 type="number" min={N_MIN} max={N_MAX} step={1} inputMode="numeric"
                 className={nBad ? 'cube-invalid' : ''}
                 value={nStr}
-                onChange={e => setNStr(e.target.value)}
+                onChange={e => onNChange(e.target.value)}
               />
+              {nBad && <span className="cube-field-error">Введите число клеток от {N_MIN} до {N_MAX}</span>}
             </div>
 
             <div className="cube-pair">
@@ -135,33 +170,31 @@ export default function CubeSettings({ onChange }) {
                 <input
                   type="number" min={SQ_MIN} max={SQ_MAX} step="0.1" inputMode="decimal"
                   placeholder="17.5"
-                  className={squareBad ? 'cube-invalid' : ''}
-                  disabled={squareDisabled}
+                  className={`${squareBad ? 'cube-invalid' : ''} ${pulse === 'square' ? 'cube-pulse' : ''}`}
                   value={squareStr}
-                  onChange={e => setSquare(e.target.value)}
+                  onChange={e => onSquareChange(e.target.value)}
                 />
+                {squareBad && <span className="cube-field-error">Сторона квадрата должна быть от {SQ_MIN} до {SQ_MAX} мм</span>}
               </div>
               <div className="field">
                 <label>Длина грани, мм</label>
                 <input
                   type="number" min={ED_MIN} max={ED_MAX} step="0.1" inputMode="decimal"
                   placeholder="70"
-                  className={edgeBad ? 'cube-invalid' : ''}
-                  disabled={edgeDisabled}
+                  className={`${edgeBad ? 'cube-invalid' : ''} ${pulse === 'edge' ? 'cube-pulse' : ''}`}
                   value={edgeStr}
-                  onChange={e => setEdge(e.target.value)}
+                  onChange={e => onEdgeChange(e.target.value)}
                 />
+                {edgeBad && <span className="cube-field-error">Длина грани должна быть от {ED_MIN} до {ED_MAX} мм</span>}
               </div>
             </div>
           </div>
 
-          <div className="cube-computed">
-            {derived.valid ? (
-              <>→ сторона квадрата = {(derived.sizeM * 1000).toFixed(1)} мм · передаётся на сервер</>
-            ) : (
-              <span className="cube-computed-bad">Проверьте значения: N {N_MIN}…{N_MAX}, квадрат {SQ_MIN}…{SQ_MAX} мм, грань {ED_MIN}…{ED_MAX} мм</span>
-            )}
-          </div>
+          {derived.valid && (
+            <div className="cube-computed">
+              → сторона квадрата = {(derived.sizeM * 1000).toFixed(1)} мм · передаётся на сервер
+            </div>
+          )}
 
           {changed && (
             <button type="button" className="cube-reset" onClick={reset}>

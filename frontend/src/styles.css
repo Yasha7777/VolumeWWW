@@ -1642,7 +1642,9 @@ footer { border-top: 1px solid var(--border); padding: 20px 32px; display: flex;
 }
 
 /* ─── Параметры калибровочного куба ─────────────────────────────────────────── */
-.cube { margin-top: 14px; }
+/* .cube «растворяется» в сетке .actions: шестерёнка занимает пустой слот
+   колонки «В очередь», а панель разворачивается на всю ширину под кнопками. */
+.cube { display: contents; }
 
 .cube-trigger-row { display: flex; align-items: center; gap: 10px; }
 
@@ -1666,8 +1668,9 @@ footer { border-top: 1px solid var(--border); padding: 20px 32px; display: flex;
 
 .cube-trigger-label { font-size: 12px; color: var(--muted); letter-spacing: .02em; }
 
-/* Сворачиваемая панель */
+/* Сворачиваемая панель — на всю ширину сетки .actions */
 .cube-panel {
+  grid-column: 1 / -1;
   display: grid; grid-template-rows: 0fr;
   transition: grid-template-rows .32s var(--ease), opacity .32s var(--ease);
   opacity: 0;
@@ -1688,8 +1691,23 @@ footer { border-top: 1px solid var(--border); padding: 20px 32px; display: flex;
 
 .cube-fields { display: flex; flex-direction: column; gap: 14px; }
 .cube-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.cube .field input:disabled { opacity: .5; cursor: not-allowed; background: var(--bg); }
 .cube input.cube-invalid { border-color: var(--red); box-shadow: 0 0 0 3px rgba(192,57,43,.1); }
+
+/* Ошибка под конкретным полем */
+.cube-field-error {
+  display: block; margin-top: 6px;
+  font-size: 12px; color: var(--red); line-height: 1.35;
+}
+
+/* Лёгкая подсветка поля, которое только что пересчиталось автоматически */
+@keyframes cube-pulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--gold) 55%, transparent); }
+  100% { box-shadow: 0 0 0 6px transparent; }
+}
+.cube input.cube-pulse {
+  animation: cube-pulse .45s var(--ease);
+  border-color: var(--gold);
+}
 
 .cube-computed {
   margin-top: 14px; font-size: 13px; color: var(--green);
