@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import ThemeToggle from './swag/ThemeToggle'   // ← сегментный переключатель тем
+import ScrollProgress from './ScrollProgress'  // ← золотая полоса прогресса чтения
 
 /* ============================================================
    Нижняя навигация (mobile tab bar).
@@ -105,6 +106,7 @@ export default function Layout({ children }) {
             </svg>
           </button>
         </div>
+        <ScrollProgress />
       </header>
 
       <main>{children}</main>

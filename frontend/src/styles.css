@@ -60,6 +60,32 @@ body {
   .kb-reveal { opacity: 1; transform: none; transition: none; }
 }
 
+/* ─── SCROLL PROGRESS (motion, useScroll) ────────────────── */
+.kb-scrollbar {
+  position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+  transform-origin: 0 50%; transform: scaleX(0);
+  background: linear-gradient(90deg, var(--gold), #d9a83a);
+  z-index: 101; pointer-events: none;
+}
+
+/* ─── SKELETON (shimmer-каркасы загрузки) ────────────────── */
+.kb-sk { display: block; position: relative; overflow: hidden; background: rgba(30,61,18,.06); }
+.kb-sk::after {
+  content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent);
+  animation: kb-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes kb-shimmer { 100% { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .kb-sk::after { display: none; } }
+
+.kh-card-sk {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 18px 20px; margin-bottom: 12px;
+}
+.kh-card-sk__main { display: flex; align-items: center; gap: 14px; }
+.kh-card-sk__lines { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.kh-card-sk__thumbs { display: flex; gap: 8px; margin-top: 16px; }
+
 /* ─── LAYOUT ─────────────────────────────────────────────── */
 .page { animation: fadeUp 0.4s var(--ease); }
 
@@ -1049,6 +1075,21 @@ footer { border-top: 1px solid var(--border); padding: 20px 32px; display: flex;
   color: var(--muted);
   margin: 0 0 12px;
 }
+.kh-expand__photos-hd {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 10px;
+}
+.kh-expand__photos-hd .kh-expand__sub { margin: 0; }
+.kh-dl-all {
+  display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+  padding: 7px 13px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
+  font-family: var(--sans); font-size: 12.5px; font-weight: 500; cursor: pointer;
+  transition: border-color .18s var(--ease), background .18s var(--ease), color .18s var(--ease);
+}
+.kh-dl-all:hover { border-color: var(--green); color: var(--green); background: rgba(30,61,18,.05); }
+.kh-dl-all svg { width: 15px; height: 15px; }
+
 .kh-expand__photos {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));

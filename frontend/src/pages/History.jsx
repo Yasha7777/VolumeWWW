@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { api } from '../api';
 import PlyViewer from '../components/PlyViewer';
 import { subscribe, listQueue, retryItem, removeItem } from '../queue/queue'; // ← офлайн-очередь (PWA)
+import Reveal from '../components/Reveal';
+import { MeasureCardSkeleton } from '../components/Skeleton';
 
 // Декор по бокам — base64 из отдельных файлов (Vite ?raw)
 // декор загружается отдельными файлами из public/decor/*.png —
@@ -290,6 +292,17 @@ async function downloadPhoto(url, filename) {
   }
 }
 
+// Пачкой: качаем последовательно с небольшой паузой — иначе браузер душит
+// множественные загрузки. Имя файла — из названия замера + порядковый номер.
+async function downloadAllPhotos(photos, title) {
+  const base = (title || 'karelia').trim()
+    .replace(/[^\wа-яёА-ЯЁ\- ]+/gi, '').replace(/\s+/g, '-').slice(0, 40) || 'karelia';
+  for (let i = 0; i < photos.length; i++) {
+    await downloadPhoto(photos[i], `${base}-${i + 1}.jpg`);
+    await new Promise((r) => setTimeout(r, 350));
+  }
+}
+
 function photoName(url, i) {
   try {
     const base = decodeURIComponent(new URL(url).pathname.split('/').pop() || '');
@@ -416,7 +429,18 @@ function ExpandedContent({ item, onPhoto }) {
 
       {photos.length > 0 && (
         <>
-          <p className="kh-expand__sub">Фотографии</p>
+          <div className="kh-expand__photos-hd">
+            <p className="kh-expand__sub">Фотографии</p>
+            {photos.length > 1 && (
+              <button
+                type="button"
+                className="kh-dl-all"
+                onClick={(e) => { e.stopPropagation(); downloadAllPhotos(photos, item.title); }}
+              >
+                <DownloadIcon /> Скачать все ({photos.length})
+              </button>
+            )}
+          </div>
           <div className="kh-expand__photos">
             {photos.map((url, i) => (
               <div key={i} className="kh-photo-cell">
@@ -1013,9 +1037,14 @@ export default function History() {
 
         {/* контент */}
         {loading ? (
-          <div className="kh-loading">
-            <span className="spinner" /> Загружаем журнал замеров…
-          </div>
+          <section className="kh-group" aria-busy="true" aria-label="Загрузка журнала замеров">
+            <div className="kh-group__head">
+              <span className="kh-group__date"><span className="kb-sk" style={{ width: 160, height: 14, borderRadius: 8, display: 'inline-block' }} /></span>
+            </div>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <MeasureCardSkeleton key={i} />
+            ))}
+          </section>
         ) : error ? (
           <div className="status error">{error}</div>
         ) : items.length === 0 && visibleQueue.length === 0 ? (
@@ -1054,16 +1083,17 @@ export default function History() {
                 </span>
               </div>
               {g.items.map((item, i) => (
-                <MeasureCard
-                  key={item.id}
-                  item={item}
-                  index={i}
-                  expanded={expanded === item.id}
-                  deleting={!!deleting[item.id]}
-                  onToggle={toggle}
-                  onPhoto={openPhoto}
-                  onDelete={deleteItem}
-                />
+                <Reveal key={item.id} delay={Math.min(i, 6) * 55} y={18}>
+                  <MeasureCard
+                    item={item}
+                    index={i}
+                    expanded={expanded === item.id}
+                    deleting={!!deleting[item.id]}
+                    onToggle={toggle}
+                    onPhoto={openPhoto}
+                    onDelete={deleteItem}
+                  />
+                </Reveal>
               ))}
             </section>
           ))
