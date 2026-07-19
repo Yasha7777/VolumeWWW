@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useMemo, useRef } from 'react'
 import { Canvas, useFrame, useLoader } from '@react-three/fiber'
+import { ContactShadows } from '@react-three/drei'
 import * as THREE from 'three'
 
 // SCROLL-SCRUBBED HERO. Сотни текстурированных частиц — гравий (крупные фактурные
@@ -16,6 +17,18 @@ const REDUCE = typeof window !== 'undefined'
 const GRAVEL_COUNT = 520
 const SAND_COUNT   = 360
 const smooth = (t) => t * t * (3 - 2 * t)
+
+// TEXT-SAFE ZONE. Эллипс по центру кадра (в мировых XY на плоскости частиц),
+// куда попадает заголовок. Частицы/кубы туда не лезут — обрамляют текст, а не
+// лежат на нём. Ориентир ~55% ширины × 45% высоты видимой области. Экранный
+// центр камеры смотрит вдоль -z из y≈0.7, при fov44/z7.6 видимая полувысота ≈3.1
+// → полуоси ниже. Проверяем только (x,y), глубину z игнорируем (важна перекрытие
+// текста в кадре). Дополнительно центр гарантированно чистит скрим (см. CSS).
+const SAFE = { cx: 0, cy: 0.7, ax: 2.5, ay: 1.45 }
+function inZone(x, y) {
+  const dx = x / SAFE.ax, dy = (y - SAFE.cy) / SAFE.ay
+  return dx * dx + dy * dy < 1
+}
 
 // Normal-карта, выведенная из самой текстуры (Sobel по яркости → tangent-space).
 // Так блики/тени ложатся ровно по граням камней texture'ы, в отличие от
@@ -70,17 +83,30 @@ function buildParticles(count, R, H, spreadX, spreadY, yBase, sMin, sMax, tint) 
   const c = new THREE.Color()
   const arr = []
   for (let i = 0; i < count; i++) {
-    const ang = Math.random() * Math.PI * 2
-    const rr = Math.sqrt(Math.random()) * R
-    const maxY = H * (1 - rr / R)
-    const y = Math.random() * maxY
-    const heap = [Math.cos(ang) * rr, yBase + y, Math.sin(ang) * rr]
+    // куча: пере-бросаем точку, пока её проекция не выйдет из text-safe zone —
+    // так у собранной кучи по центру чистый «вырез» под заголовок (обрамление).
+    let ang, rr, maxY, y, heap
+    for (let t = 0; t < 8; t++) {
+      ang = Math.random() * Math.PI * 2
+      rr = Math.sqrt(Math.random()) * R
+      maxY = H * (1 - rr / R)
+      y = Math.random() * maxY
+      heap = [Math.cos(ang) * rr, yBase + y, Math.sin(ang) * rr]
+      if (!inZone(heap[0], heap[1])) break
+    }
+    if (inZone(heap[0], heap[1])) continue   // не вышли за зону → резко прореживаем
 
-    const scatter = [
-      (Math.random() - 0.5) * spreadX,
-      (Math.random() - 0.5) * spreadY + (Math.random() - 0.3) * 2,
-      (Math.random() - 0.5) * 7 - 1,
-    ]
+    // рассыпанное состояние — тоже мимо зоны, иначе текст перекрыт наверху скролла
+    let scatter
+    for (let t = 0; t < 8; t++) {
+      scatter = [
+        (Math.random() - 0.5) * spreadX,
+        (Math.random() - 0.5) * spreadY + (Math.random() - 0.3) * 2,
+        (Math.random() - 0.5) * 7 - 1,
+      ]
+      if (!inZone(scatter[0], scatter[1])) break
+    }
+    if (inZone(scatter[0], scatter[1])) continue
     const rot = [Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI]
     const s = sMin + Math.random() * (sMax - sMin)
 
@@ -96,9 +122,10 @@ function buildParticles(count, R, H, spreadX, spreadY, yBase, sMin, sMax, tint) 
   return arr
 }
 
-function Particles({ map, normalMap, normalScale, count, geometry, data, spinBase, roughness }) {
+function Particles({ map, normalMap, normalScale, geometry, data, spinBase, roughness }) {
   const ref = useRef()
   const dummy = useMemo(() => new THREE.Object3D(), [])
+  const count = data.length
 
   useEffect(() => {
     const mesh = ref.current
@@ -130,7 +157,7 @@ function Particles({ map, normalMap, normalScale, count, geometry, data, spinBas
   })
 
   return (
-    <instancedMesh ref={ref} args={[geometry, undefined, count]}>
+    <instancedMesh key={count} ref={ref} args={[geometry, undefined, count]}>
       <meshStandardMaterial
         map={map}
         normalMap={normalMap}
@@ -182,11 +209,110 @@ function Heap() {
   return (
     <>
       <Particles map={gravelMap} normalMap={gravelNormal} normalScale={gravelNScale}
-                 count={GRAVEL_COUNT} geometry={gravelGeo}
+                 geometry={gravelGeo}
                  data={gravelData} spinBase={1.4} roughness={0.7} />
       <Particles map={sandMap} normalMap={sandNormal} normalScale={sandNScale}
-                 count={SAND_COUNT} geometry={sandGeo}
+                 geometry={sandGeo}
                  data={sandData} spinBase={0.8} roughness={0.95} />
+      <CalibrationCubes />
+      {/* контактная тень: куча стоит на земле, а не висит. Тень концентрируется
+          при сборке и расплывается при рассыпании — сама следует за частицами. */}
+      <ContactShadows
+        position={[0, -1.18, 0]}
+        scale={9}
+        blur={2.6}
+        far={3.2}
+        opacity={0.5}
+        resolution={512}
+        frames={REDUCE ? 1 : Infinity}
+      />
+    </>
+  )
+}
+
+// КАЛИБРОВОЧНЫЕ КУБЫ. Отсылка к калибровочному кубу (правило 4×4): на каждой
+// грани процедурная ч/б шахматка 4×4 (canvas → CanvasTexture, без внешних
+// моделей). Крупнее гравия, медленно вращаются, участвуют в scroll-скрабе
+// (scatter→heap), но расставлены ВНЕ text-safe zone.
+function checkerTexture(cells = 4, px = 256) {
+  const cv = document.createElement('canvas')
+  cv.width = cv.height = px
+  const ctx = cv.getContext('2d')
+  const s = px / cells
+  for (let y = 0; y < cells; y++) {
+    for (let x = 0; x < cells; x++) {
+      ctx.fillStyle = (x + y) % 2 ? '#111' : '#f2f2f2'
+      ctx.fillRect(x * s, y * s, s, s)
+    }
+  }
+  const tex = new THREE.CanvasTexture(cv)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.anisotropy = 4
+  return tex
+}
+
+function CalibrationCubes() {
+  const groupRefs = useRef([])
+  const map = useMemo(() => checkerTexture(4), [])
+  const geo = useMemo(() => new THREE.BoxGeometry(1, 1, 1), [])
+  const dummyQ = useMemo(() => new THREE.Object3D(), [])
+
+  // 7 кубов: осмысленно по кольцу вокруг кучи, мимо центра/safe-zone
+  const cubes = useMemo(() => {
+    const out = []
+    let guard = 0
+    while (out.length < 7 && guard++ < 400) {
+      const ang = Math.random() * Math.PI * 2
+      const rr = 1.7 + Math.random() * 1.0            // ближе к краю основания
+      const y = -0.75 + Math.random() * 1.7
+      const heap = [Math.cos(ang) * rr, y, Math.sin(ang) * rr + 0.4]
+      if (inZone(heap[0], heap[1])) continue
+
+      let scatter
+      for (let t = 0; t < 8; t++) {
+        scatter = [(Math.random() - 0.5) * 11, (Math.random() - 0.5) * 6 + 1, (Math.random() - 0.5) * 6 - 1]
+        if (!inZone(scatter[0], scatter[1])) break
+      }
+      if (inZone(scatter[0], scatter[1])) continue
+
+      out.push({
+        heap, scatter,
+        rot: [Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI],
+        s: 0.24 + Math.random() * 0.1,
+        axis: new THREE.Vector3(Math.random() - 0.5, 1, Math.random() - 0.5).normalize(),
+        speed: 0.12 + Math.random() * 0.22,
+      })
+    }
+    return out
+  }, [])
+
+  useFrame((_, dt) => {
+    const e = smooth(scrollProgress())
+    cubes.forEach((cu, i) => {
+      const m = groupRefs.current[i]
+      if (!m) return
+      m.position.set(
+        cu.scatter[0] + (cu.heap[0] - cu.scatter[0]) * e,
+        cu.scatter[1] + (cu.heap[1] - cu.scatter[1]) * e,
+        cu.scatter[2] + (cu.heap[2] - cu.scatter[2]) * e,
+      )
+      if (!REDUCE) m.rotateOnAxis(cu.axis, dt * cu.speed)   // медленное вращение
+      m.scale.setScalar(cu.s)
+    })
+  })
+
+  return (
+    <>
+      {cubes.map((cu, i) => (
+        <mesh
+          key={i}
+          ref={(el) => (groupRefs.current[i] = el)}
+          geometry={geo}
+          rotation={cu.rot}
+        >
+          <meshStandardMaterial map={map} roughness={0.55} metalness={0.05} />
+        </mesh>
+      ))}
     </>
   )
 }
@@ -224,6 +350,10 @@ export default function CubesHeroImpl() {
           <Heap />
         </Suspense>
       </Canvas>
+      {/* скрим: мягкий радиальный vignette фонового цвета ПОВЕРХ канваса и ПОД
+          текстом (см. CSS .hero-scrim) — заголовок всегда на чистом backdrop.
+          Внутри wrapRef → гаснет вместе с канвасом при скролле. */}
+      <div className="hero-scrim" />
     </div>
   )
 }

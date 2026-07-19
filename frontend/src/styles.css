@@ -157,6 +157,16 @@ nav { display: flex; gap: 4px; justify-self: center; }
 }
 /* 3D-облако точек героя — за текстом, кликов не ловит.
    mask растушёвывает края → нет жёсткого «обрезанного прямоугольника». */
+/* скрим: мягкий эллиптический vignette фонового цвета — чистый backdrop под
+   заголовком независимо от движения частиц. Внутри .kb-hero3d (fixed), поэтому
+   гаснет вместе с канвасом; z под текстом (.hero > * = z-index 1), над канвасом. */
+.hero .kb-hero3d .hero-scrim {
+  position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  background: radial-gradient(ellipse 56% 44% at 50% 46%,
+    var(--bg) 28%,
+    color-mix(in srgb, var(--bg) 55%, transparent) 58%,
+    color-mix(in srgb, var(--bg) 0%, transparent) 80%);
+}
 .hero .kb-hero3d {
   position: fixed; inset: 0; z-index: 0; pointer-events: none;
   will-change: opacity;
