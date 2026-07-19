@@ -24,10 +24,23 @@ const smooth = (t) => t * t * (3 - 2 * t)
 // центр камеры смотрит вдоль -z из y≈0.7, при fov44/z7.6 видимая полувысота ≈3.1
 // → полуоси ниже. Проверяем только (x,y), глубину z игнорируем (важна перекрытие
 // текста в кадре). Дополнительно центр гарантированно чистит скрим (см. CSS).
-const SAFE = { cx: 0, cy: 0.7, ax: 2.5, ay: 1.45 }
+const SAFE = { cx: 0, cy: 0.7, ax: 2.5, ay: 1.45, inner: 0.8 }
+// нормированный «радиус» точки в зоне: 0 в центре, 1 на внешней границе эллипса
+function zoneDist(x, y) {
+  return Math.hypot(x / SAFE.ax, (y - SAFE.cy) / SAFE.ay)
+}
+// вероятность СОХРАНИТЬ частицу: 0 внутри жёсткого ядра (inner) → плавный feather
+// → 1 за внешней границей. Внутренний эллипс = чистый «колодец» без частиц вообще,
+// край растушёван к внешней границе (без резкой кромки).
+function zoneKeep(x, y) {
+  const d = zoneDist(x, y)
+  if (d >= 1) return 1
+  if (d <= SAFE.inner) return 0
+  return smooth((d - SAFE.inner) / (1 - SAFE.inner))
+}
+// жёсткая проверка «внутри внешней зоны» — для крупных кубов (держим их снаружи)
 function inZone(x, y) {
-  const dx = x / SAFE.ax, dy = (y - SAFE.cy) / SAFE.ay
-  return dx * dx + dy * dy < 1
+  return zoneDist(x, y) < 1
 }
 
 // Normal-карта, выведенная из самой текстуры (Sobel по яркости → tangent-space).
@@ -83,30 +96,30 @@ function buildParticles(count, R, H, spreadX, spreadY, yBase, sMin, sMax, tint) 
   const c = new THREE.Color()
   const arr = []
   for (let i = 0; i < count; i++) {
-    // куча: пере-бросаем точку, пока её проекция не выйдет из text-safe zone —
-    // так у собранной кучи по центру чистый «вырез» под заголовок (обрамление).
-    let ang, rr, maxY, y, heap
-    for (let t = 0; t < 8; t++) {
+    // куча: точку принимаем с вероятностью zoneKeep — жёсткий «колодец» по центру
+    // под заголовком + растушёванный край. Так частицы обрамляют текст без кромки.
+    let ang, rr, maxY, y, heap, placed = false
+    for (let t = 0; t < 10; t++) {
       ang = Math.random() * Math.PI * 2
       rr = Math.sqrt(Math.random()) * R
       maxY = H * (1 - rr / R)
       y = Math.random() * maxY
       heap = [Math.cos(ang) * rr, yBase + y, Math.sin(ang) * rr]
-      if (!inZone(heap[0], heap[1])) break
+      if (Math.random() < zoneKeep(heap[0], heap[1])) { placed = true; break }
     }
-    if (inZone(heap[0], heap[1])) continue   // не вышли за зону → резко прореживаем
+    if (!placed) continue   // попала в колодец → частицы там нет вообще
 
-    // рассыпанное состояние — тоже мимо зоны, иначе текст перекрыт наверху скролла
-    let scatter
-    for (let t = 0; t < 8; t++) {
+    // рассыпанное состояние — по тому же правилу, иначе текст перекрыт наверху скролла
+    let scatter, spread = false
+    for (let t = 0; t < 10; t++) {
       scatter = [
         (Math.random() - 0.5) * spreadX,
         (Math.random() - 0.5) * spreadY + (Math.random() - 0.3) * 2,
         (Math.random() - 0.5) * 7 - 1,
       ]
-      if (!inZone(scatter[0], scatter[1])) break
+      if (Math.random() < zoneKeep(scatter[0], scatter[1])) { spread = true; break }
     }
-    if (inZone(scatter[0], scatter[1])) continue
+    if (!spread) continue
     const rot = [Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI]
     const s = sMin + Math.random() * (sMax - sMin)
 
@@ -191,16 +204,25 @@ function Heap() {
   const gravelGeo = useMemo(() => new THREE.DodecahedronGeometry(1, 0), [])
   const sandGeo   = useMemo(() => new THREE.IcosahedronGeometry(1, 0), [])
 
+  // Разлёт по X привязан к АСПЕКТУ вьюпорта: на широком мониторе поле достаёт до
+  // обоих краёв симметрично (камера в x=0, origin в x=0 — центрировано). Это
+  // выравнивает РАСПРЕДЕЛЕНИЕ, а не количество: те же частицы расходятся шире.
+  const spreadX = useMemo(() => {
+    const aspect = (window.innerWidth || 1) / (window.innerHeight || 1)
+    const halfW = Math.tan((44 * Math.PI / 180) / 2) * 7.6 * aspect  // полуширина кадра на z=0
+    return Math.max(11, halfW * 2 * 1.15)                            // полная ширина, с запасом за край
+  }, [])
+
   // гравий: крупные камни в конусе; песок: мелкие зёрна, шире и ниже (основание)
   // R — радиус основания, H — высота вершины. Варианты кучи см. в шапке файла.
   // ── КОМПАКТНАЯ (плотнее и выше) — активна ──
   const gravelData = useMemo(
-    () => buildParticles(GRAVEL_COUNT, 2.1, 2.9, 12, 6, -0.95, 0.07, 0.13, 0.55),
-    [],
+    () => buildParticles(GRAVEL_COUNT, 2.1, 2.9, spreadX, 6, -0.95, 0.07, 0.13, 0.55),
+    [spreadX],
   )
   const sandData = useMemo(
-    () => buildParticles(SAND_COUNT, 2.7, 0.85, 13, 7, -1.05, 0.03, 0.055, 0.4),
-    [],
+    () => buildParticles(SAND_COUNT, 2.7, 0.85, spreadX, 7, -1.05, 0.03, 0.055, 0.4),
+    [spreadX],
   )
   // ── РАСКИДИСТАЯ (шире и ниже) — альтернатива ──
   //   gravel: buildParticles(GRAVEL_COUNT, 3.0, 2.2, 12, 6, -0.85, 0.07, 0.13, 0.55)
@@ -354,6 +376,9 @@ export default function CubesHeroImpl() {
           текстом (см. CSS .hero-scrim) — заголовок всегда на чистом backdrop.
           Внутри wrapRef → гаснет вместе с канвасом при скролле. */}
       <div className="hero-scrim" />
+      {/* плотная подложка под блоком заголовка (z над скримом, под глифами):
+          растушёванный радиальный градиент var(--bg), без видимой плашки. */}
+      <div className="hero-title-glow" />
     </div>
   )
 }
