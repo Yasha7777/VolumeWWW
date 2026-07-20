@@ -87,9 +87,43 @@ const getMaterial = (it) =>
   it.material || it.material_type || materialFromResult(it.result) || null;
 const getSite = (it) => it.site || it.object || it.warehouse || null;
 
-const getVolume = (it) =>
-  num(it.volume_m3 ?? it.volume ?? it.result_volume) ??
-  parseMetric(it.result, /([\d.,]+)\s*м[³3]/i);
+/* ОБЪЁМ для плашки — строго реальный измеренный объём DUSt3R
+   («📐 Объём DUSt3R: X м³»), а НЕ первое попавшееся «X м³» в тексте.
+   Раньше фолбэк-регэксп цеплял верхнюю строку «🔗 Похожие в БД: 80м³ (sim…)»,
+   то есть top-1 similarity match из векторного поиска, и подставлял ЧУЖОЙ
+   объём соседнего замера. Сейчас в схеме нет отдельной колонки объёма
+   (supabase/schema.sql: только result TEXT), поэтому источник один — текст. */
+const getDust3rVolume = (text) =>
+  parseMetric(text, /Объём\s+DUSt3R:\s*([\d.,]+)\s*м[³3]/iu);
+
+const getVolume = (it) => {
+  // 1) числовые поля БД, если когда-нибудь появятся (сейчас их в схеме нет)
+  const field = num(it.volume_m3 ?? it.volume ?? it.result_volume);
+  if (field != null) return field;
+
+  // 2) измеренный объём DUSt3R из текста вебхука
+  const dust3r = getDust3rVolume(it.result);
+  if (dust3r != null) {
+    // sanity-check: если общий «X м³» (top-1 similarity) разошёлся с
+    // измеренным на порядок — раньше это и была порча плашки. Логируем,
+    // но показываем ИМЕННО измеренный объём.
+    const cleaned = String(it.result || '').replace(/Похожие в БД:[^\n]*/giu, '');
+    const generic = parseMetric(cleaned, /([\d.,]+)\s*м[³3]/i);
+    if (generic != null && dust3r > 0 &&
+        (generic / dust3r > 10 || dust3r / generic > 10)) {
+      console.warn(
+        `[History] Расхождение объёма на порядок: DUSt3R=${dust3r} м³ vs generic=${generic} м³ (id=${it.id ?? '?'})`,
+      );
+    }
+    return dust3r;
+  }
+
+  // 3) объём DUSt3R не определён (partial/куб не найден) — НЕ подставляем
+  //    similarity-значение. Вычищаем строку «Похожие в БД» перед фолбэком,
+  //    чтобы не поймать чужой замер, если в тексте вдруг есть другой «X м³».
+  const cleaned = String(it.result || '').replace(/Похожие в БД:[^\n]*/giu, '');
+  return parseMetric(cleaned, /([\d.,]+)\s*м[³3]/i);
+};
 
 const getWeight = (it) =>
   num(it.weight_t ?? it.weight ?? it.mass_t) ??
@@ -125,6 +159,14 @@ const extractPlyUrl = (text) => {
 /* ---------- форматирование ---------- */
 const fmtNum = (n) =>
   n == null ? '—' : n.toLocaleString('ru-RU', { maximumFractionDigits: 1 });
+
+/* Объём в плашке: адаптивная точность, чтобы малые измерения DUSt3R
+   (0.1249 / 0.0298 м³) не схлопывались в «0» из-за округления до 1 знака. */
+const fmtVolBadge = (n) => {
+  if (n == null) return '—';
+  const frac = n >= 10 ? 0 : n >= 1 ? 1 : n >= 0.1 ? 3 : 4;
+  return n.toLocaleString('ru-RU', { maximumFractionDigits: frac });
+};
 
 const fmtDateLong = (iso) =>
   new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -542,7 +584,9 @@ function MeasureCard({ item, expanded, deleting, onToggle, onPhoto, onDelete, in
             </div>
           ) : hasMetrics ? (
             <div className="kh-metrics">
-              {volume != null && <Metric label="Объём" value={fmtNum(volume)} unit="м³" />}
+              {volume != null
+                ? <Metric label="Объём" value={fmtVolBadge(volume)} unit="м³" />
+                : <Metric label="Объём" value="не определён" unit="" />}
               {weight != null && <Metric label="Вес" value={fmtNum(weight)} unit="т" />}
               {photos.length > 0 && <Metric label="Фото" value={photos.length} unit="шт." />}
             </div>
