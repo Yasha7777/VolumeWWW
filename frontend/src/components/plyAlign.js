@@ -1,19 +1,36 @@
 import * as THREE from 'three';
 
 // ============================================================
-// plyAlign — выравнивание облака/меша по «земле».
+// plyAlign — выравнивание облака/меша по «вверх».
 //
 // Сырой выход DUSt3R записан в системе координат опорной камеры
 // (ось Y — вниз, Z — вперёд), без гравитации. Поскольку пользователь
 // снимает под примерно одинаковым наклоном сверху, ВСЕ реконструкции
-// получают ОДИН И ТОТ ЖЕ крен (~45°) — не от сцены к сцене, а от
-// фиксированного угла съёмки. Правильный фикс — не хардкод-поворот,
-// а восстановление «вверх» из самих данных: находим доминирующую
-// плоскость земли (RANSAC) и разворачиваем её нормаль в +Y three.js.
+// получают ОДИН И ТОТ ЖЕ крен — не от сцены к сцене, а от угла съёмки.
 //
-// Применяется ОДИНАКОВО к PLY (points) и GLB (mesh), чтобы бочка
-// стояла вертикально, а куча щебня лежала основанием на грид-полу.
+// ДВА РЕЖИМА:
+//  1. up-вектор передан извне (честно посчитан пайплайном при
+//     heightfield-интегрировании, СО знаком) — применяем его напрямую,
+//     без RANSAC и без угадывания знака. Это надёжно для любого объекта.
+//  2. up-вектор недоступен (старые записи) — ФОЛБЭК: RANSAC находит
+//     доминирующую плоскость и убирает КРЕН (плоскость → горизонт).
+//     Знак «вверх» НЕ угадываем по массе (ломается на симметричных
+//     объектах — бочка вставала вверх дном): берём канонический знак,
+//     модель может оказаться перевёрнутой, но не лежит на боку.
+//
+// Применяется ОДИНАКОВО к PLY (points) и GLB (mesh).
 // ============================================================
+
+// Квартернион, выравнивающий заданный up-вектор данных в +Y three.js.
+// up — [x,y,z] или THREE.Vector3 в системе координат самой геометрии.
+function quaternionFromUp(up) {
+  const v = Array.isArray(up)
+    ? new THREE.Vector3(up[0], up[1], up[2])
+    : up.clone();
+  if (!(v.lengthSq() > 1e-12)) return null;
+  v.normalize();
+  return new THREE.Quaternion().setFromUnitVectors(v, new THREE.Vector3(0, 1, 0));
+}
 
 // Собираем до maxSamples точек из позиций (Float32Array-подобное).
 function samplePoints(positions, count, maxSamples = 20000) {
@@ -73,56 +90,54 @@ function fitGroundPlane(pts, iterations = 250) {
   return best;
 }
 
-// Квартернион, выравнивающий геометрию «землёй вниз»: нормаль → +Y.
-// Возвращает null, если плоскость земли не найдена уверенно.
-function computeUpQuaternion(pts) {
+// ФОЛБЭК-квартернион: убирает только КРЕН по доминирующей плоскости.
+// Знак нормали НЕ угадываем по массе объекта — берём канонический
+// (компонента Y в системе данных ≥ 0), чтобы результат был
+// детерминирован и модель не лежала на боку. Возможная перевёрнутость
+// вверх дном — допустимый временный компромисс без up-вектора.
+function computeFallbackQuaternion(pts) {
   const plane = fitGroundPlane(pts);
   if (!plane) return null;
-
-  // Нормаль должна смотреть В сторону массы объекта (вверх), а не в пол.
-  const centroid = new THREE.Vector3();
-  for (const p of pts) centroid.add(p);
-  centroid.multiplyScalar(1 / pts.length);
-
-  const toMass = centroid.clone().sub(plane.point);
-  if (plane.normal.dot(toMass) < 0) plane.normal.negate();
-
+  if (plane.normal.y < 0) plane.normal.negate();  // канонический знак
   const up = new THREE.Vector3(0, 1, 0);
   return new THREE.Quaternion().setFromUnitVectors(plane.normal, up);
 }
 
-// Выравнивает BufferGeometry по земле (мутирует геометрию один раз).
-// Идемпотентно: повторный вызов (StrictMode) не даёт двойного поворота.
-export function levelGeometry(geometry) {
+// Выравнивает BufferGeometry (мутирует геометрию один раз). Идемпотентно.
+// up — [x,y,z] из пайплайна (предпочтительно). Если не передан — фолбэк.
+export function levelGeometry(geometry, up = null) {
   if (!geometry || geometry.userData.__leveled) return;
   const posAttr = geometry.attributes.position;
   if (!posAttr) return;
-  const q = computeUpQuaternion(samplePoints(posAttr.array, posAttr.count));
+  const q = quaternionFromUp(up)
+    || computeFallbackQuaternion(samplePoints(posAttr.array, posAttr.count));
   if (q) geometry.applyQuaternion(q);
   geometry.userData.__leveled = true;
 }
 
-// Выравнивает целую сцену GLB: собирает мировые вершины всех мешей,
-// оценивает «вверх» и разворачивает корень сцены. Идемпотентно.
-export function levelObject(root) {
+// Выравнивает сцену GLB (разворачивает корень). Идемпотентно.
+// up — [x,y,z] из пайплайна (предпочтительно). Если не передан — фолбэк.
+export function levelObject(root, up = null) {
   if (!root || root.userData.__leveled) return;
   root.userData.__leveled = true;
 
-  root.updateMatrixWorld(true);
-  const pts = [];
-  const v = new THREE.Vector3();
-  root.traverse((child) => {
-    const posAttr = child.isMesh && child.geometry?.attributes?.position;
-    if (!posAttr) return;
-    const count = posAttr.count;
-    const step = Math.max(1, Math.floor(count / 20000));
-    for (let i = 0; i < count; i += step) {
-      v.fromBufferAttribute(posAttr, i).applyMatrix4(child.matrixWorld);
-      pts.push(v.clone());
-    }
-  });
-
-  const q = computeUpQuaternion(pts);
+  let q = quaternionFromUp(up);
+  if (!q) {
+    root.updateMatrixWorld(true);
+    const pts = [];
+    const v = new THREE.Vector3();
+    root.traverse((child) => {
+      const posAttr = child.isMesh && child.geometry?.attributes?.position;
+      if (!posAttr) return;
+      const count = posAttr.count;
+      const step = Math.max(1, Math.floor(count / 20000));
+      for (let i = 0; i < count; i += step) {
+        v.fromBufferAttribute(posAttr, i).applyMatrix4(child.matrixWorld);
+        pts.push(v.clone());
+      }
+    });
+    q = computeFallbackQuaternion(pts);
+  }
   if (q) {
     root.quaternion.premultiply(q);
     root.updateMatrixWorld(true);

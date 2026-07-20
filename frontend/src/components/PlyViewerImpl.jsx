@@ -44,14 +44,15 @@ const CameraFit = ({ target, size }) => {
 };
 
 // === 2А. ОБЛАКО ТОЧЕК (PLY) ===
-const PlyModel = ({ url, onReady }) => {
+const PlyModel = ({ url, up, onReady }) => {
   const geometry = useLoader(PLYLoader, url);
 
   React.useEffect(() => {
     if (!geometry) return;
-    // Выравниваем по земле (нормаль → +Y) ДО расчёта bbox, чтобы
-    // центрирование, размеры и грид-пол были в исправленной системе.
-    levelGeometry(geometry);
+    // Выравниваем «вверх» → +Y ДО расчёта bbox, чтобы центрирование,
+    // размеры и грид-пол были в исправленной системе. up из пайплайна;
+    // если его нет — фолбэк по доминирующей плоскости (только крен).
+    levelGeometry(geometry, up);
     geometry.computeBoundingBox();
     const box    = geometry.boundingBox;
     const center = new THREE.Vector3();
@@ -60,7 +61,7 @@ const PlyModel = ({ url, onReady }) => {
     box.getSize(size);
     geometry.translate(-center.x, -center.y, -center.z);
     onReady({ center: new THREE.Vector3(0, 0, 0), size });
-  }, [geometry, onReady]);
+  }, [geometry, up, onReady]);
 
   const hasColors = geometry.attributes.color != null;
 
@@ -82,7 +83,7 @@ const PlyModel = ({ url, onReady }) => {
 // DUSt3R генерирует меш с вертекс-цветами без KHR_materials_unlit.
 // Без замены материала Three.js применяет PBR — всё выглядит тёмным.
 // Решение: принудительно ставим MeshBasicMaterial с vertexColors.
-const GlbModel = ({ url, onReady }) => {
+const GlbModel = ({ url, up, onReady }) => {
   const gltf = useLoader(GLTFLoader, url);
 
   React.useEffect(() => {
@@ -100,9 +101,9 @@ const GlbModel = ({ url, onReady }) => {
       }
     });
 
-    // Выравниваем по земле (нормаль → +Y) — тем же способом, что и PLY,
-    // чтобы меш и облако были ориентированы согласованно.
-    levelObject(gltf.scene);
+    // Выравниваем «вверх» → +Y — тем же способом, что и PLY, чтобы меш
+    // и облако были ориентированы согласованно.
+    levelObject(gltf.scene, up);
 
     const box    = new THREE.Box3().setFromObject(gltf.scene);
     const center = new THREE.Vector3();
@@ -112,7 +113,7 @@ const GlbModel = ({ url, onReady }) => {
     gltf.scene.position.set(-center.x, -center.y, -center.z);
 
     onReady({ center: new THREE.Vector3(0, 0, 0), size });
-  }, [gltf, url, onReady]);
+  }, [gltf, url, up, onReady]);
 
   return <primitive object={gltf.scene} />;
 };
@@ -140,7 +141,12 @@ const StyledLoader = () => (
 );
 
 // === 4. СЦЕНА (внутри Canvas) ===
-const Scene = ({ url, mode, onLoaded }) => {
+const Scene = ({ url, mode, up, upGlb, onLoaded }) => {
+  // PLY и GLB экспортируются пайплайном в РАЗНЫХ системах координат
+  // (меш дополнительно повёрнут), поэтому up-вектор у них свой. Если
+  // отдельного up для GLB нет — используем общий (лучше, чем ничего).
+  const activeUp = mode === 'glb' ? (upGlb || up) : up;
+
   const [modelInfo, setModelInfo] = useState(null);
   const controlsRef = useRef();
 
@@ -155,8 +161,8 @@ const Scene = ({ url, mode, onLoaded }) => {
 
       <Suspense fallback={<StyledLoader />}>
         {mode === 'glb'
-          ? <GlbModel url={url} onReady={handleReady} />
-          : <PlyModel url={url} onReady={handleReady} />
+          ? <GlbModel url={url} up={activeUp} onReady={handleReady} />
+          : <PlyModel url={url} up={activeUp} onReady={handleReady} />
         }
         {modelInfo && <CameraFit target={modelInfo.center} size={modelInfo.size} />}
       </Suspense>
@@ -195,7 +201,7 @@ const Scene = ({ url, mode, onLoaded }) => {
 // === 5. ГЛАВНЫЙ КОМПОНЕНТ ===
 // Принимает plyUrl и glbUrl отдельно, показывает свитч если есть оба.
 // height — настраиваемая высота контейнера (по умолчанию 480px).
-const PlyViewerImpl = ({ plyUrl, glbUrl, height = '480px' }) => {
+const PlyViewerImpl = ({ plyUrl, glbUrl, up = null, upGlb = null, height = '480px' }) => {
   const hasGlb = !!glbUrl;
   const hasPly = !!plyUrl;
 
@@ -299,7 +305,7 @@ const PlyViewerImpl = ({ plyUrl, glbUrl, height = '480px' }) => {
         camera={{ fov: 45, near: 0.01, far: 10000 }}
         style={{ background: '#1a1a1a' }}
       >
-        <Scene url={activeUrl} mode={mode} onLoaded={() => setLoaded(true)} />
+        <Scene url={activeUrl} mode={mode} up={up} upGlb={upGlb} onLoaded={() => setLoaded(true)} />
       </Canvas>
     </div>
   );

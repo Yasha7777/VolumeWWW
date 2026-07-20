@@ -156,6 +156,51 @@ const extractPlyUrl = (text) => {
   return m ? m[0] : null;
 };
 
+/* up-вектор «вверх» из пайплайна (честно посчитан при heightfield-
+   интегрировании DUSt3R, СО знаком). Прокидывается во вьюер, чтобы
+   выравнивать модель детерминированно, без RANSAC/угадывания знака.
+   Формат: JSON-поле up_vector/up = [x,y,z] ИЛИ строка в тексте вебхука
+   «up_vector: x y z» (запятая или пробел). Возвращает [x,y,z] или null. */
+const extractUpVector = (raw, keys) => {
+  if (!raw) return null;
+  const wanted = keys;
+  // JSON-объект (или JSON-строка) с полем из keys
+  let obj = raw;
+  if (typeof obj === 'string') {
+    const t = obj.trim();
+    if (t[0] === '{' || t[0] === '[') {
+      try { obj = JSON.parse(t); } catch { obj = null; }
+    } else obj = null;
+  }
+  const fromObj = (o) => {
+    if (!o || typeof o !== 'object') return null;
+    if (!Array.isArray(o)) {
+      for (const k of wanted) {
+        const arr = o[k];
+        if (Array.isArray(arr) && arr.length === 3 && arr.every((n) => Number.isFinite(+n)))
+          return arr.map(Number);
+      }
+    }
+    for (const v of Object.values(o)) {
+      const r = fromObj(v);
+      if (r) return r;
+    }
+    return null;
+  };
+  const j = fromObj(obj);
+  if (j) return j;
+  // Фолбэк: строка в свободном тексте вебхука («<key>: x y z»)
+  const kAlt = wanted.map((k) => k.replace(/_/g, '[_ ]?')).join('|');
+  const m = String(raw).match(
+    new RegExp(`(?:${kAlt})[:=]\\s*\\[?\\s*(-?[\\d.]+)[,\\s]+(-?[\\d.]+)[,\\s]+(-?[\\d.]+)`, 'i'),
+  );
+  return m ? [parseFloat(m[1]), parseFloat(m[2]), parseFloat(m[3])] : null;
+};
+// up для PLY-облака и (отдельно) для GLB-меша — у них разные системы
+// координат на стороне пайплайна, поэтому два независимых вектора.
+const extractUp    = (raw) => extractUpVector(raw, ['up_vector', 'up', 'upVector']);
+const extractUpGlb = (raw) => extractUpVector(raw, ['up_vector_glb', 'upGlb', 'up_glb']);
+
 /* ---------- форматирование ---------- */
 const fmtNum = (n) =>
   n == null ? '—' : n.toLocaleString('ru-RU', { maximumFractionDigits: 1 });
@@ -463,6 +508,8 @@ function ExpandedContent({ item, onPhoto }) {
 
   const glb = extractGlbUrl(item.result);
   const ply = extractPlyUrl(item.result);
+  const up = extractUp(item.result);
+  const upGlb = extractUpGlb(item.result);
   const has3d = glb || ply;
 
   return (
@@ -516,9 +563,9 @@ function ExpandedContent({ item, onPhoto }) {
 
           <div className="kh-viewer">
             {glb ? (
-              <PlyViewer glbUrl={glb} height="320px" />
+              <PlyViewer glbUrl={glb} up={up} upGlb={upGlb} height="320px" />
             ) : (
-              <PlyViewer plyUrl={ply} height="320px" />
+              <PlyViewer plyUrl={ply} up={up} height="320px" />
             )}
           </div>
         </>

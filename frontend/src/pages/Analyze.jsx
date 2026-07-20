@@ -72,6 +72,8 @@ export default function Analyze() {
   const [result, setResult]     = useState(null)
   const [plyUrl, setPlyUrl]     = useState(null)  // ← отдельный state для PLY
   const [glbUrl, setGlbUrl]     = useState(null)  // ← отдельный state для GLB
+  const [upVec, setUpVec]       = useState(null)  // ← ось «вверх» из пайплайна (PLY-кадр)
+  const [upGlbVec, setUpGlbVec] = useState(null)  // ← ось «вверх» для GLB-меша (свой кадр)
 
   const [busy, setBusy]         = useState(false)
   const [isProd, setIsProd]     = useState(false)  // по умолчанию TEST
@@ -209,6 +211,15 @@ export default function Analyze() {
           let finalGlbUrl = data.glb_url || null
           let finalPlyUrl = data.ply_url || null
 
+          // ось «вверх» из пайплайна (heightfield-нормаль, со знаком) —
+          // для детерминированного выравнивания вьюера без RANSAC.
+          // PLY и GLB — в разных кадрах, поэтому два вектора.
+          let finalUp = Array.isArray(data.up_vector) ? data.up_vector : null
+          let finalUpGlb = Array.isArray(data.up_vector_glb) ? data.up_vector_glb : null
+          const asVec3 = (a) =>
+            (Array.isArray(a) && a.length === 3 && a.every((n) => Number.isFinite(+n)))
+              ? a.map(Number) : null
+
           // ШАГ 2: парсим result как JSON
           let parsedJson = data.result
           if (typeof parsedJson === 'string') {
@@ -216,6 +227,18 @@ export default function Analyze() {
           }
 
           if (parsedJson && typeof parsedJson === 'object') {
+            // up-векторы внутри JSON (up_vector / up_vector_glb = [x,y,z])
+            if (!finalUp || !finalUpGlb) {
+              const findUp = (obj) => {
+                if (!obj || typeof obj !== 'object') return
+                if (!Array.isArray(obj)) {
+                  if (!finalUp)    finalUp    = asVec3(obj.up_vector || obj.up || obj.upVector)
+                  if (!finalUpGlb) finalUpGlb = asVec3(obj.up_vector_glb || obj.upGlb || obj.up_glb)
+                }
+                Object.values(obj).forEach(findUp)
+              }
+              findUp(parsedJson)
+            }
             // ШАГ 3: если в прямых полях пусто — ищем внутри JSON
             if (!finalGlbUrl || !finalPlyUrl) {
               const findUrls = (obj) => {
@@ -234,9 +257,21 @@ export default function Analyze() {
             else if (n8nData?.json?.dust3rBlock) textResult = n8nData.json.dust3rBlock
           }
 
+          // фолбэк: up-вектор строкой в тексте вебхука «up_vector: x y z»
+          const upFromText = (re) => {
+            const m = String(textResult || '').match(re)
+            return m ? [parseFloat(m[1]), parseFloat(m[2]), parseFloat(m[3])] : null
+          }
+          if (!finalUp)
+            finalUp = upFromText(/up[_ ]?vector[:=]\s*\[?\s*(-?[\d.]+)[,\s]+(-?[\d.]+)[,\s]+(-?[\d.]+)/i)
+          if (!finalUpGlb)
+            finalUpGlb = upFromText(/up[_ ]?vector[_ ]?glb[:=]\s*\[?\s*(-?[\d.]+)[,\s]+(-?[\d.]+)[,\s]+(-?[\d.]+)/i)
+
           setResult(textResult)
           setGlbUrl(finalGlbUrl)
           setPlyUrl(finalPlyUrl)
+          setUpVec(finalUp)
+          setUpGlbVec(finalUpGlb)
           setShowRaw(false)     // новый анализ — технические данные снова свёрнуты
           setReportOpen(true)   // авто-выдвижение отчёта по готовности
           setStatus({ type:'success', title:'Готово!', msg:`Обработано ${photos.length} фото.` })
@@ -287,6 +322,8 @@ export default function Analyze() {
     setResult(null)
     setGlbUrl(null)
     setPlyUrl(null)
+    setUpVec(null)
+    setUpGlbVec(null)
     setShowRaw(false)
 
     const payload = photos.map(p => ({ blob: p.blob, name: p.name, exif: p.exifData ?? null }))
@@ -358,6 +395,8 @@ export default function Analyze() {
     setResult(null)
     setGlbUrl(null)
     setPlyUrl(null)
+    setUpVec(null)
+    setUpGlbVec(null)
     setAId(null)
     setCompProg(0)
     setReportOpen(false)
@@ -657,7 +696,7 @@ export default function Analyze() {
                     <span className="div-txt">Визуализация объёма</span>
                     <div className="div-line" />
                   </div>
-                  <PlyViewer plyUrl={plyUrl} glbUrl={glbUrl} />
+                  <PlyViewer plyUrl={plyUrl} glbUrl={glbUrl} up={upVec} upGlb={upGlbVec} />
                 </div>
               )}
 
