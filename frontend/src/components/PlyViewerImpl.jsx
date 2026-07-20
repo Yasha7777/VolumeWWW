@@ -5,6 +5,7 @@ import { useLoader } from '@react-three/fiber';
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import * as THREE from 'three';
+import { levelGeometry, levelObject } from './plyAlign';
 
 // ============================================================
 // PlyViewerImpl — реализация 3D-просмотра (бывший PlyViewer.jsx).
@@ -48,6 +49,9 @@ const PlyModel = ({ url, onReady }) => {
 
   React.useEffect(() => {
     if (!geometry) return;
+    // Выравниваем по земле (нормаль → +Y) ДО расчёта bbox, чтобы
+    // центрирование, размеры и грид-пол были в исправленной системе.
+    levelGeometry(geometry);
     geometry.computeBoundingBox();
     const box    = geometry.boundingBox;
     const center = new THREE.Vector3();
@@ -61,7 +65,7 @@ const PlyModel = ({ url, onReady }) => {
   const hasColors = geometry.attributes.color != null;
 
   return (
-    <points geometry={geometry} rotation={[Math.PI, 0, 0]}>
+    <points geometry={geometry}>
       <pointsMaterial
         size={0.006}
         vertexColors={hasColors}
@@ -96,6 +100,10 @@ const GlbModel = ({ url, onReady }) => {
       }
     });
 
+    // Выравниваем по земле (нормаль → +Y) — тем же способом, что и PLY,
+    // чтобы меш и облако были ориентированы согласованно.
+    levelObject(gltf.scene);
+
     const box    = new THREE.Box3().setFromObject(gltf.scene);
     const center = new THREE.Vector3();
     const size   = new THREE.Vector3();
@@ -106,7 +114,7 @@ const GlbModel = ({ url, onReady }) => {
     onReady({ center: new THREE.Vector3(0, 0, 0), size });
   }, [gltf, url, onReady]);
 
-  return <primitive object={gltf.scene} rotation={[0, 0, 0]} />;
+  return <primitive object={gltf.scene} />;
 };
 
 // === 3. ЛОАДЕР ===
