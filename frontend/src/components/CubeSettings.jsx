@@ -189,12 +189,6 @@ export default function CubeSettings({ onChange }) {
             </div>
           </div>
 
-          {derived.valid && (
-            <div className="cube-computed">
-              → сторона квадрата = {(derived.sizeM * 1000).toFixed(1)} мм · передаётся на сервер
-            </div>
-          )}
-
           {changed && (
             <button type="button" className="cube-reset" onClick={reset}>
               Сбросить к стандартным

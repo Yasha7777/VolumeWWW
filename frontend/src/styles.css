@@ -1685,6 +1685,7 @@ footer { border-top: 1px solid var(--border); padding: 20px 32px; display: flex;
 .cube-hd {
   font-size: 11px; font-weight: 600; letter-spacing: .1em;
   text-transform: uppercase; color: var(--muted); margin-bottom: 14px;
+  text-align: center;
 }
 
 .cube-fields { display: flex; flex-direction: column; gap: 14px; }
