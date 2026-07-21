@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { levelGeometry, levelObject } from './plyAlign';
 
 // Заглушка на месте вьювера: пустое/битое облако или краш three-стека.
-const ViewerFallback = ({ text = '3D-модель недоступна' }) => (
+const ViewerFallback = ({ text = '3D-модель недоступна для этого анализа' }) => (
   <div style={{
     position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
     justifyContent: 'center', background: '#1a1a1a', color: 'rgba(255,255,255,0.45)',
@@ -23,7 +23,12 @@ const ViewerFallback = ({ text = '3D-модель недоступна' }) => (
 class ViewerErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { failed: false }; }
   static getDerivedStateFromError() { return { failed: true }; }
-  componentDidCatch(err) { console.warn('[PlyViewer] 3D render failed, показываю заглушку:', err); }
+  componentDidCatch(err) {
+    console.warn('[PlyViewer] 3D render failed, показываю заглушку:', err);
+    // Сигналим наверх: родитель гасит лоадер и рендерит единую заглушку,
+    // иначе спиннер «Построение 3D модели...» висел бы поверх поймано ошибки.
+    this.props.onError?.();
+  }
   render() {
     return this.state.failed ? <ViewerFallback /> : this.props.children;
   }
@@ -348,7 +353,7 @@ const PlyViewerImpl = ({ plyUrl, glbUrl, up = null, upGlb = null, height = '480p
       {/* Canvas в error boundary: краш three/drei гасится локально, страница
           деталей не падает целиком. При empty Canvas не монтируем. */}
       {!empty && (
-        <ViewerErrorBoundary>
+        <ViewerErrorBoundary onError={() => setEmpty(true)}>
           <Canvas
             key={activeUrl}
             gl={{ antialias: true, alpha: false }}
