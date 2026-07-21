@@ -7,6 +7,28 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import * as THREE from 'three';
 import { levelGeometry, levelObject } from './plyAlign';
 
+// Заглушка на месте вьювера: пустое/битое облако или краш three-стека.
+const ViewerFallback = ({ text = '3D-модель недоступна' }) => (
+  <div style={{
+    position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+    justifyContent: 'center', background: '#1a1a1a', color: 'rgba(255,255,255,0.45)',
+    fontSize: '13px', fontFamily: 'system-ui', textAlign: 'center', padding: '0 20px',
+  }}>
+    {text}
+  </div>
+);
+
+// Локальный error boundary: падение three/drei (напр. чтение .clone() на
+// пустом/битом облаке) гасим здесь, чтобы не рухнула вся страница деталей.
+class ViewerErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { failed: false }; }
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(err) { console.warn('[PlyViewer] 3D render failed, показываю заглушку:', err); }
+  render() {
+    return this.state.failed ? <ViewerFallback /> : this.props.children;
+  }
+}
+
 // ============================================================
 // PlyViewerImpl — реализация 3D-просмотра (бывший PlyViewer.jsx).
 // ТЯЖЁЛЫЙ модуль: тянет весь three-стек. Импортируется ТОЛЬКО
@@ -44,11 +66,17 @@ const CameraFit = ({ target, size }) => {
 };
 
 // === 2А. ОБЛАКО ТОЧЕК (PLY) ===
-const PlyModel = ({ url, up, onReady }) => {
+const PlyModel = ({ url, up, onReady, onEmpty }) => {
   const geometry = useLoader(PLYLoader, url);
 
+  // Пустое/битое облако (нет позиций или 0 точек) → не рендерим 3D и сигналим
+  // наверх для заглушки. Иначе three зовёт bbox/.clone() на пустых данных и
+  // роняет всю страницу деталей.
+  const empty =
+    !geometry || !geometry.attributes?.position || geometry.attributes.position.count === 0;
+
   React.useEffect(() => {
-    if (!geometry) return;
+    if (empty) { onEmpty?.(); return; }
     // Выравниваем «вверх» → +Y ДО расчёта bbox, чтобы центрирование,
     // размеры и грид-пол были в исправленной системе. up из пайплайна;
     // если его нет — фолбэк по доминирующей плоскости (только крен).
@@ -61,7 +89,9 @@ const PlyModel = ({ url, up, onReady }) => {
     box.getSize(size);
     geometry.translate(-center.x, -center.y, -center.z);
     onReady({ center: new THREE.Vector3(0, 0, 0), size });
-  }, [geometry, up, onReady]);
+  }, [geometry, empty, up, onReady, onEmpty]);
+
+  if (empty) return null;
 
   const hasColors = geometry.attributes.color != null;
 
@@ -83,11 +113,20 @@ const PlyModel = ({ url, up, onReady }) => {
 // DUSt3R генерирует меш с вертекс-цветами без KHR_materials_unlit.
 // Без замены материала Three.js применяет PBR — всё выглядит тёмным.
 // Решение: принудительно ставим MeshBasicMaterial с vertexColors.
-const GlbModel = ({ url, up, onReady }) => {
+const GlbModel = ({ url, up, onReady, onEmpty }) => {
   const gltf = useLoader(GLTFLoader, url);
 
+  // Пустой/битый GLB (нет сцены или ни одного меша с точками) → заглушка.
+  let hasMesh = false;
+  if (gltf?.scene) {
+    gltf.scene.traverse((c) => {
+      if (c.isMesh && c.geometry?.attributes?.position?.count > 0) hasMesh = true;
+    });
+  }
+  const empty = !gltf?.scene || !hasMesh;
+
   React.useEffect(() => {
-    if (!gltf?.scene) return;
+    if (empty) { onEmpty?.(); return; }
 
     gltf.scene.traverse((child) => {
       if (child.isMesh) {
@@ -113,7 +152,9 @@ const GlbModel = ({ url, up, onReady }) => {
     gltf.scene.position.set(-center.x, -center.y, -center.z);
 
     onReady({ center: new THREE.Vector3(0, 0, 0), size });
-  }, [gltf, url, up, onReady]);
+  }, [gltf, empty, url, up, onReady, onEmpty]);
+
+  if (empty) return null;
 
   return <primitive object={gltf.scene} />;
 };
@@ -141,7 +182,7 @@ const StyledLoader = () => (
 );
 
 // === 4. СЦЕНА (внутри Canvas) ===
-const Scene = ({ url, mode, up, upGlb, onLoaded }) => {
+const Scene = ({ url, mode, up, upGlb, onLoaded, onEmpty }) => {
   // PLY и GLB экспортируются пайплайном в РАЗНЫХ системах координат
   // (меш дополнительно повёрнут), поэтому up-вектор у них свой. Если
   // отдельного up для GLB нет — используем общий (лучше, чем ничего).
@@ -161,8 +202,8 @@ const Scene = ({ url, mode, up, upGlb, onLoaded }) => {
 
       <Suspense fallback={<StyledLoader />}>
         {mode === 'glb'
-          ? <GlbModel url={url} up={activeUp} onReady={handleReady} />
-          : <PlyModel url={url} up={activeUp} onReady={handleReady} />
+          ? <GlbModel url={url} up={activeUp} onReady={handleReady} onEmpty={onEmpty} />
+          : <PlyModel url={url} up={activeUp} onReady={handleReady} onEmpty={onEmpty} />
         }
         {modelInfo && <CameraFit target={modelInfo.center} size={modelInfo.size} />}
       </Suspense>
@@ -207,12 +248,14 @@ const PlyViewerImpl = ({ plyUrl, glbUrl, up = null, upGlb = null, height = '480p
 
   const [mode, setMode] = useState(hasGlb ? 'glb' : 'ply');
   const [loaded, setLoaded] = useState(false);
+  const [empty, setEmpty] = useState(false);   // пустое/битое облако текущего режима
 
   const activeUrl = mode === 'glb' ? glbUrl : plyUrl;
 
   const handleModeSwitch = (newMode) => {
     if (newMode === mode) return;
     setLoaded(false);
+    setEmpty(false);
     setMode(newMode);
   };
 
@@ -277,8 +320,8 @@ const PlyViewerImpl = ({ plyUrl, glbUrl, up = null, upGlb = null, height = '480p
         </div>
       )}
 
-      {/* Плашка загрузки */}
-      {!loaded && (
+      {/* Плашка загрузки — прячем, если облако оказалось пустым */}
+      {!loaded && !empty && (
         <div style={{
           position: 'absolute', inset: 0, zIndex: 5,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -299,14 +342,27 @@ const PlyViewerImpl = ({ plyUrl, glbUrl, up = null, upGlb = null, height = '480p
         </div>
       )}
 
-      <Canvas
-        key={activeUrl}
-        gl={{ antialias: true, alpha: false }}
-        camera={{ fov: 45, near: 0.01, far: 10000 }}
-        style={{ background: '#1a1a1a' }}
-      >
-        <Scene url={activeUrl} mode={mode} up={up} upGlb={upGlb} onLoaded={() => setLoaded(true)} />
-      </Canvas>
+      {/* Пустое/битое облако — заглушка вместо 3D (свитч GLB/PLY остаётся) */}
+      {empty && <ViewerFallback />}
+
+      {/* Canvas в error boundary: краш three/drei гасится локально, страница
+          деталей не падает целиком. При empty Canvas не монтируем. */}
+      {!empty && (
+        <ViewerErrorBoundary>
+          <Canvas
+            key={activeUrl}
+            gl={{ antialias: true, alpha: false }}
+            camera={{ fov: 45, near: 0.01, far: 10000 }}
+            style={{ background: '#1a1a1a' }}
+          >
+            <Scene
+              url={activeUrl} mode={mode} up={up} upGlb={upGlb}
+              onLoaded={() => setLoaded(true)}
+              onEmpty={() => setEmpty(true)}
+            />
+          </Canvas>
+        </ViewerErrorBoundary>
+      )}
     </div>
   );
 };
