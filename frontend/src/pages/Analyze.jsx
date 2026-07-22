@@ -3,6 +3,7 @@ import { api } from '../api'
 import Timer from '../components/Timer'
 import exifr from 'exifr'
 import PlyViewer from '../components/PlyViewer'
+import ViewerErrorBoundary from '../components/ViewerErrorBoundary'
 import ReportPanel from '../components/ReportPanel'   // ← выдвижное окно отчёта
 import { parseWebhookResult } from '../components/RaschetDownloadButton' // ← общий парсер (объём DUSt3R, масса = V×ρ)
 import { useTheme } from '../theme/ThemeProvider'   // ← только ради свага-лейбла кнопки
@@ -709,7 +710,9 @@ export default function Analyze() {
                     <span className="div-txt">Визуализация объёма</span>
                     <div className="div-line" />
                   </div>
-                  <PlyViewer plyUrl={plyUrl} glbUrl={glbUrl} up={upVec} upGlb={upGlbVec} />
+                  <ViewerErrorBoundary>
+                    <PlyViewer plyUrl={plyUrl} glbUrl={glbUrl} up={upVec} upGlb={upGlbVec} />
+                  </ViewerErrorBoundary>
                 </div>
               )}
 

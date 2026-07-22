@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../api';
 import PlyViewer from '../components/PlyViewer';
+import ViewerErrorBoundary from '../components/ViewerErrorBoundary';
 import { subscribe, listQueue, retryItem, removeItem } from '../queue/queue'; // ← офлайн-очередь (PWA)
 import Reveal from '../components/Reveal';
 import { MeasureCardSkeleton } from '../components/Skeleton';
@@ -562,11 +563,13 @@ function ExpandedContent({ item, onPhoto }) {
           <p className="kh-expand__sub">3D-модель</p>
 
           <div className="kh-viewer">
-            {glb ? (
-              <PlyViewer glbUrl={glb} up={up} upGlb={upGlb} height="320px" />
-            ) : (
-              <PlyViewer plyUrl={ply} up={up} height="320px" />
-            )}
+            <ViewerErrorBoundary height="320px">
+              {glb ? (
+                <PlyViewer glbUrl={glb} up={up} upGlb={upGlb} height="320px" />
+              ) : (
+                <PlyViewer plyUrl={ply} up={up} height="320px" />
+              )}
+            </ViewerErrorBoundary>
           </div>
         </>
       )}

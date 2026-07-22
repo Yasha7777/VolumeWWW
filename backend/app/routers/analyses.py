@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 import logging
 from datetime import datetime, timezone
@@ -273,8 +274,11 @@ async def create_analysis(
         # Генерим миниатюру ДО остальной работы: если файл битый, лучше
         # упасть с понятной ошибкой сейчас, а не после аплоада оригинала.
         # Но не критично — если Pillow не сумел, работаем без миниатюры.
+        # supabase-py и Pillow здесь СИНХРОННЫЕ и блокирующие: без to_thread
+        # они держат event loop на всё время загрузки пачки (сервер не отвечает
+        # другим запросам). Порядок обработки и структура ответа не меняются.
         try:
-            thumb_content = make_thumbnail(content)
+            thumb_content = await asyncio.to_thread(make_thumbnail, content)
         except Exception:
             logger.warning("Не удалось создать миниатюру для %s", file.filename)
             thumb_content = None
@@ -284,7 +288,8 @@ async def create_analysis(
         safe_filename = file.filename or f"photo_{i+1}.jpg"
 
         # Загрузка ОРИГИНАЛА
-        supabase.storage.from_(COLMAP_BUCKET).upload(
+        await asyncio.to_thread(
+            supabase.storage.from_(COLMAP_BUCKET).upload,
             storage_path,
             content,
             file_options={"content-type": file.content_type or "image/jpeg"},
@@ -296,7 +301,8 @@ async def create_analysis(
         thumb_url = public_url  # fallback: если миниатюры нет — показываем оригинал
         if thumb_content is not None:
             thumb_storage_path = f"{analysis_id}/{photo_uuid}_thumb.jpg"
-            supabase.storage.from_(COLMAP_BUCKET).upload(
+            await asyncio.to_thread(
+                supabase.storage.from_(COLMAP_BUCKET).upload,
                 thumb_storage_path,
                 thumb_content,
                 file_options={"content-type": "image/jpeg"},
@@ -304,16 +310,18 @@ async def create_analysis(
             thumb_url = supabase.storage.from_(COLMAP_BUCKET).get_public_url(thumb_storage_path)
 
         # Строка в colmap_photos с обоими путями
-        res = supabase.table("colmap_photos").insert(
-            {
-                "analyze_id":         analysis_id,
-                "storage_path":       storage_path,
-                "public_url":         public_url,
-                "thumb_storage_path": thumb_storage_path,
-                "thumb_url":          thumb_url,
-                "filename":           safe_filename,
-            }
-        ).execute()
+        res = await asyncio.to_thread(
+            supabase.table("colmap_photos").insert(
+                {
+                    "analyze_id":         analysis_id,
+                    "storage_path":       storage_path,
+                    "public_url":         public_url,
+                    "thumb_storage_path": thumb_storage_path,
+                    "thumb_url":          thumb_url,
+                    "filename":           safe_filename,
+                }
+            ).execute
+        )
 
         photo_row_id = res.data[0]["id"]
         photo_ids.append(photo_row_id)

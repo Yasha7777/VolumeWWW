@@ -128,3 +128,4 @@ Frontend build args / `frontend/.env.local`: `VITE_SUPABASE_URL`, `VITE_SUPABASE
 ## Workflow Rule
 
 После каждой значимой правки дописывай строку в `PROGRESS.md`: что изменил и в каком файле.
+Каждую запись начинай с даты в формате `[ГГГГ-ММ-ДД]`.
