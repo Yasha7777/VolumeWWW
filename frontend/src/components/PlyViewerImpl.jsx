@@ -141,7 +141,7 @@ const StyledLoader = () => (
 );
 
 // === 4. СЦЕНА (внутри Canvas) ===
-const Scene = ({ url, mode, up, upGlb, onLoaded }) => {
+const Scene = ({ url, mode, up, upGlb, yaw180, onLoaded }) => {
   // PLY и GLB экспортируются пайплайном в РАЗНЫХ системах координат
   // (меш дополнительно повёрнут), поэтому up-вектор у них свой. Если
   // отдельного up для GLB нет — используем общий (лучше, чем ничего).
@@ -160,10 +160,14 @@ const Scene = ({ url, mode, up, upGlb, onLoaded }) => {
       <ambientLight intensity={mode === 'ply' ? 1.5 : 0.2} />
 
       <Suspense fallback={<StyledLoader />}>
-        {mode === 'glb'
-          ? <GlbModel url={url} up={activeUp} onReady={handleReady} />
-          : <PlyModel url={url} up={activeUp} onReady={handleReady} />
-        }
+        {/* yaw180 — доворот модели на 180° вокруг Y (по просьбе для истории).
+            Модель центрирована в (0,0,0), поэтому поворот вокруг Y-оси на месте. */}
+        <group rotation-y={yaw180 ? Math.PI : 0}>
+          {mode === 'glb'
+            ? <GlbModel url={url} up={activeUp} onReady={handleReady} />
+            : <PlyModel url={url} up={activeUp} onReady={handleReady} />
+          }
+        </group>
         {modelInfo && <CameraFit target={modelInfo.center} size={modelInfo.size} />}
       </Suspense>
 
@@ -201,7 +205,7 @@ const Scene = ({ url, mode, up, upGlb, onLoaded }) => {
 // === 5. ГЛАВНЫЙ КОМПОНЕНТ ===
 // Принимает plyUrl и glbUrl отдельно, показывает свитч если есть оба.
 // height — настраиваемая высота контейнера (по умолчанию 480px).
-const PlyViewerImpl = ({ plyUrl, glbUrl, up = null, upGlb = null, height = '480px' }) => {
+const PlyViewerImpl = ({ plyUrl, glbUrl, up = null, upGlb = null, yaw180 = false, height = '480px' }) => {
   const hasGlb = !!glbUrl;
   const hasPly = !!plyUrl;
 
@@ -305,7 +309,7 @@ const PlyViewerImpl = ({ plyUrl, glbUrl, up = null, upGlb = null, height = '480p
         camera={{ fov: 45, near: 0.01, far: 10000 }}
         style={{ background: '#1a1a1a' }}
       >
-        <Scene url={activeUrl} mode={mode} up={up} upGlb={upGlb} onLoaded={() => setLoaded(true)} />
+        <Scene url={activeUrl} mode={mode} up={up} upGlb={upGlb} yaw180={yaw180} onLoaded={() => setLoaded(true)} />
       </Canvas>
     </div>
   );

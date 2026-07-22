@@ -565,9 +565,9 @@ function ExpandedContent({ item, onPhoto }) {
           <div className="kh-viewer">
             <ViewerErrorBoundary height="320px">
               {glb ? (
-                <PlyViewer glbUrl={glb} up={up} upGlb={upGlb} height="320px" />
+                <PlyViewer glbUrl={glb} up={up} upGlb={upGlb} yaw180 height="320px" />
               ) : (
-                <PlyViewer plyUrl={ply} up={up} height="320px" />
+                <PlyViewer plyUrl={ply} up={up} yaw180 height="320px" />
               )}
             </ViewerErrorBoundary>
           </div>

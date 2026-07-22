@@ -42,13 +42,13 @@ const Placeholder = ({ height }) => (
   </div>
 )
 
-export default function PlyViewer({ plyUrl, glbUrl, up = null, upGlb = null, height = '480px' }) {
+export default function PlyViewer({ plyUrl, glbUrl, up = null, upGlb = null, yaw180 = false, height = '480px' }) {
   // без модели чанк с three даже не запрашиваем
   if (!plyUrl && !glbUrl) return null
 
   return (
     <Suspense fallback={<Placeholder height={height} />}>
-      <PlyViewerImpl plyUrl={plyUrl} glbUrl={glbUrl} up={up} upGlb={upGlb} height={height} />
+      <PlyViewerImpl plyUrl={plyUrl} glbUrl={glbUrl} up={up} upGlb={upGlb} yaw180={yaw180} height={height} />
     </Suspense>
   )
 }
