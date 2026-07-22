@@ -68,8 +68,7 @@ nginx (port 80)
 **Supabase** (`supabase/`):
 - `schema.sql` — full DB schema (run in SQL Editor to initialize)
 - `migration_thumbnails.sql` — adds thumbnail column
-- `migration_c2_schema_alignment.sql` — выравнивает трекаемую схему с продом (аудит C2): полная таблица `colmap_photos`, `analyses.client_id`, `analyses.glb_url/ply_url`, уникальный partial-индекс `analyses_user_client_uniq (user_id, client_id)` (защита идемпотентности). Всё идемпотентно (IF NOT EXISTS + CREATE INDEX CONCURRENTLY) → на проде no-op, нужно для чистых установок. Порядок для чистой БД: `schema.sql` → `migration_thumbnails.sql` → `migration_c2_schema_alignment.sql`.
-- Storage bucket: код пишет в бакет `colmap` (public); RLS-политики в `schema.sql` пока написаны для `analysis-photos` — рассинхрон (см. аудит C1).
+- Storage bucket: `analysis-photos` (public)
 
 ## Data Flow
 
