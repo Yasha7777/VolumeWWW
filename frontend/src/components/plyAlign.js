@@ -95,15 +95,39 @@ function fitGroundPlane(pts, iterations = 250) {
   return best;
 }
 
-// ФОЛБЭК-квартернион: убирает только КРЕН по доминирующей плоскости.
-// Знак нормали НЕ угадываем по массе объекта — берём канонический
-// (компонента Y в системе данных ≥ 0), чтобы результат был
-// детерминирован и модель не лежала на боку. Возможная перевёрнутость
-// вверх дном — допустимый временный компромисс без up-вектора.
+// ФОЛБЭК-квартернион: убирает КРЕН по доминирующей плоскости И выбирает
+// знак «вверх» по массе облака. Наши объекты — насыпи (куча щебня): они
+// существуют ТОЛЬКО над землёй, поэтому центр масс точек лежит на «верхней»
+// стороне опорной плоскости. Ориентируем нормаль в ту сторону, где реально
+// находится масса, — иначе модель встаёт вверх дном (баг: насыпи всегда
+// были перевёрнуты). Если масса симметрична относительно плоскости
+// (|проекция| пренебрежимо мала) — падаем на канонический знак (Y ≥ 0).
 function computeFallbackQuaternion(pts) {
   const plane = fitGroundPlane(pts);
   if (!plane) return null;
-  if (plane.normal.y < 0) plane.normal.negate();  // канонический знак
+
+  // Средняя знаковая проекция точек на нормаль относительно точки плоскости.
+  let sum = 0;
+  const n = plane.normal;
+  const p0 = plane.point;
+  for (const p of pts) {
+    sum += n.x * (p.x - p0.x) + n.y * (p.y - p0.y) + n.z * (p.z - p0.z);
+  }
+  const meanProj = sum / pts.length;
+
+  // Диагональ облака для порога «пренебрежимо мало».
+  const min = new THREE.Vector3(Infinity, Infinity, Infinity);
+  const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+  for (const p of pts) { min.min(p); max.max(p); }
+  const diag = min.distanceTo(max) || 1;
+
+  if (Math.abs(meanProj) > diag * 0.01) {
+    // Масса заметно смещена → нормаль должна смотреть В сторону массы.
+    if (meanProj < 0) plane.normal.negate();
+  } else if (plane.normal.y < 0) {
+    plane.normal.negate();  // симметрия → канонический знак
+  }
+
   const up = new THREE.Vector3(0, 1, 0);
   return new THREE.Quaternion().setFromUnitVectors(plane.normal, up);
 }

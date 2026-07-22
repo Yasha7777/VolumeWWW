@@ -59,6 +59,7 @@ nginx (port 80)
 - `pages/History.jsx` — analysis history with auto-refresh
 - `queue/queue.js` + `queue/db.js` — offline-first upload queue backed by IndexedDB; uses `BroadcastChannel` for cross-tab sync and Background Sync API (Chromium) for service-worker flush; `client_id` = future analysis UUID for idempotency
 - `components/PlyViewer.jsx` / `PlyViewerImpl.jsx` — lazy-loaded Three.js PLY mesh viewer (react-three-fiber/drei)
+- `components/plyAlign.js` — выравнивание облака/меша по «вверх». Если пайплайн прислал `up_vector`/`up_vector_glb` — применяется он. Иначе фолбэк: RANSAC находит опорную плоскость, а знак «вверх» выбирается по массе облака (насыпь существует только над землёй → нормаль смотрит в сторону массы точек). Не возвращай прежний «канонический знак» без учёта массы — из-за него насыпи вставали вверх дном.
 - `components/raschet/` — PDF report generation via `@react-pdf/renderer`; `RaschetDocument.jsx` is the layout, `raschetData.js` holds formulas/constants
 - `components/ReportPanel.jsx` — renders AI analysis result; `report-panel.css` styles it
 - `sw.js` — service worker (vite-plugin-pwa); handles `kb-flush` message to trigger queue flush
