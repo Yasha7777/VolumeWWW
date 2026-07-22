@@ -24,6 +24,11 @@ import * as THREE from 'three';
 // Квартернион, выравнивающий заданный up-вектор данных в +Y three.js.
 // up — [x,y,z] или THREE.Vector3 в системе координат самой геометрии.
 function quaternionFromUp(up) {
+  // up отсутствует (частый случай: пайплайн не записал up_vector) → null,
+  // чтобы вызывающий ушёл в RANSAC-фолбэк. Без этого гварда ветка ниже
+  // звала null.clone() и роняла весь three-стек (белый экран на здоровых
+  // анализах без up-вектора).
+  if (!up) return null;
   const v = Array.isArray(up)
     ? new THREE.Vector3(up[0], up[1], up[2])
     : up.clone();
