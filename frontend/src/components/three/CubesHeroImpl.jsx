@@ -18,6 +18,16 @@ const GRAVEL_COUNT = 520
 const SAND_COUNT   = 360
 const smooth = (t) => t * t * (3 - 2 * t)
 
+// Плоская 1×1 normal-заглушка (RGB 128,128,255 = нормаль +Z, нулевое возмущение).
+// Материал создаётся сразу с НЕЙ в normalMap → шейдер компилится с USE_NORMALMAP
+// один раз при первом рендере. Реальную Sobel-карту потом просто ПОДМЕНЯЕМ в
+// тот же слот (обе текстуры non-null → тот же program cache key → БЕЗ второй
+// перекомпиляции). Визуально плоская нормаль = как будто карты нет.
+const FLAT_NORMAL = new THREE.DataTexture(
+  new Uint8Array([128, 128, 255, 255]), 1, 1, THREE.RGBAFormat,
+)
+FLAT_NORMAL.needsUpdate = true
+
 // TEXT-SAFE ZONE. Эллипс по центру кадра (в мировых XY на плоскости частиц),
 // куда попадает заголовок. Частицы/кубы туда не лезут — обрамляют текст, а не
 // лежат на нём. Ориентир ~55% ширины × 45% высоты видимой области. Экранный
@@ -210,13 +220,13 @@ function Particles({ map, normalMap, normalScale, geometry, data, spinBase, roug
 
   return (
     <instancedMesh key={count} ref={ref} args={[geometry, undefined, count]}>
-      {/* key переключается когда normalMap подъезжает из idle (null→текстура):
-          материал пересоздаётся → шейдер компилится с USE_NORMALMAP, рельеф
-          применяется. Без этого добавление карты на лету не перекомпилит шейдер. */}
+      {/* normalMap задан ВСЕГДА (заглушка FLAT_NORMAL до подъезда реальной Sobel-
+          карты) — материал НЕ пересоздаётся по key: одна компиляция шейдера при
+          первом рендере, дальше только подмена текстуры в слоте (тот же program,
+          без второго long-task на перекомпиляцию). */}
       <meshStandardMaterial
-        key={normalMap ? 'with-normal' : 'flat'}
         map={map}
-        normalMap={normalMap}
+        normalMap={normalMap || FLAT_NORMAL}
         normalScale={normalScale}
         roughness={roughness}
         metalness={0.05}
@@ -456,8 +466,25 @@ export default function CubesHeroImpl() {
     return () => clearTimeout(t)
   }, [])
 
+  // ОТЛОЖЕННЫЙ МАУНТ КАНВАСА. Форма загрузки — главное на странице, она должна
+  // стать интерактивной сразу. Синхронный маунт Canvas тянет компиляцию PBR-
+  // шейдеров в тот же кадр, что и первый paint формы → лаг входа. Ждём первый
+  // paint (rAF) и простой (requestIdleCallback), затем монтируем сцену — компиляция
+  // уходит с критического пути. .kb-hero3d-canvas делает плавный fade-in (CSS),
+  // чтобы появление на кадр-два позже не выглядело резким.
+  const [canvasMounted, setCanvasMounted] = useState(false)
+  useEffect(() => {
+    let id
+    const raf = requestAnimationFrame(() => {
+      id = ric(() => setCanvasMounted(true))
+    })
+    return () => { cancelAnimationFrame(raf); if (id != null) cancelRic(id) }
+  }, [])
+
   return (
     <div ref={wrapRef} className="kb-hero3d">
+      {canvasMounted && (
+      <div className="kb-hero3d-canvas">
       <Canvas
         frameloop={frameloop}
         dpr={[1, 1.5]}
@@ -472,6 +499,8 @@ export default function CubesHeroImpl() {
           <Heap />
         </Suspense>
       </Canvas>
+      </div>
+      )}
       {/* скрим: мягкий радиальный vignette фонового цвета ПОВЕРХ канваса и ПОД
           текстом (см. CSS .hero-scrim) — заголовок всегда на чистом backdrop.
           Внутри wrapRef → гаснет вместе с канвасом при скролле. */}

@@ -208,6 +208,17 @@ nav { display: flex; gap: 4px; justify-self: center; }
   -webkit-mask-image: radial-gradient(ellipse 82% 78% at 50% 42%, #000 45%, transparent 100%);
           mask-image: radial-gradient(ellipse 82% 78% at 50% 42%, #000 45%, transparent 100%);
 }
+/* Канвас монтируется отложенно (после первого paint формы) — плавный fade-in,
+   чтобы появление сцены на кадр-два позже не выглядело резким скачком. */
+.hero .kb-hero3d-canvas {
+  position: absolute; inset: 0;
+  animation: kbHeroFadeIn 0.5s ease both;
+}
+@keyframes kbHeroFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .hero .kb-hero3d-canvas { animation: none; }
+}
+
 .hero { min-height: 460px; }
 
 /* тот же контурный мотив, что на экране входа — единый фирменный почерк */
