@@ -102,6 +102,29 @@ Frontend build args / `frontend/.env.local`: `VITE_SUPABASE_URL`, `VITE_SUPABASE
 - `frontend/src/components/three/CubesHeroImpl.jsx` — 3D-эффект hero
 - `frontend/src/styles.css` — глобальные стили
 
+## Deploy / кэширование (nginx)
+
+`frontend/nginx.conf` — политика кэша критична для PWA:
+- `sw.js` → `Cache-Control: no-cache` (точный `location = /sw.js`)
+- `index.html` → `no-cache, must-revalidate` (точный `location = /index.html`)
+- `assets/*.js|css|...` (хеш в имени) → `immutable; expires 30d` (общий regex-локейшн)
+
+НЕ вешай immutable на `sw.js`/`index.html`: это точки входа обновления, иначе после
+деплоя браузер отдаёт старый бандл, ссылающийся на удалённые чанки → 404 → белый экран.
+
+## Офлайн-очередь PWA (queue.js) — инварианты
+
+`frontend/src/queue/queue.js` — единый источник правды для замеров до ухода на сервер.
+- Статус элемента: `queued` → (`sending` только пока реально летит POST из этого таба) → удаление из IndexedDB при успехе, либо `error` после `MAX_ATTEMPTS`.
+- **Офлайн `flushItem` НЕ выставляет `sending`** и сразу выходит — иначе элемент залипает в `sending` (был баг: не отправлялся после возврата сети).
+- Отправку инициируют: `scheduleFlush()` (коалесцирует online/visibilitychange/kb-flush/старт) + `ensureSafetyNet()` (повтор каждые 10 c, пока есть работа и есть сеть).
+- `requeueOrphans()` возвращает осиротевшие `sending` (после перезагрузки вкладки) в `queued`.
+- Идемпотентность отправки — по `client_id` (== будущий id анализа); на бэке держится PK `analyses.id` + `supabase/migration_client_id.sql` (колонка + уникальный индекс).
+
+Примечание: `supabase/schema.sql` отстаёт от рабочей БД (нет `client_id`, `thumbnail_urls`,
+таблицы `colmap_photos`, бакет назван `analysis-photos`, хотя код пишет в `colmap`). Реальная
+схема мигрирована на сервере вручную; сверяйся с кодом бэкенда, а не только со schema.sql.
+
 ## Workflow Rule
 
 После каждой значимой правки дописывай строку в `PROGRESS.md`: что изменил и в каком файле.

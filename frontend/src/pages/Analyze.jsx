@@ -228,25 +228,38 @@ export default function Analyze() {
 
           if (parsedJson && typeof parsedJson === 'object') {
             // up-векторы внутри JSON (up_vector / up_vector_glb = [x,y,z])
+            // Обход с потолком глубины и ранним выходом: как только оба
+            // вектора найдены — не обходим остаток дерева (лишняя работа на
+            // каждом поллинге при большом ответе). MAX_DEPTH страхует от
+            // патологически вложенных структур.
+            const MAX_DEPTH = 8
             if (!finalUp || !finalUpGlb) {
-              const findUp = (obj) => {
-                if (!obj || typeof obj !== 'object') return
+              const findUp = (obj, depth = 0) => {
+                if (!obj || typeof obj !== 'object' || depth > MAX_DEPTH) return
+                if (finalUp && finalUpGlb) return
                 if (!Array.isArray(obj)) {
                   if (!finalUp)    finalUp    = asVec3(obj.up_vector || obj.up || obj.upVector)
                   if (!finalUpGlb) finalUpGlb = asVec3(obj.up_vector_glb || obj.upGlb || obj.up_glb)
                 }
-                Object.values(obj).forEach(findUp)
+                for (const v of Object.values(obj)) {
+                  if (finalUp && finalUpGlb) break
+                  findUp(v, depth + 1)
+                }
               }
               findUp(parsedJson)
             }
             // ШАГ 3: если в прямых полях пусто — ищем внутри JSON
             if (!finalGlbUrl || !finalPlyUrl) {
-              const findUrls = (obj) => {
-                if (!obj || typeof obj !== 'object') return
+              const findUrls = (obj, depth = 0) => {
+                if (!obj || typeof obj !== 'object' || depth > MAX_DEPTH) return
+                if (finalGlbUrl && finalPlyUrl) return
                 if (obj.glb_url && !finalGlbUrl) finalGlbUrl = obj.glb_url
                 if (obj.ply_url && !finalPlyUrl) finalPlyUrl = obj.ply_url
                 if (obj.model_url && !finalGlbUrl) finalGlbUrl = obj.model_url
-                Object.values(obj).forEach(findUrls)
+                for (const v of Object.values(obj)) {
+                  if (finalGlbUrl && finalPlyUrl) break
+                  findUrls(v, depth + 1)
+                }
               }
               findUrls(parsedJson)
             }

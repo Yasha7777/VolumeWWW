@@ -854,25 +854,41 @@ export default function History() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userFilter]);
 
-  // поллинг, пока есть необработанные замеры
+  // Есть ли необработанные замеры — держим в ref, чтобы интервал поллинга НЕ
+  // пересоздавался на каждый ответ сервера. Раньше эффект зависел от [items],
+  // а load() каждые 10 c менял items → clearInterval+setInterval на каждом
+  // тике (дребезг таймера, лишние пересчёты).
+  const hasPendingRef = useRef(false);
   useEffect(() => {
-    const hasPending = items.some(
+    hasPendingRef.current = items.some(
       (it) => it.status !== 'completed' && it.status !== 'error'
     );
-    if (!hasPending) return;
-    const t = setInterval(load, 10000);
+  }, [items]);
+
+  // Интервал создаётся ОДИН раз (пустые deps) и на каждом тике сам решает,
+  // нужно ли опрашивать сервер (по свежему hasPendingRef).
+  useEffect(() => {
+    const t = setInterval(() => { if (hasPendingRef.current) load(); }, 10000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items]);
+  }, []);
 
   // подписка на очередь: любое изменение (добавили/отправили/удалили) →
   // перечитываем локальный список И дёргаем сервер (чтобы ушедший замер
   // сразу появился серверной строкой, без ожидания 10-секундного поллинга).
+  // load() дебаунсим: при флаше пачки замеров emit() летит подряд много раз —
+  // без дебаунса это серия параллельных запросов к /analyses/.
   useEffect(() => {
     const refreshQueue = async () => setQueue(await listQueue());
     refreshQueue();
-    const unsub = subscribe(() => { refreshQueue(); load(); });
-    return unsub;
+    let debounce = null;
+    const onChange = () => {
+      refreshQueue();
+      clearTimeout(debounce);
+      debounce = setTimeout(load, 400);
+    };
+    const unsub = subscribe(onChange);
+    return () => { clearTimeout(debounce); unsub(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
