@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useLoader } from '@react-three/fiber'
 import { ContactShadows } from '@react-three/drei'
 import * as THREE from 'three'
@@ -89,6 +89,32 @@ function scrollProgress() {
   return Math.min(Math.max((window.scrollY || 0) / (vh * 1.05), 0), 1)
 }
 
+// requestIdleCallback с фолбэком (Safari его не поддерживает).
+const ric = (fn) =>
+  (typeof window !== 'undefined' && window.requestIdleCallback)
+    ? window.requestIdleCallback(fn, { timeout: 1200 })
+    : setTimeout(fn, 200)
+const cancelRic = (id) =>
+  (typeof window !== 'undefined' && window.cancelIdleCallback)
+    ? window.cancelIdleCallback(id)
+    : clearTimeout(id)
+
+// Квантованный прогресс скролла (бакет) — источник ре-бейка тени. React-стейт
+// обновляется ТОЛЬКО при смене бакета (≤ steps раз за весь скролл), а не 60/сек.
+function useScrollBucket(steps = 24) {
+  const [bucket, setBucket] = useState(() => Math.round(scrollProgress() * steps))
+  useEffect(() => {
+    if (REDUCE) return
+    const onScroll = () => {
+      const b = Math.round(scrollProgress() * steps)
+      setBucket((prev) => (prev === b ? prev : b))
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [steps])
+  return bucket
+}
+
 // Предрасчёт: где частица рассыпана (scatter) и где она в куче (heap).
 // R — радиус основания, H — высота вершины, spreadX/Y — разлёт по экрану.
 function buildParticles(count, R, H, spreadX, spreadY, yBase, sMin, sMax, tint) {
@@ -141,12 +167,14 @@ function Particles({ map, normalMap, normalScale, geometry, data, spinBase, roug
   const ref = useRef()
   const dummy = useMemo(() => new THREE.Object3D(), [])
   const count = data.length
+  const lastE = useRef(-1)   // dirty-check: последний записанный scroll-progress
 
   useEffect(() => {
     const mesh = ref.current
     if (!mesh) return
     data.forEach((d, i) => mesh.setColorAt(i, d.color))
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+    lastE.current = -1        // геометрия/данные сменились → форсируем перезапись матриц
   }, [data])
 
   useFrame((_, dt) => {
@@ -154,26 +182,39 @@ function Particles({ map, normalMap, normalScale, geometry, data, spinBase, roug
     if (!mesh) return
     const e = smooth(scrollProgress())          // прямая привязка к скроллу
 
-    for (let i = 0; i < count; i++) {
-      const d = data[i]
-      dummy.position.set(
-        d.scatter[0] + (d.heap[0] - d.scatter[0]) * e,
-        d.scatter[1] + (d.heap[1] - d.scatter[1]) * e,
-        d.scatter[2] + (d.heap[2] - d.scatter[2]) * e,
-      )
-      const spin = (1 - e) * spinBase            // рассыпанные крутятся, собранные — замирают
-      dummy.rotation.set(d.rot[0] + spin, d.rot[1] + spin, d.rot[2])
-      dummy.scale.setScalar(d.s)
-      dummy.updateMatrix()
-      mesh.setMatrixAt(i, dummy.matrix)
+    // DIRTY-CHECK: позиции/спин инстансов зависят ТОЛЬКО от e. Если скролл не
+    // сдвинулся — 880 матриц идентичны прошлому кадру, не пересчитываем и НЕ
+    // перезаливаем instanceMatrix на GPU (главная экономия в простое).
+    if (Math.abs(e - lastE.current) > 1e-4) {
+      lastE.current = e
+      for (let i = 0; i < count; i++) {
+        const d = data[i]
+        dummy.position.set(
+          d.scatter[0] + (d.heap[0] - d.scatter[0]) * e,
+          d.scatter[1] + (d.heap[1] - d.scatter[1]) * e,
+          d.scatter[2] + (d.heap[2] - d.scatter[2]) * e,
+        )
+        const spin = (1 - e) * spinBase          // рассыпанные крутятся, собранные — замирают
+        dummy.rotation.set(d.rot[0] + spin, d.rot[1] + spin, d.rot[2])
+        dummy.scale.setScalar(d.s)
+        dummy.updateMatrix()
+        mesh.setMatrixAt(i, dummy.matrix)
+      }
+      mesh.instanceMatrix.needsUpdate = true
     }
-    mesh.instanceMatrix.needsUpdate = true
-    if (!REDUCE) mesh.rotation.y += dt * 0.1 * e  // собранная куча медленно вращается
+    // медленное вращение собранной кучи — трансформ группы, а не инстансов
+    // (дёшево, инстанс-буфер не трогает). Идёт только пока сцена видна:
+    // при frameloop="never" useFrame не вызывается вовсе.
+    if (!REDUCE) mesh.rotation.y += dt * 0.1 * e
   })
 
   return (
     <instancedMesh key={count} ref={ref} args={[geometry, undefined, count]}>
+      {/* key переключается когда normalMap подъезжает из idle (null→текстура):
+          материал пересоздаётся → шейдер компилится с USE_NORMALMAP, рельеф
+          применяется. Без этого добавление карты на лету не перекомпилит шейдер. */}
       <meshStandardMaterial
+        key={normalMap ? 'with-normal' : 'flat'}
         map={map}
         normalMap={normalMap}
         normalScale={normalScale}
@@ -186,8 +227,8 @@ function Particles({ map, normalMap, normalScale, geometry, data, spinBase, roug
 
 function Heap() {
   const [gravelMap, sandMap] = useLoader(THREE.TextureLoader, [
-    '/textures/gravel.png',
-    '/textures/sand.png',
+    '/textures/gravel.webp',
+    '/textures/sand.webp',
   ])
   // цвет текстуры в sRGB, лёгкое повторение → на каждом камне читаемая фактура
   ;[gravelMap, sandMap].forEach((t) => {
@@ -197,9 +238,29 @@ function Heap() {
     t.anisotropy = 4
   })
 
-  // рельеф из самих текстур → блики/тени по граням камней (не плоская наклейка)
-  const gravelNormal = useMemo(() => normalFromImage(gravelMap.image, 2.4), [gravelMap])
-  const sandNormal   = useMemo(() => normalFromImage(sandMap.image, 1.6), [sandMap])
+  // рельеф из самих текстур → блики/тени по граням камней (не плоская наклейка).
+  // Sobel по 512² ×2 текстуры (~0.5M итераций) — ТЯЖЁЛЫЙ синхронный расчёт.
+  // Раньше шёл в useMemo прямо на маунте и блокировал первый paint/LCP. Теперь
+  // откладываем на requestIdleCallback: сначала показываем сцену с плоским
+  // альбедо, нормаль подъезжает в простое кадром позже (визуально — лёгкое
+  // «проявление» рельефа, без джанка при загрузке страницы).
+  const [normals, setNormals] = useState(null)
+  useEffect(() => {
+    if (!gravelMap?.image || !sandMap?.image) return
+    let cancelled = false
+    const id = ric(() => {
+      if (cancelled) return
+      setNormals({
+        gravel: normalFromImage(gravelMap.image, 2.4),
+        sand: normalFromImage(sandMap.image, 1.6),
+      })
+    })
+    return () => { cancelled = true; cancelRic(id) }
+  }, [gravelMap, sandMap])
+  const gravelNormal = normals?.gravel || null
+  const sandNormal   = normals?.sand || null
+
+  const shadowBucket = useScrollBucket(24)
   const gravelNScale = useMemo(() => new THREE.Vector2(0.9, 0.9), [])
   const sandNScale   = useMemo(() => new THREE.Vector2(0.6, 0.6), [])
 
@@ -241,14 +302,19 @@ function Heap() {
       <CalibrationCubes />
       {/* контактная тень: куча стоит на земле, а не висит. Тень концентрируется
           при сборке и расплывается при рассыпании — сама следует за частицами. */}
+      {/* frames={1} — тень запекается ОДИН кадр, а не каждый (раньше Infinity =
+          покадровый пересчёт shadow-map). Обновление по прогрессу через key:
+          при смене бакета (≤24 шагов на весь скролл) компонент перемонтируется
+          и перезапекается один раз — тень следует за кучей без per-frame цены. */}
       <ContactShadows
+        key={shadowBucket}
         position={[0, -1.18, 0]}
         scale={9}
         blur={2.6}
         far={3.2}
         opacity={0.5}
         resolution={512}
-        frames={REDUCE ? 1 : Infinity}
+        frames={1}
       />
     </>
   )
@@ -275,17 +341,21 @@ function checkerTexture(cells = 4, px = 256) {
   return tex
 }
 
+const CUBE_COUNT = 7
+
 function CalibrationCubes() {
-  const groupRefs = useRef([])
+  const ref = useRef()
   const map = useMemo(() => checkerTexture(4), [])
   const geo = useMemo(() => new THREE.BoxGeometry(1, 1, 1), [])
-  const dummyQ = useMemo(() => new THREE.Object3D(), [])
+  const dummy = useMemo(() => new THREE.Object3D(), [])
 
-  // 7 кубов: осмысленно по кольцу вокруг кучи, мимо центра/safe-zone
+  // 7 кубов: осмысленно по кольцу вокруг кучи, мимо центра/safe-zone.
+  // quat — текущая ориентация куба (аккумулирует вращение), инициализируется
+  // стартовым rot; deltaQ (ось+скорость) домножается каждый кадр.
   const cubes = useMemo(() => {
     const out = []
     let guard = 0
-    while (out.length < 7 && guard++ < 400) {
+    while (out.length < CUBE_COUNT && guard++ < 400) {
       const ang = Math.random() * Math.PI * 2
       const rr = 1.7 + Math.random() * 1.0            // ближе к краю основания
       const y = -0.75 + Math.random() * 1.7
@@ -301,48 +371,61 @@ function CalibrationCubes() {
 
       out.push({
         heap, scatter,
-        rot: [Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI],
         s: 0.24 + Math.random() * 0.1,
         axis: new THREE.Vector3(Math.random() - 0.5, 1, Math.random() - 0.5).normalize(),
         speed: 0.12 + Math.random() * 0.22,
+        quat: new THREE.Quaternion().setFromEuler(
+          new THREE.Euler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI),
+        ),
       })
     }
     return out
   }, [])
 
+  const deltaQ = useMemo(() => new THREE.Quaternion(), [])
+
   useFrame((_, dt) => {
+    const mesh = ref.current
+    if (!mesh) return
     const e = smooth(scrollProgress())
-    cubes.forEach((cu, i) => {
-      const m = groupRefs.current[i]
-      if (!m) return
-      m.position.set(
+    // Кубы медленно вращаются каждый видимый кадр (их всего 7 → инстанс-буфер
+    // дёшево переписать целиком, dirty-check не нужен). При frameloop="never"
+    // useFrame не вызывается — вращение останавливается вместе со сценой.
+    for (let i = 0; i < cubes.length; i++) {
+      const cu = cubes[i]
+      if (!REDUCE) {
+        deltaQ.setFromAxisAngle(cu.axis, dt * cu.speed)
+        cu.quat.multiply(deltaQ)
+      }
+      dummy.position.set(
         cu.scatter[0] + (cu.heap[0] - cu.scatter[0]) * e,
         cu.scatter[1] + (cu.heap[1] - cu.scatter[1]) * e,
         cu.scatter[2] + (cu.heap[2] - cu.scatter[2]) * e,
       )
-      if (!REDUCE) m.rotateOnAxis(cu.axis, dt * cu.speed)   // медленное вращение
-      m.scale.setScalar(cu.s)
-    })
+      dummy.quaternion.copy(cu.quat)
+      dummy.scale.setScalar(cu.s)
+      dummy.updateMatrix()
+      mesh.setMatrixAt(i, dummy.matrix)
+    }
+    mesh.instanceMatrix.needsUpdate = true
   })
 
   return (
-    <>
-      {cubes.map((cu, i) => (
-        <mesh
-          key={i}
-          ref={(el) => (groupRefs.current[i] = el)}
-          geometry={geo}
-          rotation={cu.rot}
-        >
-          <meshStandardMaterial map={map} roughness={0.55} metalness={0.05} />
-        </mesh>
-      ))}
-    </>
+    <instancedMesh key={cubes.length} ref={ref} args={[geo, undefined, cubes.length]}>
+      <meshStandardMaterial map={map} roughness={0.55} metalness={0.05} />
+    </instancedMesh>
   )
 }
 
 export default function CubesHeroImpl() {
   const wrapRef = useRef(null)
+  const visibleRef = useRef(true)
+  // frameloop канваса: "always" пока hero виден, "never" когда полностью ушёл за
+  // скролл (opacity:0). При "never" r3f не рендерит и не зовёт useFrame вовсе —
+  // сцена (и авто-вращение) замирает без ручных invalidate(). Позиции частиц
+  // выводятся из scrollProgress() каждый кадр, поэтому при возврате в видимость
+  // сцена продолжается с той же точки, без скачка/сброса.
+  const [frameloop, setFrameloop] = useState('always')
 
   // канвас fixed во вьюпорте; гаснет после того, как куча собралась → не мешает
   // контенту ниже. При reduced-motion остаётся статичная собранная куча.
@@ -353,16 +436,31 @@ export default function CubesHeroImpl() {
       // мягче: куча держится собранной дольше (старт позже, диапазон длиннее)
       const fade = 1 - Math.min(Math.max((window.scrollY - vh * 1.35) / (vh * 0.9), 0), 1)
       if (wrapRef.current) wrapRef.current.style.opacity = String(fade)
+      // переключаем frameloop только на ГРАНИЦЕ видимости (не каждый скролл-тик)
+      const vis = fade > 0
+      if (vis !== visibleRef.current) {
+        visibleRef.current = vis
+        setFrameloop(vis ? 'always' : 'never')
+      }
     }
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
+  // reduced-motion: сцена статична (scrollProgress→1). Даём ей отрисоваться и
+  // подгрузить normal-map, затем замораживаем — чтобы не гонять 60fps впустую.
+  useEffect(() => {
+    if (!REDUCE) return
+    const t = setTimeout(() => setFrameloop('never'), 1500)
+    return () => clearTimeout(t)
+  }, [])
+
   return (
     <div ref={wrapRef} className="kb-hero3d">
       <Canvas
-        dpr={[1, 2]}
+        frameloop={frameloop}
+        dpr={[1, 1.5]}
         gl={{ alpha: true, antialias: true }}
         camera={{ position: [0, 0.7, 7.6], fov: 44 }}
         style={{ pointerEvents: 'none' }}

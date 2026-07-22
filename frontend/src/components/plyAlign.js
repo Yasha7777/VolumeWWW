@@ -132,6 +132,34 @@ function computeFallbackQuaternion(pts) {
   return new THREE.Quaternion().setFromUnitVectors(plane.normal, up);
 }
 
+// Квартернион переворота на 180° вокруг X: Y→−Y, Z→−Z. Оставляет опорную
+// плоскость горизонтальной, меняет только «верх/низ».
+function flipUpsideDownQuaternion() {
+  return new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI);
+}
+
+// Пост-проверка знака «вверх» ПОСЛЕ выравнивания в +Y. Работает для любого
+// источника up (пайплайн ИЛИ фолбэк): насыпь имеет широкое основание (масса
+// внизу) и узкий пик (мало точек вверху). Если центр масс по Y смещён к
+// ВЕРХНЕЙ половине bbox — модель стоит вверх дном → нужен переворот.
+// pts — уже выровненные точки (в системе, где «вверх» = +Y).
+// Возвращает true, если нужно перевернуть.
+function needsFlip(pts) {
+  if (!pts.length) return false;
+  let minY = Infinity, maxY = -Infinity, sumY = 0;
+  for (const p of pts) {
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+    sumY += p.y;
+  }
+  const range = maxY - minY;
+  if (!(range > 0)) return false;
+  const meanY = sumY / pts.length;
+  const mid = (minY + maxY) / 2;
+  // Мёртвая зона 2% диапазона — на почти симметричной массе не дёргаемся.
+  return meanY > mid + range * 0.02;
+}
+
 // Выравнивает BufferGeometry (мутирует геометрию один раз). Идемпотентно.
 // up — [x,y,z] из пайплайна (предпочтительно). Если не передан — фолбэк.
 export function levelGeometry(geometry, up = null) {
@@ -141,6 +169,13 @@ export function levelGeometry(geometry, up = null) {
   const q = quaternionFromUp(up)
     || computeFallbackQuaternion(samplePoints(posAttr.array, posAttr.count));
   if (q) geometry.applyQuaternion(q);
+
+  // Пост-проверка массы: гарантирует, что насыпь смотрит пиком вверх,
+  // независимо от того, был ли up из пайплайна перевёрнут.
+  if (needsFlip(samplePoints(posAttr.array, posAttr.count))) {
+    geometry.applyQuaternion(flipUpsideDownQuaternion());
+  }
+
   geometry.userData.__leveled = true;
 }
 
@@ -169,6 +204,25 @@ export function levelObject(root, up = null) {
   }
   if (q) {
     root.quaternion.premultiply(q);
+    root.updateMatrixWorld(true);
+  }
+
+  // Пост-проверка массы (см. needsFlip): в мировых координатах после
+  // выравнивания собираем точки и, если насыпь вверх дном, доворачиваем.
+  const worldPts = [];
+  const wv = new THREE.Vector3();
+  root.traverse((child) => {
+    const posAttr = child.isMesh && child.geometry?.attributes?.position;
+    if (!posAttr) return;
+    const count = posAttr.count;
+    const step = Math.max(1, Math.floor(count / 20000));
+    for (let i = 0; i < count; i += step) {
+      wv.fromBufferAttribute(posAttr, i).applyMatrix4(child.matrixWorld);
+      worldPts.push(wv.clone());
+    }
+  });
+  if (needsFlip(worldPts)) {
+    root.quaternion.premultiply(flipUpsideDownQuaternion());
     root.updateMatrixWorld(true);
   }
 }

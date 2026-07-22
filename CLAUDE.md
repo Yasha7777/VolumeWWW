@@ -59,7 +59,7 @@ nginx (port 80)
 - `pages/History.jsx` — analysis history with auto-refresh
 - `queue/queue.js` + `queue/db.js` — offline-first upload queue backed by IndexedDB; uses `BroadcastChannel` for cross-tab sync and Background Sync API (Chromium) for service-worker flush; `client_id` = future analysis UUID for idempotency
 - `components/PlyViewer.jsx` / `PlyViewerImpl.jsx` — lazy-loaded Three.js PLY mesh viewer (react-three-fiber/drei)
-- `components/plyAlign.js` — выравнивание облака/меша по «вверх». Если пайплайн прислал `up_vector`/`up_vector_glb` — применяется он. Иначе фолбэк: RANSAC находит опорную плоскость, а знак «вверх» выбирается по массе облака (насыпь существует только над землёй → нормаль смотрит в сторону массы точек). Не возвращай прежний «канонический знак» без учёта массы — из-за него насыпи вставали вверх дном.
+- `components/plyAlign.js` — выравнивание облака/меша по «вверх». Если пайплайн прислал `up_vector`/`up_vector_glb` — применяется он. Иначе фолбэк: RANSAC находит опорную плоскость, а знак «вверх» выбирается по массе облака (насыпь существует только над землёй → нормаль смотрит в сторону массы точек). Не возвращай прежний «канонический знак» без учёта массы — из-за него насыпи вставали вверх дном. Плюс есть УНИВЕРСАЛЬНАЯ пост-проверка `needsFlip()` (работает и для up из пайплайна, и для фолбэка): после выравнивания в +Y смотрит центр масс по Y — если масса смещена в верх bbox, значит насыпь вверх дном → доворот 180° вокруг X. Не удаляй эту пост-проверку: без неё инвертированный `up_vector` из пайплайна снова переворачивает модели.
 - `components/raschet/` — PDF report generation via `@react-pdf/renderer`; `RaschetDocument.jsx` is the layout, `raschetData.js` holds formulas/constants
 - `components/ReportPanel.jsx` — renders AI analysis result; `report-panel.css` styles it
 - `sw.js` — service worker (vite-plugin-pwa); handles `kb-flush` message to trigger queue flush
@@ -102,6 +102,30 @@ Frontend build args / `frontend/.env.local`: `VITE_SUPABASE_URL`, `VITE_SUPABASE
 - `frontend/src/pages/Analyze.jsx` — главная страница, hero
 - `frontend/src/components/three/CubesHeroImpl.jsx` — 3D-эффект hero
 - `frontend/src/styles.css` — глобальные стили
+
+### Конвенция производительности для тяжёлых r3f-сцен
+
+Hero-сцена `fixed inset:0` и монтируется на весь лайфтайм страницы — по умолчанию r3f
+рендерит её 60fps ВЕЧНО, даже когда она за скроллом (`opacity:0`), пришпиливая GPU/main-
+thread и тормозя весь остальной UI (форму загрузки и т.д.). Правила (эталон — `CubesHeroImpl.jsx`):
+
+1. **Гейт рендера по видимости.** Переключай `<Canvas frameloop>` "always"↔"never" по границе
+   видимости (переиспользуй scroll-fade, который и так рулит opacity). При "never" r3f не зовёт
+   `useFrame` и не рендерит — авто-анимация замирает без ручных `invalidate()`. Позиции выводи из
+   scroll-прогресса (stateless) → при возврате в кадр сцена продолжается без скачка/сброса.
+2. **Dirty-check в `useFrame`.** Не пересчитывай и не перезаливай `instanceMatrix` каждый кадр:
+   держи `lastE` (последний scroll-progress) и трогай буфер, только если он реально изменился.
+   InstancedMesh с сотнями частиц → полная перезаливка 60/сек — самая частая утечка.
+3. **Тени запекай, не считай покадрово.** `ContactShadows frames={1}` + обновление по КВАНТОВАННОМУ
+   бакету скролла (`key={bucket}`, ≤~24 ремаунта на весь скролл), а не `frames={Infinity}`.
+4. **Тяжёлый маунт-расчёт — в `requestIdleCallback`.** Sobel/normal-map и подобное не блокируй на
+   первом paint; при подъезде карты пересоздавай материал через `key` (иначе шейдер не
+   перекомпилится с новым define).
+5. **Ассеты.** Текстуры — WebP, размер под реальный экранный (здесь 512 хватает; см.
+   `public/textures/*.webp`). `dpr={[1,1.5]}` (не 2+). Мелкие повторяющиеся меши — в один InstancedMesh.
+
+Инвариант: оптимизируем КОГДА/СКОЛЬКО раз считаем кадр, вес ассетов и число draw calls —
+визуал «сборки» (premium-эффект) при этом не меняем.
 
 ## Deploy / кэширование (nginx)
 
