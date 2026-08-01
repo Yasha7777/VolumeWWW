@@ -5,35 +5,116 @@ import * as THREE from 'three'
 import { useModel } from './ktx2gltf'
 
 /* ════════════════════════════════════════════════════════════════════════
-   HERO ЛЕНДИНГА · КИНЕМАТОГРАФИЧНЫЙ ДРОН-ЗАХОД НА СТРОЙПЛОЩАДКУ.
-   Никаких роёв инстансов. Только детальные модели /3dmodels (meshopt+KTX2,
-   полигоны целы): здание с башенным краном (site_crane) — окружение в
-   реальном масштабе на «земле»; материал (гравий+песок+камень) СЛЕТАЕТСЯ В
-   ОДНУ КУЧУ и укладывается, затем замирает; рядом вплотную — калибровочный
-   куб. Камера «прилетает» дроном (аэрофото → снижение и наезд → покачивание →
-   посадка ракурса), потом висит с мягким дрейфом. Свет: studio-Environment +
-   ContactShadows. dpr[1,2], тени вкл., reduced-motion → статичный собранный
-   кадр площадки с кучей. Всё стоит на земле — ничего не висит.
+   HERO ЛЕНДИНГА · дрон садится к земле у стройплощадки; МНОГО ИНСТАНСОВ
+   гравия/песка/камня (геометрии из /3dmodels, meshopt+KTX2, полигоны целы)
+   слетаются в одну точку и УКЛАДЫВАЮТСЯ В ПЛОТНЫЙ КОНУС-НАСЫПЬ, затем
+   замирают. Рядом маленький калибровочный куб (~×5 меньше кучи). Здание с
+   краном — окружение на земле. Камера финиширует низко и близко (ракурс
+   снизу вверх), без клиппинга сквозь пол/модели. reduced-motion → статичный
+   собранный кадр. Инстансинг (одна геометрия × N), тени только у здания/куба,
+   dpr[1,2]. Всё на земле.
    ════════════════════════════════════════════════════════════════════════ */
 
 const REDUCE = typeof window !== 'undefined'
   && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+const MOBILE = typeof window !== 'undefined' && window.innerWidth < 700
 
 const seg = (t, a, b) => Math.min(1, Math.max(0, (t - a) / (b - a)))
-const smooth = (t) => t * t * t * (t * (t * 6 - 15) + 10)   // smootherstep
+const smooth = (t) => t * t * t * (t * (t * 6 - 15) + 10)
 const lerp = THREE.MathUtils.lerp
+const rand = (a, b) => a + Math.random() * (b - a)
 
-// нормализованная детальная модель: центр по XZ, низ на y=0, масштаб к target
-function Model({ url, target }) {
+// куча-конус: R база, H высота
+const CONE = { R: 1.9, H: 2.4 }
+
+// достаём геометрию+материал модели, запекаем мировую матрицу, нормируем max-dim→1
+function useInstGeo(url) {
+  const { scene } = useModel(url)
+  return useMemo(() => {
+    let picked = null
+    scene.updateWorldMatrix(true, true)
+    scene.traverse((o) => {
+      if (o.isMesh && o.geometry && !picked) {
+        const g = o.geometry.clone(); g.applyMatrix4(o.matrixWorld)
+        picked = { geo: g, mat: Array.isArray(o.material) ? o.material[0] : o.material }
+      }
+    })
+    if (!picked) return null
+    picked.geo.computeBoundingBox()
+    const size = new THREE.Vector3(); picked.geo.boundingBox.getSize(size)
+    const c = new THREE.Vector3(); picked.geo.boundingBox.getCenter(c)
+    const s = 1 / (Math.max(size.x, size.y, size.z) || 1)
+    picked.geo.translate(-c.x, -c.y, -c.z); picked.geo.scale(s, s, s)
+    return picked
+  }, [scene])
+}
+
+// упаковка конуса: цель в объёме конуса + разлёт (откуда слетается) + окно
+function packCone(count, sMin, sMax, span) {
+  const arr = []
+  for (let i = 0; i < count; i++) {
+    const y = Math.random() * CONE.H
+    const maxR = CONE.R * (1 - y / CONE.H)
+    const ang = Math.random() * Math.PI * 2
+    const r = Math.sqrt(Math.random()) * maxR
+    const sc = sMin + Math.random() * (sMax - sMin)
+    // низ элемента примерно на своей высоте (плотная набивка)
+    const heap = [Math.cos(ang) * r, y + sc * 0.15, Math.sin(ang) * r]
+    const sa = Math.random() * Math.PI * 2
+    const scatter = [Math.cos(sa) * rand(5, 9), rand(3.5, 7), Math.sin(sa) * rand(5, 9)]
+    arr.push({
+      heap, scatter, sc,
+      rel: (i / count) * span + rand(0, 0.5),
+      rot: [rand(0, Math.PI), rand(0, Math.PI), rand(0, Math.PI)],
+      ph: rand(0, Math.PI * 2),
+    })
+  }
+  return arr
+}
+
+function InstPile({ geo, mat, data, tRef }) {
+  const ref = useRef()
+  const dummy = useMemo(() => new THREE.Object3D(), [])
+  const eul = useMemo(() => new THREE.Euler(), [])
+  useFrame(() => {
+    const mesh = ref.current; if (!mesh) return
+    const t = tRef.current
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i]
+      const s = REDUCE ? 1 : smooth(seg(t, d.rel, d.rel + 1.6))
+      const drift = REDUCE ? 0 : Math.sin(t * 0.8 + d.ph) * 0.006 * s
+      dummy.position.set(
+        lerp(d.scatter[0], d.heap[0], s),
+        lerp(d.scatter[1], d.heap[1], s) + drift,
+        lerp(d.scatter[2], d.heap[2], s),
+      )
+      eul.set(d.rot[0], d.rot[1], d.rot[2]); dummy.quaternion.setFromEuler(eul)
+      dummy.scale.setScalar(Math.max(0.0001, d.sc * s))
+      dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix)
+    }
+    mesh.instanceMatrix.needsUpdate = true
+  })
+  // тени частиц выключены (их сотни) — контакт даёт ContactShadows
+  return <instancedMesh ref={ref} args={[geo, mat, data.length]} frustumCulled={false} receiveShadow />
+}
+
+// один блок модели → InstancedMesh с упаковкой в конус
+function MaterialInstances({ url, count, sMin, sMax, span, tRef }) {
+  const g = useInstGeo(url)
+  const data = useMemo(() => packCone(count, sMin, sMax, span), [count, sMin, sMax, span])
+  if (!g) return null
+  return <InstPile geo={g.geo} mat={g.mat} data={data} tRef={tRef} />
+}
+
+// нормализованное здание-окружение
+function Building({ url, target }) {
   const { scene } = useModel(url)
   return useMemo(() => {
     const s = scene.clone(true)
-    const box = new THREE.Box3().setFromObject(s)
-    const size = new THREE.Vector3(); box.getSize(size)
-    const center = new THREE.Vector3(); box.getCenter(center)
+    const box = new THREE.Box3().setFromObject(s); const size = new THREE.Vector3(); box.getSize(size)
+    const c = new THREE.Vector3(); box.getCenter(c)
     const scl = target / (Math.max(size.x, size.y, size.z) || 1)
-    s.scale.setScalar(scl)
-    s.position.set(-center.x * scl, -box.min.y * scl, -center.z * scl)
+    s.scale.setScalar(scl); s.position.set(-c.x * scl, -box.min.y * scl, -c.z * scl)
     s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false } })
     return <primitive object={s} />
   }, [scene, target])
@@ -47,14 +128,14 @@ function CalibCube({ tRef }) {
     const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t
   }, [])
   const ref = useRef()
-  const SIZE = 0.9
+  const SIZE = 0.48                                   // ~в 5 раз ниже кучи (H 2.4)
   useFrame((_, dt) => {
     if (!ref.current) return
-    const s = REDUCE ? 1 : smooth(seg(tRef.current, 2.4, 3.9))
+    const s = REDUCE ? 1 : smooth(seg(tRef.current, 2.6, 4.0))
     ref.current.visible = s > 0.02
-    ref.current.position.set(2.35, SIZE / 2 + (1 - s) * 3.4, 1.6)   // падает на землю вплотную к куче
-    ref.current.scale.setScalar(SIZE * (0.35 + 0.65 * s))
-    if (!REDUCE && s > 0.98) ref.current.rotation.y += dt * 0.18
+    ref.current.position.set(2.15, SIZE / 2 + (1 - s) * 3.0, 0.9)   // вплотную к куче, на земле
+    ref.current.scale.setScalar(SIZE * (0.4 + 0.6 * s))
+    if (!REDUCE && s > 0.98) ref.current.rotation.y += dt * 0.15
   })
   return (
     <mesh ref={ref} castShadow receiveShadow visible={false}>
@@ -66,40 +147,22 @@ function CalibCube({ tRef }) {
 
 function Scene() {
   const buildingRef = useRef()
-  const cubeT = useRef(0)
-  const acc = useRef(0)
-  const pileRef = useRef(); const sandRef = useRef(); const stoneRef = useRef()
-
-  // материал: куда лечь (heap) и откуда прилететь (from) + окно сборки
-  const MATS = useMemo(() => ([
-    { ref: pileRef, url: '/models/pile_of_gravel.glb', target: 3.0, heap: [0, 0, 0.4], from: [-3.2, 5.5, 3.6], a: 0.4, b: 2.6 },
-    { ref: sandRef, url: '/models/block_sand_rock.glb', target: 1.6, heap: [1.45, 0, 1.05], from: [4.6, 4.5, 2.4], a: 1.0, b: 3.2 },
-    { ref: stoneRef, url: '/models/stone_gravel.glb', target: 1.5, heap: [-0.45, 0.9, 0.05], from: [-4.2, 6, -2.6], a: 1.7, b: 3.7 },
-  ]), [])
+  const tRef = useRef(0)
 
   useFrame((state, dt) => {
     const cm = state.camera
-    acc.current += Math.min(dt, 0.05)
-    const t = REDUCE ? 99 : acc.current
-    cubeT.current = t
+    tRef.current += REDUCE ? 0 : Math.min(dt, 0.05)
+    const t = REDUCE ? 99 : tRef.current
 
-    // ── КАМЕРА-ДРОН: аэрофото → снижение и наезд → посадка + мягкий дрейф ──
-    const p = smooth(Math.min(t / 4.8, 1))
-    const sway = REDUCE ? 0 : lerp(0.55, 0.13, p)     // покачивание: сильнее в полёте, тише на зависании
-    const px = lerp(6.5, 5.0, p) + Math.sin(t * 0.55) * sway * 0.6
-    const py = lerp(17, 4.4, p) + Math.sin(t * 0.9) * sway
-    const pz = lerp(12.5, 9.5, p) + Math.cos(t * 0.7) * sway * 0.6
-    cm.position.set(px, py, pz)
-    cm.lookAt(0, lerp(2.2, 1.05, p), 0.3)
-
-    // ── МАТЕРИАЛ СЛЕТАЕТСЯ В ОДНУ КУЧУ и укладывается ──
-    for (const m of MATS) {
-      const g = m.ref.current; if (!g) continue
-      const s = REDUCE ? 1 : smooth(seg(t, m.a, m.b))
-      g.visible = s > 0.01
-      g.position.set(lerp(m.from[0], m.heap[0], s), lerp(m.from[1], m.heap[1], s), lerp(m.from[2], m.heap[2], s))
-      g.scale.setScalar(0.0001 + s)
-    }
+    // ── КАМЕРА-ДРОН: аэрофото → снижение К ЗЕМЛЕ и наезд → низкий ракурс ──
+    const p = smooth(Math.min(t / 5.0, 1))
+    const sway = REDUCE ? 0 : lerp(0.5, 0.1, p)
+    cm.position.set(
+      lerp(6, 1.8, p) + Math.sin(t * 0.55) * sway * 0.5,
+      Math.max(0.55, lerp(16, 0.85, p) + Math.sin(t * 0.9) * sway),   // не ниже 0.55 → без клипа пола
+      lerp(12, 4.6, p) + Math.cos(t * 0.7) * sway * 0.5,
+    )
+    cm.lookAt(0.1, lerp(2.0, 2.6, p), lerp(0, -2.5, p))               // снизу вверх на кучу+кран
 
     if (buildingRef.current && !REDUCE) buildingRef.current.rotation.y = -0.4 + Math.min(t, 25) * 0.003
   })
@@ -117,28 +180,28 @@ function Scene() {
         shadow-camera-left={-14} shadow-camera-right={14} shadow-camera-top={14} shadow-camera-bottom={-14} />
       <directionalLight position={[-8, 5, -4]} intensity={0.4} color="#c98a24" />
 
-      {/* земля-грунт */}
       <mesh position={[0, -0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[80, 80]} />
         <meshStandardMaterial color="#4a4034" roughness={1} />
       </mesh>
 
-      {/* ЗДАНИЕ с башенным краном — окружение на земле, в реальном масштабе */}
+      {/* ЗДАНИЕ с краном — окружение на земле */}
       <group ref={buildingRef} position={[0.4, 0, -3.2]} rotation={[0, -0.4, 0]}>
-        <Suspense fallback={null}><Model url="/models/site_crane.glb" target={12} /></Suspense>
+        <Suspense fallback={null}><Building url="/models/site_crane.glb" target={12} /></Suspense>
       </group>
 
-      {/* МАТЕРИАЛ → одна куча */}
-      {MATS.map((m, i) => (
-        <group key={i} ref={m.ref} visible={false}>
-          <Suspense fallback={null}><Model url={m.url} target={m.target} /></Suspense>
-        </group>
-      ))}
+      {/* ПЛОТНАЯ КУЧА из МНОГИХ ИНСТАНСОВ (слетаются → укладываются в конус) */}
+      <group position={[0, 0, 0.2]}>
+        <Suspense fallback={null}>
+          <MaterialInstances url="/models/block_sand_rock.glb" count={MOBILE ? 240 : 460} sMin={0.30} sMax={0.52} span={2.6} tRef={tRef} />
+          <MaterialInstances url="/models/pile_of_gravel.glb" count={MOBILE ? 30 : 55} sMin={0.5} sMax={0.85} span={2.8} tRef={tRef} />
+          <MaterialInstances url="/models/stone_gravel.glb" count={MOBILE ? 5 : 8} sMin={0.6} sMax={1.0} span={3.0} tRef={tRef} />
+        </Suspense>
+      </group>
 
-      {/* калибровочный куб вплотную к куче */}
-      <CalibCube tRef={cubeT} />
+      <CalibCube tRef={tRef} />
 
-      <ContactShadows position={[0, 0.01, 0.6]} scale={20} blur={2.4} far={8} opacity={0.5} resolution={1024} />
+      <ContactShadows position={[0, 0.01, 0.4]} scale={16} blur={2.4} far={7} opacity={0.55} resolution={1024} />
     </>
   )
 }
@@ -178,7 +241,7 @@ export default function MaterialShowcaseHeroImpl() {
       {mounted && (
         <Canvas frameloop={REDUCE ? 'demand' : frameloop} shadows dpr={[1, 2]}
           gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
-          camera={{ position: [6.5, 17, 12.5], fov: 38 }}>
+          camera={{ position: [6, 16, 12], fov: 40, near: 0.25, far: 200 }}>
           <Suspense fallback={null}><Scene /></Suspense>
           <AdaptiveDpr pixelated />
         </Canvas>
