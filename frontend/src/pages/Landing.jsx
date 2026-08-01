@@ -27,7 +27,7 @@ import '../landing.css'
 */
 
 const EASE = [0.16, 1, 0.3, 1]
-const Flow = lazy(() => import('../components/three/MaterialFlowHeroImpl'))
+const Flow = lazy(() => import('../components/three/MaterialShowcaseHeroImpl'))
 
 function BlurText({ text, className = '' }) {
   const reduce = useReducedMotion()

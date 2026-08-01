@@ -35,9 +35,19 @@
 .kb-landing ::selection { background: var(--gold); color: #fff; }
 .kb-landing > section, .kb-landing > .kb-l-foot { position: relative; z-index: 1; }
 
-/* ─── 3D-СЦЕНА HERO (облёт здания + формирование кучи), absolute в hero ────── */
-.kb-l-flow { position: absolute; inset: 0; z-index: 0; pointer-events: none; will-change: opacity; }
+/* ─── 3D-СЦЕНА HERO (сырьё→замер→стройка), absolute в hero ─────────────────── */
+.kb-l-flow { position: absolute; inset: 0; z-index: 0; will-change: opacity; }
 .kb-l-flow canvas { display: block; }
+/* подпись замера (drei Html) */
+.kb-l3d-tag { font-family: var(--sans); font-size: 15px; font-weight: 600; color: #1a1a0a;
+  background: rgba(255,255,255,.85); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border: 1px solid rgba(184,122,24,.55); border-radius: 999px; padding: 8px 16px; white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(30,61,18,.2); }
+/* прогресс-лоадер моделей */
+.kb-l3d-loader { position: absolute; left: 50%; bottom: 88px; transform: translateX(-50%); z-index: 4;
+  display: flex; align-items: center; gap: 12px; color: rgba(241,237,225,.82); font-size: 12px; letter-spacing: .04em; }
+.kb-l3d-loader__bar { width: 160px; height: 3px; border-radius: 3px; background: rgba(255,255,255,.16); overflow: hidden; }
+.kb-l3d-loader__bar i { display: block; height: 100%; background: var(--gold); transition: width .25s ease; }
 
 /* ─── LIGHT LIQUID GLASS ───────────────────────────────────────────────────── */
 .kb-landing .lg, .kb-landing .lg-strong {
