@@ -5,17 +5,15 @@ import * as THREE from 'three'
 import { useModel } from './ktx2gltf'
 
 /* ════════════════════════════════════════════════════════════════════════
-   HERO ЛЕНДИНГА · «сырьё → замер → стройка». Использует ТОЛЬКО детальные
-   модели из /3dmodels (сжаты meshopt+KTX2, полигоны целы):
-   • Акт 1 «Сырьё»: камень (stone_gravel) + гравий (pile_of_gravel) + песок-
-     блок (block_sand_rock) со stagger влетают и медленно вращаются.
-   • Акт 2 «Замер»: вокруг кластера прорисовывается габаритный бокс + размерная
-     сетка с подписью м³/т (метафора фотограмметрии), камера наезжает.
-   • Акт 3 «Стройка»: сырьё уходит, поднимается стройплощадка с башенным краном
-     (construction_site…tower_crane), кран крутится, камера оседает.
-   Свет: процедурный studio-Environment (Lightformer, офлайн — higgsfield=0
-   кредитов) + ContactShadows. dpr=[1,2], тени вкл., AdaptiveDpr, dispose через
-   useGLTF-кэш. prefers-reduced-motion → статичный кадр Акта 2.
+   HERO ЛЕНДИНГА · SCROLL-DRIVEN. Из детальных моделей /3dmodels (meshopt+KTX2,
+   полигоны целы): по мере прокрутки ЗДАНИЕ со стройплощадки/краном (site_crane)
+   ПРИБЛИЖАЕТСЯ, а на его земле СОБИРАЕТСЯ КУЧА из гравия (pile_of_gravel) +
+   песка (block_sand_rock) + камня (stone_gravel); рядом с кучей встаёт
+   ШАХМАТНЫЙ калибровочный куб (процедурный — служебный референс масштаба).
+   Наверху прорисовывается габаритный бокс + подпись м³/т (замер).
+   Всё привязано к scrollY (scroll-scrub), как на hero основного сайта.
+   Свет: процедурный studio-Environment + ContactShadows, тени вкл., dpr[1,2],
+   reduced-motion → статичный собранный кадр.
    ════════════════════════════════════════════════════════════════════════ */
 
 const REDUCE = typeof window !== 'undefined'
@@ -29,146 +27,175 @@ const M = {
 }
 
 const seg = (t, a, b) => Math.min(1, Math.max(0, (t - a) / (b - a)))
-const smooth = (t) => t * t * t * (t * (t * 6 - 15) + 10)   // smootherstep
-const damp = THREE.MathUtils.damp
+const smooth = (t) => t * t * t * (t * (t * 6 - 15) + 10)
+const lerp = THREE.MathUtils.lerp
 
-// нормализованная детальная модель: центр в 0, масштаб к target, тени вкл.
+// прогресс = позиция скролла (0 вверху героя → 1 через ~1.1 экрана)
+function scrollP() {
+  if (REDUCE) return 1
+  const vh = window.innerHeight || 1
+  return Math.min(Math.max((window.scrollY || 0) / (vh * 1.1), 0), 1)
+}
+
+// процедурная шахматка 4×4 (калибровочный куб)
+function checkerTexture(cells = 4, px = 512) {
+  const cv = document.createElement('canvas')
+  cv.width = cv.height = px
+  const ctx = cv.getContext('2d')
+  const s = px / cells
+  for (let y = 0; y < cells; y++)
+    for (let x = 0; x < cells; x++) {
+      ctx.fillStyle = (x + y) % 2 ? '#161616' : '#f2ede1'
+      ctx.fillRect(x * s, y * s, s, s)
+    }
+  const t = new THREE.CanvasTexture(cv)
+  t.colorSpace = THREE.SRGBColorSpace
+  t.anisotropy = 4
+  return t
+}
+
+// нормализованная детальная модель: центр по XZ, низ на y=0, масштаб к target
 function Model({ url, target }) {
   const { scene } = useModel(url)
-  const obj = useMemo(() => {
+  return useMemo(() => {
     const s = scene.clone(true)
     const box = new THREE.Box3().setFromObject(s)
     const size = new THREE.Vector3(); box.getSize(size)
     const center = new THREE.Vector3(); box.getCenter(center)
     const scl = target / (Math.max(size.x, size.y, size.z) || 1)
     s.scale.setScalar(scl)
-    s.position.set(-center.x * scl, -box.min.y * scl, -center.z * scl) // низ на y=0
+    s.position.set(-center.x * scl, -box.min.y * scl, -center.z * scl)
     s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false } })
-    return s
+    return <primitive object={s} />
   }, [scene, target])
-  return <primitive object={obj} />
 }
 
-// габаритный бокс + размерная сетка (служебные примитивы — разрешено)
-function MeasureBox({ w, h, d, appear }) {
+function MeasureBox({ w, h, d, appearRef }) {
   const grp = useRef()
   const box = useMemo(() => new THREE.BoxGeometry(w, h, d), [w, h, d])
+  const ticks = useMemo(() => new THREE.BoxGeometry(0.02, 0.18, 0.02), [])
   useFrame(() => {
     if (!grp.current) return
-    const s = smooth(appear.current)
-    grp.current.scale.setScalar(0.001 + s)
+    const s = smooth(appearRef.current)
+    grp.current.scale.set(1, s, 1)
+    grp.current.visible = s > 0.02
     grp.current.traverse((o) => { if (o.material) o.material.opacity = s })
-    grp.current.visible = s > 0.01
   })
   return (
-    <group ref={grp} position={[0, h / 2, 0]}>
-      <lineSegments>
+    <group ref={grp} position={[0, 0, 0]}>
+      <lineSegments position={[0, h / 2, 0]}>
         <edgesGeometry args={[box]} />
-        <lineBasicMaterial color="#c98a24" transparent linewidth={2} />
+        <lineBasicMaterial color="#c98a24" transparent />
       </lineSegments>
-      {/* размерные тики по низу переднего ребра */}
-      {Array.from({ length: 7 }).map((_, i) => {
-        const x = -w / 2 + (w * i) / 6
-        return (
-          <lineSegments key={i} position={[x, -h / 2, d / 2]}>
-            <edgesGeometry args={[new THREE.BoxGeometry(0.005, 0.16, 0.005)]} />
-            <lineBasicMaterial color="#9A6410" transparent />
-          </lineSegments>
-        )
-      })}
-      <Html position={[0, h / 2 + 0.25, 0]} center distanceFactor={9} zIndexRange={[2, 0]}>
+      {Array.from({ length: 7 }).map((_, i) => (
+        <lineSegments key={i} position={[-w / 2 + (w * i) / 6, 0.09, d / 2]}>
+          <edgesGeometry args={[ticks]} />
+          <lineBasicMaterial color="#9A6410" transparent />
+        </lineSegments>
+      ))}
+      <Html position={[0, h + 0.3, 0]} center distanceFactor={11} zIndexRange={[3, 0]}>
         <div className="kb-l3d-tag">V ≈ 1&nbsp;428&nbsp;м³ · 2&nbsp;271&nbsp;т</div>
       </Html>
     </group>
   )
 }
 
+// шахматный калибровочный куб рядом с кучей
+function CalibCube({ dropRef }) {
+  const ref = useRef()
+  const map = useMemo(() => checkerTexture(4), [])
+  useFrame((_, dt) => {
+    if (!ref.current) return
+    const p = dropRef.current
+    const s = smooth(seg(p, 0, 1))
+    const size = 1.15
+    ref.current.visible = s > 0.02
+    // падает сверху на землю рядом с кучей + лёгкий доворот
+    ref.current.position.set(2.9, size / 2 + (1 - s) * 4.2, 2.7)
+    ref.current.scale.setScalar(size * (0.4 + 0.6 * s))
+    if (!REDUCE && s > 0.98) ref.current.rotation.y += dt * 0.25
+    else ref.current.rotation.set(0, s * 0.4, 0)
+  })
+  return (
+    <mesh ref={ref} castShadow receiveShadow visible={false}>
+      <boxGeometry args={[1, 1, 1]} />
+      <meshStandardMaterial map={map} roughness={0.55} metalness={0.05} />
+    </mesh>
+  )
+}
+
 function Scene() {
-  const materials = useRef()
+  const gravel = useRef(); const sand = useRef(); const stone = useRef()
+  const building = useRef()
   const boxAppear = useRef(0)
-  const site = useRef()
-  const cam = useRef()
-  const start = useRef(0)
+  const cubeDrop = useRef(0)
+
+  // задаём scale+pos кучи по scroll-прогрессу (сборка снизу вверх).
+  // размер задаёт target модели → group растёт 0→1 (без двойного масштаба)
+  const grow = (ref, p, a, b, pos) => {
+    if (!ref.current) return
+    const s = smooth(seg(p, a, b))
+    ref.current.visible = s > 0.02
+    ref.current.position.set(pos[0], pos[1] + (1 - s) * -1.2, pos[2])
+    ref.current.scale.setScalar(0.0001 + s)
+  }
 
   useFrame((state, dt) => {
+    const p = scrollP()
     const cm = state.camera
-    if (REDUCE) {
-      // статичный кадр Акта 2
-      if (materials.current) { materials.current.scale.setScalar(1); materials.current.visible = true }
-      boxAppear.current = 1
-      if (site.current) site.current.visible = false
-      cm.position.set(4.6, 3.1, 7.2); cm.lookAt(0, 1.2, 0)
-      return
-    }
-    if (!start.current) start.current = state.clock.elapsedTime
-    const t = state.clock.elapsedTime - start.current
 
-    // прогрессы актов
-    const a1 = smooth(seg(t, 0.4, 4))          // сырьё влетает
-    const a2 = smooth(seg(t, 4.2, 6.6))        // замер
-    const outMat = smooth(seg(t, 7.4, 9.4))    // сырьё уходит
-    const a3 = smooth(seg(t, 8.0, 11))         // стройка поднимается
+    // здание ПРИБЛИЖАЕТСЯ: камера наезжает по мере прокрутки
+    const e = smooth(p)
+    cm.position.x = lerp(0.5, 3.6, e)
+    cm.position.y = lerp(8.5, 3.3, e)
+    cm.position.z = lerp(24, 12.5, e)
+    cm.lookAt(0, lerp(3.4, 1.5, e), 1.8)
 
-    if (materials.current) {
-      const g = materials.current
-      g.visible = a1 > 0.001 && outMat < 0.999
-      const sc = a1 * (1 - outMat)
-      g.scale.setScalar(0.0001 + sc)
-      g.position.y = (1 - a1) * -1.4 + outMat * 1.2
-      g.rotation.y += dt * 0.25 * (1 - outMat)
-    }
-    boxAppear.current = a2 * (1 - outMat)
+    // куча из гравия + песка + камня собирается на земле (stagger)
+    grow(gravel, p, 0.08, 0.5, [-0.7, 0, 2.2])
+    grow(sand, p, 0.18, 0.6, [1.0, 0, 2.7])
+    grow(stone, p, 0.28, 0.68, [0.25, 0.55, 1.8])
 
-    if (site.current) {
-      const s = site.current
-      s.visible = a3 > 0.001
-      const sc = a3
-      s.scale.setScalar(0.0001 + sc)
-      s.position.y = (1 - a3) * -3.2
-      if (t > 10) s.rotation.y += dt * 0.08     // кран медленно поворачивается
-    }
+    cubeDrop.current = seg(p, 0.42, 0.72)
+    boxAppear.current = seg(p, 0.76, 0.96)
 
-    // камера по актам + мягкий дрейф на удержании
-    const hold = seg(t, 11, 13)
-    let px, py, pz, lx = 0, ly = 1.2, lz = 0
-    if (t < 6.6) { px = 7 - a2 * 2.4; py = 4 - a2 * 0.9; pz = 10 - a2 * 2.8 }
-    else { px = 4.6 + a3 * 3.6; py = 3.1 + a3 * 2.2; pz = 7.2 + a3 * 5.2; ly = 1.2 + a3 * 1.6 }
-    if (t > 11) { const dr = (t - 11) * 0.06; px += Math.sin(dr) * 1.2; pz += Math.cos(dr) * 0.6 }
-    cm.position.x = damp(cm.position.x, px, 3, dt)
-    cm.position.y = damp(cm.position.y, py, 3, dt)
-    cm.position.z = damp(cm.position.z, pz, 3, dt)
-    cm.lookAt(lx, ly, lz)
+    if (building.current && !REDUCE) building.current.rotation.y = -0.35 + p * 0.25
   })
 
   return (
     <>
-      {/* studio-окружение процедурно (офлайн), мягкие блики на фотограмметрии */}
       <Environment resolution={256}>
-        <Lightformer intensity={2.2} position={[0, 4, 2]} scale={[8, 4, 1]} color="#fff6e6" />
-        <Lightformer intensity={1.1} position={[-4, 2, 1]} scale={[3, 4, 1]} color="#cfe0ff" />
-        <Lightformer intensity={0.9} position={[4, 1, -2]} scale={[3, 3, 1]} color="#ffd9a0" />
+        <Lightformer intensity={2.2} position={[0, 5, 3]} scale={[10, 5, 1]} color="#fff4e0" />
+        <Lightformer intensity={1.1} position={[-5, 3, 1]} scale={[4, 5, 1]} color="#cfe0ff" />
+        <Lightformer intensity={0.9} position={[5, 2, -2]} scale={[4, 4, 1]} color="#ffd39a" />
       </Environment>
       <ambientLight intensity={0.35} />
       <directionalLight
-        position={[5, 9, 5]} intensity={1.7} castShadow
-        shadow-mapSize={[1024, 1024]} shadow-bias={-0.0002}
-        shadow-camera-left={-8} shadow-camera-right={8} shadow-camera-top={8} shadow-camera-bottom={-8}
+        position={[6, 12, 6]} intensity={1.7} castShadow
+        shadow-mapSize={[2048, 2048]} shadow-bias={-0.0002}
+        shadow-camera-left={-14} shadow-camera-right={14} shadow-camera-top={14} shadow-camera-bottom={-14}
       />
-      <directionalLight position={[-6, 4, -4]} intensity={0.4} color="#c98a24" />
+      <directionalLight position={[-7, 5, -4]} intensity={0.4} color="#c98a24" />
 
-      {/* Акт 1–2: сырьё */}
-      <group ref={materials}>
-        <group position={[0, 0, 0]}><Model url={M.stone} target={2.2} /></group>
-        <group position={[-2.3, 0, 0.4]}><Model url={M.gravel} target={1.7} /></group>
-        <group position={[2.15, 0, -0.3]}><Model url={M.sand} target={1.55} /></group>
-        <MeasureBox w={6.1} h={2.7} d={3.0} appear={boxAppear} />
+      {/* ЗДАНИЕ со стройплощадки/краном — сзади, приближается камерой */}
+      <group ref={building} position={[0, 0, -3.5]} rotation={[0, -0.35, 0]}>
+        <Model url={M.site} target={13} />
       </group>
 
-      {/* Акт 3: стройплощадка с краном */}
-      <group ref={site} visible={false}><Model url={M.site} target={7.5} /></group>
+      {/* КУЧА из песка + гравия + камня на земле здания */}
+      <group ref={gravel} visible={false}><Model url={M.gravel} target={2.7} /></group>
+      <group ref={sand} visible={false}><Model url={M.sand} target={1.9} /></group>
+      <group ref={stone} visible={false}><Model url={M.stone} target={1.7} /></group>
 
-      {/* мягкая контактная тень под сценой */}
-      <ContactShadows position={[0, 0.01, 0]} scale={16} blur={2.6} far={6} opacity={0.42} resolution={512} />
+      {/* ШАХМАТНЫЙ калибровочный куб рядом с кучей */}
+      <CalibCube dropRef={cubeDrop} />
+
+      {/* габаритный бокс + подпись м³/т вокруг кучи */}
+      <group position={[0.15, 0, 2.2]}>
+        <MeasureBox w={4.6} h={2.7} d={3.1} appearRef={boxAppear} />
+      </group>
+
+      <ContactShadows position={[0, 0.01, 1.6]} scale={20} blur={2.6} far={7} opacity={0.45} resolution={1024} />
     </>
   )
 }
@@ -193,7 +220,7 @@ export default function MaterialShowcaseHeroImpl() {
   useEffect(() => {
     const onScroll = () => {
       const vh = window.innerHeight || 1
-      const fade = 1 - Math.min(Math.max((window.scrollY - vh * 0.5) / (vh * 0.6), 0), 1)
+      const fade = 1 - Math.min(Math.max((window.scrollY - vh * 0.95) / (vh * 0.5), 0), 1)
       if (wrapRef.current) wrapRef.current.style.opacity = String(fade)
       const vis = fade > 0.02 && !document.hidden
       if (vis !== visibleRef.current) { visibleRef.current = vis; setFrameloop(vis ? 'always' : 'never') }
@@ -215,11 +242,11 @@ export default function MaterialShowcaseHeroImpl() {
       <Loader />
       {mounted && (
         <Canvas
-          frameloop={REDUCE ? 'demand' : frameloop}
+          frameloop={frameloop}
           shadows
           dpr={[1, 2]}
           gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
-          camera={{ position: [7, 4, 10], fov: 42 }}
+          camera={{ position: [0.5, 8.5, 24], fov: 40 }}
         >
           <Suspense fallback={null}>
             <Scene />
