@@ -49,19 +49,18 @@ function useInstGeo(url) {
   }, [scene])
 }
 
-// упаковка конуса: цель в объёме конуса + разлёт (откуда слетается) + окно
+// упаковка «шкуры» конуса (плотная поверхность) + разлёт СВЕРХУ (сыплется на место)
 function packCone(count, sMin, sMax, span) {
   const arr = []
   for (let i = 0; i < count; i++) {
     const y = Math.random() * CONE.H
     const maxR = CONE.R * (1 - y / CONE.H)
     const ang = Math.random() * Math.PI * 2
-    const r = Math.sqrt(Math.random()) * maxR
+    const r = maxR * rand(0.7, 1.0)                 // ближе к поверхности → плотная шкура, без сквозных дыр
     const sc = sMin + Math.random() * (sMax - sMin)
-    // низ элемента примерно на своей высоте (плотная набивка)
-    const heap = [Math.cos(ang) * r, y + sc * 0.15, Math.sin(ang) * r]
-    const sa = Math.random() * Math.PI * 2
-    const scatter = [Math.cos(sa) * rand(5, 9), rand(3.5, 7), Math.sin(sa) * rand(5, 9)]
+    const heap = [Math.cos(ang) * r, y, Math.sin(ang) * r]
+    // сыплется СВЕРХУ на своё место (не рой по экрану) → аккуратная укладка
+    const scatter = [heap[0] + rand(-1.4, 1.4), rand(3.2, 6.5), heap[2] + rand(-1.4, 1.4)]
     arr.push({
       heap, scatter, sc,
       rel: (i / count) * span + rand(0, 0.5),
@@ -154,15 +153,15 @@ function Scene() {
     tRef.current += REDUCE ? 0 : Math.min(dt, 0.05)
     const t = REDUCE ? 99 : tRef.current
 
-    // ── КАМЕРА-ДРОН: аэрофото → снижение К ЗЕМЛЕ и наезд → низкий ракурс ──
+    // ── КАМЕРА-ДРОН: аэрофото → снижение и наезд НА КУЧУ (кран за ней) ──
     const p = smooth(Math.min(t / 5.0, 1))
     const sway = REDUCE ? 0 : lerp(0.5, 0.1, p)
     cm.position.set(
-      lerp(6, 1.8, p) + Math.sin(t * 0.55) * sway * 0.5,
-      Math.max(0.55, lerp(16, 0.85, p) + Math.sin(t * 0.9) * sway),   // не ниже 0.55 → без клипа пола
-      lerp(12, 4.6, p) + Math.cos(t * 0.7) * sway * 0.5,
+      lerp(7, 3.0, p) + Math.sin(t * 0.55) * sway * 0.4,
+      Math.max(0.9, lerp(16, 1.6, p) + Math.sin(t * 0.9) * sway),     // не ниже 0.9 → без клипа пола
+      lerp(13, 5.4, p) + Math.cos(t * 0.7) * sway * 0.4,
     )
-    cm.lookAt(0.1, lerp(2.0, 2.6, p), lerp(0, -2.5, p))               // снизу вверх на кучу+кран
+    cm.lookAt(0, lerp(3.0, 1.4, p), lerp(-3.5, -1.5, p))              // куча в центре, здание+кран сзади
 
     if (buildingRef.current && !REDUCE) buildingRef.current.rotation.y = -0.4 + Math.min(t, 25) * 0.003
   })
@@ -185,17 +184,17 @@ function Scene() {
         <meshStandardMaterial color="#4a4034" roughness={1} />
       </mesh>
 
-      {/* ЗДАНИЕ с краном — окружение на земле */}
-      <group ref={buildingRef} position={[0.4, 0, -3.2]} rotation={[0, -0.4, 0]}>
-        <Suspense fallback={null}><Building url="/models/site_crane.glb" target={12} /></Suspense>
+      {/* ЗДАНИЕ с краном — ОКРУЖЕНИЕ СЗАДИ (отодвинуто, чтобы не загораживать кучу) */}
+      <group ref={buildingRef} position={[0, 0, -9.5]} rotation={[0, -0.35, 0]}>
+        <Suspense fallback={null}><Building url="/models/site_crane.glb" target={13} /></Suspense>
       </group>
 
-      {/* ПЛОТНАЯ КУЧА из МНОГИХ ИНСТАНСОВ (слетаются → укладываются в конус) */}
+      {/* ПЛОТНАЯ КУЧА из МНОГИХ МЕЛКИХ ИНСТАНСОВ (сыплются сверху → укладываются) */}
       <group position={[0, 0, 0.2]}>
         <Suspense fallback={null}>
-          <MaterialInstances url="/models/block_sand_rock.glb" count={MOBILE ? 240 : 460} sMin={0.30} sMax={0.52} span={2.6} tRef={tRef} />
-          <MaterialInstances url="/models/pile_of_gravel.glb" count={MOBILE ? 30 : 55} sMin={0.5} sMax={0.85} span={2.8} tRef={tRef} />
-          <MaterialInstances url="/models/stone_gravel.glb" count={MOBILE ? 5 : 8} sMin={0.6} sMax={1.0} span={3.0} tRef={tRef} />
+          <MaterialInstances url="/models/block_sand_rock.glb" count={MOBILE ? 3000 : 8000} sMin={0.020} sMax={0.036} span={2.8} tRef={tRef} />
+          <MaterialInstances url="/models/pile_of_gravel.glb" count={MOBILE ? 500 : 1200} sMin={0.03} sMax={0.06} span={3.0} tRef={tRef} />
+          <MaterialInstances url="/models/stone_gravel.glb" count={MOBILE ? 3 : 5} sMin={0.03} sMax={0.05} span={3.2} tRef={tRef} />
         </Suspense>
       </group>
 
