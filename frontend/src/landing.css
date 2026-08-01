@@ -1,12 +1,12 @@
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Onest:wght@300;400;500;600;700&display=swap');
 
 /* ════════════════════════════════════════════════════════════════════════
-   ЛЕНДИНГ · мир основного сайта (кремовый/лес/охра/камень), поднятый до
-   премиума: light liquid-glass хром + бенто-дашборд (construction-planning
-   референсы) + много калибровочных кубов и гравия (WebGL). Cormorant (дисплей)
-   + Onest (текст/UI) — как на сайте. Всё под .kb-landing. Craft-floor: без
-   gradient-текста, без eyebrow-над-заголовком, бенто-виджеты разного размера
-   (не одинаковая сетка), тени с offset+blur.
+   ЛЕНДИНГ · мир основного сайта (кремовый/лес/охра), поднятый до премиума:
+   • fixed 3D-ОБЛЁТ на всю страницу (песок+гравий+кубы облетают стройплощадку,
+     scroll-scrubbed) — просвечивает сквозь стеклянный контент;
+   • light liquid-glass хром + бенто-дашборд;
+   • прозрачные reveal-полосы между секциями (объекты видно целиком).
+   Cormorant (дисплей) + Onest (текст/UI). Всё под .kb-landing.
    ════════════════════════════════════════════════════════════════════════ */
 
 .kb-landing {
@@ -33,39 +33,43 @@
   -webkit-font-smoothing: antialiased;
 }
 .kb-landing ::selection { background: var(--gold); color: #fff; }
-.kb-landing > section { position: relative; z-index: 1; }
+.kb-landing > section, .kb-landing > .kb-l-foot { position: relative; z-index: 1; }
 
-/* ─── LIGHT LIQUID GLASS (хром на кремовом) ────────────────────────────────── */
-.kb-landing .lg,
-.kb-landing .lg-strong {
+/* ─── FIXED 3D-ОБЛЁТ (на весь лайфтайм страницы) ──────────────────────────── */
+.kb-l-orbit {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  -webkit-mask-image: radial-gradient(130% 100% at 50% 42%, #000 55%, transparent 100%);
+          mask-image: radial-gradient(130% 100% at 50% 42%, #000 55%, transparent 100%);
+}
+.kb-l-orbit canvas { display: block; }
+
+/* ─── LIGHT LIQUID GLASS ───────────────────────────────────────────────────── */
+.kb-landing .lg, .kb-landing .lg-strong {
   position: relative; overflow: hidden; border-radius: 16px;
-  background: rgba(255,255,255,0.5);
-  -webkit-backdrop-filter: blur(12px) saturate(1.3);
-          backdrop-filter: blur(12px) saturate(1.3);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.85), 0 12px 40px rgba(30,61,18,0.09);
+  background: rgba(255,255,255,0.42);
+  -webkit-backdrop-filter: blur(14px) saturate(1.35);
+          backdrop-filter: blur(14px) saturate(1.35);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 14px 44px rgba(30,61,18,0.1);
 }
 .kb-landing .lg-strong {
-  background: rgba(255,255,255,0.62);
-  -webkit-backdrop-filter: blur(26px) saturate(1.35);
-          backdrop-filter: blur(26px) saturate(1.35);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), 0 22px 60px rgba(30,61,18,0.14);
+  background: rgba(255,255,255,0.56);
+  -webkit-backdrop-filter: blur(30px) saturate(1.4);
+          backdrop-filter: blur(30px) saturate(1.4);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.97), 0 24px 66px rgba(30,61,18,0.16);
 }
-.kb-landing .lg::before,
-.kb-landing .lg-strong::before {
+.kb-landing .lg::before, .kb-landing .lg-strong::before {
   content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.2px;
-  background: linear-gradient(180deg,
-    rgba(255,255,255,.95) 0%, rgba(255,255,255,.35) 24%,
-    rgba(30,61,18,0) 52%, rgba(30,61,18,.05) 80%, rgba(30,61,18,.12) 100%);
+  background: linear-gradient(180deg, rgba(255,255,255,.98) 0%, rgba(255,255,255,.4) 24%,
+    rgba(30,61,18,0) 52%, rgba(30,61,18,.05) 80%, rgba(30,61,18,.14) 100%);
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor; mask-composite: exclude;
-  pointer-events: none;
+  -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
 }
 
 /* ─── КНОПКИ ───────────────────────────────────────────────────────────────── */
 .kb-l-mag { display: inline-flex; }
 .kb-l-btn {
   display: inline-flex; align-items: center; gap: 9px;
-  font-family: var(--sans); font-size: 15px; font-weight: 500; letter-spacing: 0;
+  font-family: var(--sans); font-size: 15px; font-weight: 500;
   padding: 12px 22px; border-radius: 999px; border: 1px solid transparent;
   text-decoration: none; cursor: pointer; white-space: nowrap;
   transition: transform .25s var(--ease), background .25s var(--ease),
@@ -77,7 +81,7 @@
 .kb-l-btn--hero:hover { background: var(--green-h); transform: translateY(-1px); box-shadow: 0 16px 42px rgba(30,61,18,.32); }
 .kb-l-btn--hero svg { transition: transform .25s var(--ease); }
 .kb-l-btn--hero:hover svg { transform: translateX(4px); }
-.kb-l-btn--ghost { color: var(--text); border-color: var(--dash); background: rgba(255,255,255,.4); }
+.kb-l-btn--ghost { color: var(--text); border-color: var(--dash); background: rgba(255,255,255,.5); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
 .kb-l-btn--ghost:hover { border-color: var(--green); color: var(--green); }
 .kb-l-link { color: var(--muted); text-decoration: none; font-size: 14.5px; font-weight: 500; transition: color .2s var(--ease); }
 .kb-l-link:hover { color: var(--green); }
@@ -93,11 +97,8 @@
 .kb-l-mark__text { display: flex; flex-direction: column; }
 
 /* ─── НАВИГАЦИЯ ─────────────────────────────────────────────────────────────── */
-.kb-l-nav {
-  position: fixed; inset: 12px 0 auto 0; z-index: 60;
-  display: flex; align-items: center; justify-content: space-between; gap: 18px;
-  padding: 0 clamp(14px, 4vw, 34px);
-}
+.kb-l-nav { position: fixed; inset: 12px 0 auto 0; z-index: 60;
+  display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 clamp(14px, 4vw, 34px); }
 .kb-l-nav__center { display: flex; align-items: center; gap: 2px; padding: 5px; border-radius: 999px; }
 .kb-l-nav__center a { font-size: 14px; font-weight: 500; color: var(--muted); text-decoration: none;
   padding: 8px 16px; border-radius: 999px; transition: color .2s var(--ease), background .2s var(--ease); }
@@ -105,99 +106,84 @@
 .kb-l-nav__right { display: flex; align-items: center; gap: 14px; padding: 6px 6px 6px 14px; border-radius: 999px; }
 
 /* ═══════════════════════════════════ HERO ══════════════════════════════════ */
-/* 3D-сцена основного сайта (гравий+песок+калибровочные кубы) — скоуп CSS сюда */
-.kb-landing .kb-hero3d {
-  position: fixed; inset: 0; z-index: 0; pointer-events: none; will-change: opacity;
-  -webkit-mask-image: radial-gradient(ellipse 82% 78% at 50% 42%, #000 45%, transparent 100%);
-          mask-image: radial-gradient(ellipse 82% 78% at 50% 42%, #000 45%, transparent 100%);
-}
-.kb-landing .kb-hero3d-canvas { position: absolute; inset: 0; animation: kbHeroFadeIn .5s ease both; }
-.kb-landing .hero-scrim {
-  position: absolute; inset: 0; pointer-events: none; z-index: 1;
-  background: radial-gradient(ellipse 56% 44% at 50% 44%, var(--bg) 26%,
-    color-mix(in srgb, var(--bg) 55%, transparent) 56%, color-mix(in srgb, var(--bg) 0%, transparent) 80%);
-  backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px);
-  -webkit-mask-image: radial-gradient(ellipse 60% 48% at 50% 44%, #000 44%, transparent 80%);
-          mask-image: radial-gradient(ellipse 60% 48% at 50% 44%, #000 44%, transparent 80%);
-}
-.kb-landing .hero-title-glow {
-  position: absolute; left: 50%; top: 44%; transform: translate(-50%,-50%);
-  width: min(820px,90%); height: 340px; pointer-events: none; z-index: 2;
-  background: radial-gradient(ellipse 50% 50% at 50% 50%,
-    color-mix(in srgb, var(--bg) 90%, transparent) 0%, color-mix(in srgb, var(--bg) 62%, transparent) 44%,
-    color-mix(in srgb, var(--bg) 0%, transparent) 78%);
-}
-
 .kb-l-hero {
   position: relative; min-height: 100svh; overflow: hidden;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  text-align: center; padding: 130px 20px 90px;
+  text-align: center; padding: 130px 20px 90px; background: transparent;
 }
+/* скрим для читаемости заголовка поверх движущейся сцены */
+.kb-l-hero__scrim { position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  background:
+    radial-gradient(ellipse 58% 50% at 50% 46%, rgba(244,240,232,.88), rgba(244,240,232,.35) 52%, transparent 76%),
+    linear-gradient(180deg, rgba(244,240,232,.5) 0%, transparent 20%, transparent 62%, var(--bg) 100%); }
 .kb-l-hero__inner { position: relative; z-index: 3; max-width: 900px; }
-.kb-l-badge {
-  display: inline-flex; align-items: center; gap: 8px; padding: 7px 15px 7px 8px; margin-bottom: 26px;
-  border-radius: 999px; font-size: 12px; color: var(--muted);
-}
+.kb-l-badge { display: inline-flex; align-items: center; gap: 8px; padding: 7px 15px 7px 8px; margin-bottom: 26px;
+  border-radius: 999px; font-size: 12px; color: var(--muted); }
 .kb-l-badge__pill { background: var(--green); color: #F4F0E8; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; letter-spacing: .02em; }
 .kb-l-hero__title { font-family: var(--serif); font-weight: 700; font-size: clamp(44px, 8vw, 96px); line-height: 1.02; letter-spacing: -.02em; color: var(--text);
-  text-shadow: 0 2px 14px var(--bg), 0 0 28px var(--bg), 0 0 46px var(--bg); }
+  text-shadow: 0 2px 16px var(--bg), 0 0 30px var(--bg), 0 0 50px var(--bg); }
 .kb-l-hero__em { display: block; font-style: italic; font-weight: 600; color: var(--gold-deep);
-  text-shadow: 0 2px 12px var(--bg), 0 0 22px var(--bg), 0 0 38px var(--bg); }
-.kb-l-hero__sub { margin: 24px auto 0; max-width: 56ch; font-size: clamp(15px, 1.6vw, 18px); line-height: 1.64; color: var(--muted);
-  text-shadow: 0 1px 10px var(--bg); }
+  text-shadow: 0 2px 14px var(--bg), 0 0 24px var(--bg), 0 0 40px var(--bg); }
+.kb-l-hero__sub { margin: 24px auto 0; max-width: 56ch; font-size: clamp(15px, 1.6vw, 18px); line-height: 1.64; color: var(--muted); text-shadow: 0 1px 12px var(--bg), 0 0 20px var(--bg); }
 .kb-l-hero__cta { margin-top: 34px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; align-items: center; }
 
-/* плавающий glass-чип «замер» — инструментальная деталь */
+/* плавающие glass-чипы «замер» */
 .kb-l-chip { position: absolute; z-index: 3; display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 14px; font-size: 13px; color: var(--text); }
 .kb-l-chip b { font-family: var(--serif); font-size: 18px; font-weight: 700; color: var(--green); }
 .kb-l-chip--l { left: clamp(16px, 6vw, 90px); top: 30%; }
 .kb-l-chip--r { right: clamp(16px, 6vw, 90px); bottom: 26%; }
 .kb-l-chip__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 3px rgba(184,122,24,.18); }
 
+.kb-l-scrollcue { position: absolute; z-index: 3; left: 50%; bottom: 26px; transform: translateX(-50%);
+  font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 9px; }
+.kb-l-scrollcue span:last-child { width: 1.5px; height: 34px; background: linear-gradient(var(--gold), transparent); }
+
+/* ═══════════════════════ ПРОЗРАЧНАЯ REVEAL-ПОЛОСА (облёт виден целиком) ════ */
+.kb-l-band { position: relative; z-index: 1; min-height: 58svh; display: grid; place-items: center; text-align: center; padding: 40px 20px; background: transparent; }
+.kb-l-band__cap { padding: 14px 22px; border-radius: 999px; font-family: var(--serif); font-style: italic; font-size: clamp(20px, 3vw, 34px); color: var(--text); text-shadow: 0 2px 14px var(--bg); }
+
 /* ═══════════════════════════ ОБЩЕЕ ДЛЯ СЕКЦИЙ ═════════════════════════════ */
-.kb-l-sec { max-width: var(--maxw); margin: 0 auto; padding: clamp(64px, 9vw, 128px) clamp(16px, 4vw, 40px); }
+/* полупрозрачный кремовый фон → орбита слегка призрачно просвечивает */
+.kb-l-sec { max-width: none; margin: 0; padding: clamp(64px, 9vw, 128px) clamp(16px, 4vw, 40px);
+  background: rgba(244,240,232,0.93); }
+.kb-l-sec__in { max-width: var(--maxw); margin: 0 auto; }
 .kb-l-sec__head { max-width: 720px; margin-bottom: clamp(36px, 5vw, 60px); }
 .kb-l-h2 { font-family: var(--serif); font-weight: 700; letter-spacing: -.02em; font-size: clamp(32px, 4.8vw, 60px); line-height: 1.04; color: var(--text); }
 .kb-l-h2 em { font-style: italic; color: var(--gold-deep); }
 .kb-l-lead { margin-top: 15px; max-width: 58ch; font-size: clamp(15px, 1.5vw, 18px); line-height: 1.62; color: var(--muted); }
 
-/* ─── БЕНТО-ДАШБОРД (construction planning референс) ───────────────────────── */
-.kb-l-dash { background: var(--bg); }
+/* ─── БЕНТО-ДАШБОРД ───────────────────────────────────────────────────────── */
 .kb-l-bento { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: minmax(128px, auto); gap: 14px; }
 .kb-l-w { padding: 22px 24px; display: flex; flex-direction: column; }
 .kb-l-w__label { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .kb-l-w__num { font-family: var(--serif); font-weight: 700; letter-spacing: -.02em; color: var(--green); line-height: 1; margin-top: auto; font-size: clamp(34px, 4vw, 52px); }
 .kb-l-w__num .kb-l-unit { font-size: 0.42em; color: var(--muted); margin-left: 6px; font-family: var(--sans); font-weight: 500; }
 .kb-l-w__note { margin-top: 8px; font-size: 12.5px; color: var(--muted); }
-/* размеры бенто */
 .kb-l-w--recon { grid-column: span 2; grid-row: span 2; padding: 0; overflow: hidden; position: relative; min-height: 280px; }
 .kb-l-w--recon .kb-l-recon-img { position: absolute; inset: 0; background: var(--bg-2) center/cover no-repeat; }
-.kb-l-w--recon .kb-l-recon-cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 20px 24px;
-  background: linear-gradient(0deg, rgba(20,22,14,.72), transparent); color: #F4F0E8; }
+.kb-l-w--recon .kb-l-recon-cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 20px 24px; background: linear-gradient(0deg, rgba(20,22,14,.72), transparent); color: #F4F0E8; }
 .kb-l-w--recon .kb-l-recon-cap h3 { font-family: var(--serif); font-size: 26px; font-weight: 600; }
 .kb-l-w--recon .kb-l-recon-cap p { font-size: 13px; opacity: .85; margin-top: 4px; }
 .kb-l-w--wide { grid-column: span 2; }
-.kb-l-w--tall { grid-row: span 2; }
-/* мини-таймлайн внутри виджета */
 .kb-l-mini { display: flex; align-items: center; gap: 6px; margin-top: auto; }
 .kb-l-mini__step { flex: 1; text-align: center; }
 .kb-l-mini__bar { height: 6px; border-radius: 3px; background: var(--dash); position: relative; overflow: hidden; }
 .kb-l-mini__bar i { position: absolute; inset: 0; background: var(--green); transform-origin: left; }
 .kb-l-mini__t { font-size: 11px; color: var(--muted); margin-top: 7px; display: block; }
-/* чипы форматов */
 .kb-l-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
-.kb-l-chips span { font-family: var(--sans); font-size: 12.5px; font-weight: 500; color: var(--green);
-  background: rgba(30,61,18,.07); border: 1px solid rgba(30,61,18,.12); padding: 5px 12px; border-radius: 999px; }
+.kb-l-chips span { font-size: 12.5px; font-weight: 500; color: var(--green); background: rgba(30,61,18,.07); border: 1px solid rgba(30,61,18,.12); padding: 5px 12px; border-radius: 999px; }
 
-/* ─── ПОЛЕ КУБОВ (WebGL showcase) ─────────────────────────────────────────── */
-.kb-l-showcase { background: var(--bg-2); max-width: none; overflow: hidden; }
-.kb-l-showcase__grid { max-width: var(--maxw); margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: clamp(24px, 4vw, 56px); align-items: center; min-height: 60svh; }
-.kb-l-cubes { position: relative; width: 100%; min-height: 460px; height: 60svh; }
-.kb-l-cubes canvas { display: block; }
-.kb-l-showcase__copy { max-width: 40ch; }
+/* ─── СЕКЦИЯ «ДВИЖОК» (стекло, орбита сквозь) ─────────────────────────────── */
+.kb-l-engine { background: rgba(244,240,232,0.62); }
+.kb-l-engine__grid { max-width: var(--maxw); margin: 0 auto; display: grid; grid-template-columns: 1.1fr 1fr; gap: clamp(24px, 4vw, 56px); align-items: center; }
+.kb-l-engine__panel { padding: 32px 30px; }
+.kb-l-engine__copy { max-width: 42ch; }
+.kb-l-engine__list { list-style: none; margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
+.kb-l-engine__list li { display: flex; gap: 12px; align-items: flex-start; font-size: 14.5px; color: var(--muted); line-height: 1.5; }
+.kb-l-engine__list b { color: var(--text); font-weight: 600; }
+.kb-l-engine__dot { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; background: var(--gold); }
 
 /* ─── ПРОЦЕСС ──────────────────────────────────────────────────────────────── */
-.kb-l-proc { background: var(--bg); }
 .kb-l-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .kb-l-step { padding: 26px 24px 28px; }
 .kb-l-step__k { font-family: var(--serif); font-style: italic; font-size: 17px; color: var(--gold-deep); }
@@ -205,23 +191,21 @@
 .kb-l-step__t { font-family: var(--serif); font-weight: 600; font-size: 23px; color: var(--text); margin-top: 16px; }
 .kb-l-step__d { margin-top: 9px; font-size: 14.5px; line-height: 1.56; color: var(--muted); }
 
-/* ─── КИНО-МОМЕНТ (генерируемый ассет) ────────────────────────────────────── */
-.kb-l-cine { position: relative; min-height: 84svh; overflow: hidden; display: grid; place-items: center; text-align: center; }
+/* ─── КИНО-МОМЕНТ ──────────────────────────────────────────────────────────── */
+.kb-l-cine { position: relative; min-height: 84svh; overflow: hidden; display: grid; place-items: center; text-align: center; background: var(--bg); }
 .kb-l-cine__img { position: absolute; inset: -12%; z-index: 0; background: url('/landing/build-still.webp') center/cover no-repeat; will-change: transform; }
 .kb-l-cine__veil { position: absolute; inset: 0; z-index: 1;
   background: radial-gradient(90% 82% at 50% 50%, rgba(244,240,232,.35), rgba(244,240,232,.72) 72%),
     linear-gradient(180deg, var(--bg) 0%, transparent 16%, transparent 84%, var(--bg) 100%); }
 .kb-l-cine__copy { position: relative; z-index: 2; max-width: 840px; padding: 0 20px; }
-.kb-l-cine__title { font-family: var(--serif); font-weight: 700; font-size: clamp(34px, 5.5vw, 72px); line-height: 1.03; letter-spacing: -.02em; color: var(--text);
-  text-shadow: 0 2px 18px var(--bg); }
+.kb-l-cine__title { font-family: var(--serif); font-weight: 700; font-size: clamp(34px, 5.5vw, 72px); line-height: 1.03; letter-spacing: -.02em; color: var(--text); text-shadow: 0 2px 18px var(--bg); }
 .kb-l-cine__title em { font-style: italic; color: var(--gold-deep); }
 .kb-l-cine__sub { margin: 20px auto 0; max-width: 48ch; font-size: clamp(15px, 1.7vw, 19px); line-height: 1.6; color: var(--muted); text-shadow: 0 1px 12px var(--bg); }
 
 /* ─── ФИНАЛ ────────────────────────────────────────────────────────────────── */
-.kb-l-final { padding: clamp(72px, 10vw, 140px) clamp(16px, 4vw, 40px); display: grid; place-items: center; background: var(--bg); }
+.kb-l-final { padding: clamp(72px, 10vw, 140px) clamp(16px, 4vw, 40px); display: grid; place-items: center; background: rgba(244,240,232,0.9); }
 .kb-l-final__panel { max-width: 720px; width: 100%; padding: clamp(40px, 6vw, 66px); text-align: center; border-radius: 24px;
-  background: linear-gradient(160deg, #22421a, #16290f); color: #F4F0E8; position: relative; overflow: hidden;
-  box-shadow: 0 30px 80px rgba(30,61,18,.3); }
+  background: linear-gradient(160deg, #22421a, #16290f); color: #F4F0E8; position: relative; overflow: hidden; box-shadow: 0 30px 80px rgba(30,61,18,.3); }
 .kb-l-final__panel::after { content: ''; position: absolute; right: -80px; bottom: -80px; width: 360px; height: 360px; opacity: .1; pointer-events: none;
   background: no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='520' height='520' viewBox='0 0 520 520'%3E%3Cg fill='none' stroke='%23d9a83a' stroke-width='1.4'%3E%3Cpath d='M260 165c58 0 100 38 100 92s-46 84-100 84-100-34-100-84 42-92 100-92z'/%3E%3Cpath d='M262 125c88 0 152 56 152 138s-70 128-154 128-150-50-150-130 64-136 152-136z'/%3E%3Cpath d='M258 82c118 0 205 74 205 182s-92 174-206 174S52 356 52 250 140 82 258 82z'/%3E%3C/g%3E%3C/svg%3E"); }
 .kb-l-final__title { font-family: var(--serif); font-weight: 700; font-size: clamp(34px, 5vw, 64px); line-height: 1.03; letter-spacing: -.02em; position: relative; z-index: 1; }
@@ -235,11 +219,9 @@
 
 /* ─── ПОДВАЛ ───────────────────────────────────────────────────────────────── */
 .kb-l-foot { background: var(--bg-2); border-top: 1px solid var(--border); padding: 44px clamp(16px, 5vw, 44px) 28px; }
-.kb-l-foot__top { max-width: var(--maxw); margin: 0 auto; display: flex; align-items: center; justify-content: space-between;
-  gap: 22px; flex-wrap: wrap; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+.kb-l-foot__top { max-width: var(--maxw); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 22px; flex-wrap: wrap; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
 .kb-l-foot__links { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
-.kb-l-foot__links a, .kb-l-foot__links button { font-size: 14px; color: var(--muted); text-decoration: none;
-  background: none; border: none; cursor: pointer; padding: 0; font-family: var(--sans); transition: color .2s var(--ease); }
+.kb-l-foot__links a, .kb-l-foot__links button { font-size: 14px; color: var(--muted); text-decoration: none; background: none; border: none; cursor: pointer; padding: 0; font-family: var(--sans); transition: color .2s var(--ease); }
 .kb-l-foot__links a:hover, .kb-l-foot__links button:hover { color: var(--gold-deep); }
 .kb-l-foot__bottom { max-width: var(--maxw); margin: 20px auto 0; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--stone); }
 
@@ -248,16 +230,11 @@
   .kb-l-nav__center { display: none; }
   .kb-l-bento { grid-template-columns: repeat(2, 1fr); }
   .kb-l-w--recon { grid-column: span 2; }
-  .kb-l-showcase__grid { grid-template-columns: 1fr; }
+  .kb-l-engine__grid { grid-template-columns: 1fr; }
   .kb-l-steps { grid-template-columns: 1fr; }
   .kb-l-chip--l, .kb-l-chip--r { display: none; }
 }
 @media (max-width: 560px) {
   .kb-l-bento { grid-template-columns: 1fr; }
   .kb-l-hero { padding-top: 108px; }
-}
-
-/* ═══════════════════════════════ REDUCED MOTION ═══════════════════════════ */
-@media (prefers-reduced-motion: reduce) {
-  .kb-landing .kb-hero3d-canvas { animation: none; }
 }
