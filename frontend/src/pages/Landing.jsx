@@ -151,22 +151,27 @@ function Hero({ user }) {
       <Suspense fallback={null}><Flow /></Suspense>
       <div className="kb-l-hero__scrim" aria-hidden="true" />
 
-      <motion.div className="kb-l-chip kb-l-chip--l lg"
+      <motion.div className="kb-l-chip kb-l-chip--l"
         initial={reduce ? false : { opacity: 0, y: 14 }} animate={reduce ? {} : { opacity: 1, y: 0 }}
         transition={{ duration: 0.7, ease: EASE, delay: 1.2 }}>
-        <span className="kb-l-chip__dot" /> Объём&nbsp;<b>1 428&nbsp;м³</b>
+        Объём&nbsp;<b>~ 1 428 м³</b>
       </motion.div>
-      <motion.div className="kb-l-chip kb-l-chip--r lg"
+      <motion.div className="kb-l-chip kb-l-chip--m"
         initial={reduce ? false : { opacity: 0, y: 14 }} animate={reduce ? {} : { opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, ease: EASE, delay: 1.35 }}>
-        <span className="kb-l-chip__dot" /> Точность&nbsp;<b>±1.8%</b>
+        transition={{ duration: 0.7, ease: EASE, delay: 1.3 }}>
+        Масса&nbsp;<b>~ 2 271 т</b>
+      </motion.div>
+      <motion.div className="kb-l-chip kb-l-chip--r kb-l-chip--sm"
+        initial={reduce ? false : { opacity: 0, y: 14 }} animate={reduce ? {} : { opacity: 1, y: 0 }}
+        transition={{ duration: 0.7, ease: EASE, delay: 1.4 }}>
+        Точность&nbsp;<b>±1.8%</b>
       </motion.div>
 
       <motion.div className="kb-l-hero__inner" style={{ y, opacity }}>
         <motion.div className="kb-l-badge lg"
           initial={reduce ? false : { opacity: 0, y: 12 }} animate={reduce ? {} : { opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.05 }}>
-          <span className="kb-l-badge__pill">НОВОЕ</span> Фотограмметрия для стройки · Карелия
+          <span className="kb-l-badge__pill">НОВОЕ</span> Динамическая сборка насыпи · Карелия
         </motion.div>
         <h1 className="kb-l-hero__title">
           <BlurText text="Объём и масса" />

@@ -1,212 +1,250 @@
 import { Suspense, useMemo, useRef, useState, useEffect } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
-import { Environment, Lightformer, ContactShadows, Html, useProgress, AdaptiveDpr } from '@react-three/drei'
+import { Canvas, useFrame, useLoader } from '@react-three/fiber'
+import { Environment, Lightformer, ContactShadows, useProgress, AdaptiveDpr } from '@react-three/drei'
 import * as THREE from 'three'
 import { useModel } from './ktx2gltf'
 
 /* ════════════════════════════════════════════════════════════════════════
-   HERO ЛЕНДИНГА · SCROLL-DRIVEN. Из детальных моделей /3dmodels (meshopt+KTX2,
-   полигоны целы): по мере прокрутки ЗДАНИЕ со стройплощадки/краном (site_crane)
-   ПРИБЛИЖАЕТСЯ, а на его земле СОБИРАЕТСЯ КУЧА из гравия (pile_of_gravel) +
-   песка (block_sand_rock) + камня (stone_gravel); рядом с кучей встаёт
-   ШАХМАТНЫЙ калибровочный куб (процедурный — служебный референс масштаба).
-   Наверху прорисовывается габаритный бокс + подпись м³/т (замер).
-   Всё привязано к scrollY (scroll-scrub), как на hero основного сайта.
-   Свет: процедурный studio-Environment + ContactShadows, тени вкл., dpr[1,2],
-   reduced-motion → статичный собранный кадр.
+   HERO ЛЕНДИНГА · ВИХРЬ СБОРКИ НАСЫПИ (top-down изометрия, самоиграющий).
+   Тысячи летящих кусочков гравия+песка (instanced, текстуры реального гравия/
+   песка) закручиваются ВИХРЕМ и коилятся в РАСТУЩУЮ НАСЫПЬ (height-field, угол
+   откоса). Рядом — процедурный шахматный калибровочный куб. Сзади — детальная
+   стройплощадка с краном (site_crane из /3dmodels, meshopt+KTX2). Поверх — AR-
+   маркеры (Объём/Масса/Точность/НОВОЕ, drei Html). Пыль в свете. Перф: 2 draw
+   call на материал, CPU-физика по типизированным массивам, frameloop-гейт,
+   dpr[1,2], reduced-motion → статичная собранная насыпь.
    ════════════════════════════════════════════════════════════════════════ */
 
 const REDUCE = typeof window !== 'undefined'
   && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+const MOBILE = typeof window !== 'undefined' && window.innerWidth < 700
 
-const M = {
-  stone: '/models/stone_gravel.glb',
-  gravel: '/models/pile_of_gravel.glb',
-  sand: '/models/block_sand_rock.glb',
-  site: '/models/site_crane.glb',
+const FALL = 0, REST = 1
+const rand = (a, b) => a + Math.random() * (b - a)
+const smooth = (t) => t * t * (3 - 2 * t)
+
+// ─── height-field насыпи ────────────────────────────────────────────────────
+const PILE = { min: -2.3, max: 2.3, cap: 2.1 }
+function makeField() {
+  const N = 40
+  const cw = (PILE.max - PILE.min) / N
+  const data = new Float32Array(N * N)
+  const maxStep = 0.72 * cw
+  const ci = (v) => Math.min(N - 1, Math.max(0, Math.floor((v - PILE.min) / cw)))
+  const relax = (i, j) => {
+    const k = i * N + j; let mk = -1, mv = data[k]
+    if (i > 0 && data[k - N] < mv) { mv = data[k - N]; mk = k - N }
+    if (i < N - 1 && data[k + N] < mv) { mv = data[k + N]; mk = k + N }
+    if (j > 0 && data[k - 1] < mv) { mv = data[k - 1]; mk = k - 1 }
+    if (j < N - 1 && data[k + 1] < mv) { mv = data[k + 1]; mk = k + 1 }
+    if (mk >= 0 && data[k] - mv > maxStep) { const m = (data[k] - mv - maxStep) * 0.5; data[k] -= m; data[mk] += m }
+  }
+  return {
+    heightAt: (x, z) => (x < PILE.min || x > PILE.max || z < PILE.min || z > PILE.max) ? 0 : data[ci(x) * N + ci(z)],
+    deposit: (x, z) => { const k = ci(x) * N + ci(z); return { k, surf: data[k] } },
+    raise: (k, h) => { data[k] = Math.min(PILE.cap, data[k] + h); relax(Math.floor(k / N), k % N) },
+    lower: (k, h) => { data[k] = Math.max(0, data[k] - h) },
+  }
 }
 
-const seg = (t, a, b) => Math.min(1, Math.max(0, (t - a) / (b - a)))
-const smooth = (t) => t * t * t * (t * (t * 6 - 15) + 10)
-const lerp = THREE.MathUtils.lerp
-
-// процедурная шахматка 4×4 (калибровочный куб)
-function checkerTexture(cells = 4, px = 512) {
-  const cv = document.createElement('canvas')
-  cv.width = cv.height = px
-  const ctx = cv.getContext('2d')
-  const s = px / cells
-  for (let y = 0; y < cells; y++)
-    for (let x = 0; x < cells; x++) {
-      ctx.fillStyle = (x + y) % 2 ? '#161616' : '#f2ede1'
-      ctx.fillRect(x * s, y * s, s, s)
+// ─── система вихревых частиц ────────────────────────────────────────────────
+function makeVortex(count, addH, growSpan) {
+  const s = {
+    count, addH,
+    x: new Float32Array(count), y: new Float32Array(count), z: new Float32Array(count),
+    th: new Float32Array(count), r: new Float32Array(count),
+    w: new Float32Array(count), vin: new Float32Array(count), vfall: new Float32Array(count),
+    phase: new Uint8Array(count), rel: new Float32Array(count), restUntil: new Float32Array(count),
+    cell: new Int32Array(count), scale: new Float32Array(count), ra: new Float32Array(count), rspd: new Float32Array(count),
+  }
+  for (let i = 0; i < count; i++) reset(s, i, (i / count) * growSpan)
+  return s
+}
+function reset(s, i, rel) {
+  s.th[i] = Math.random() * Math.PI * 2
+  s.r[i] = rand(4.5, 8)
+  s.y[i] = rand(3.6, 6)
+  s.w[i] = rand(3.4, 4.6)               // угловая скорость (когерентный вихрь)
+  s.vin[i] = rand(1.6, 2.4)             // сжатие радиуса
+  s.vfall[i] = rand(1.7, 2.6)           // падение
+  s.phase[i] = FALL
+  s.rel[i] = rel
+  s.scale[i] = rand(0.7, 1.25)
+  s.ra[i] = Math.random() * Math.PI
+  s.rspd[i] = rand(0.4, 1.4)
+  s.x[i] = Math.cos(s.th[i]) * s.r[i]
+  s.z[i] = Math.sin(s.th[i]) * s.r[i]
+}
+function stepVortex(s, mesh, dummy, dq, dt, T, field, restDur) {
+  for (let i = 0; i < s.count; i++) {
+    let ph = s.phase[i]
+    if (ph === FALL) {
+      if (T < s.rel[i]) {                // ещё не выпущена: висит на верхнем кольце
+        s.x[i] = Math.cos(s.th[i]) * s.r[i]; s.z[i] = Math.sin(s.th[i]) * s.r[i]
+      } else {
+        s.th[i] += s.w[i] * dt
+        s.r[i] = Math.max(0.3, s.r[i] - s.vin[i] * dt)
+        s.y[i] -= s.vfall[i] * dt
+        s.x[i] = Math.cos(s.th[i]) * s.r[i]
+        s.z[i] = Math.sin(s.th[i]) * s.r[i]
+        s.ra[i] += s.rspd[i] * dt
+        const surf = field.heightAt(s.x[i], s.z[i])
+        if (s.y[i] <= surf) {
+          const d = field.deposit(s.x[i], s.z[i])
+          s.y[i] = d.surf; s.cell[i] = d.k; field.raise(d.k, s.addH)
+          ph = REST; s.restUntil[i] = T + restDur + rand(-1.5, 1.5)
+        }
+      }
+    } else if (ph === REST) {
+      if (T >= s.restUntil[i]) { field.lower(s.cell[i], s.addH); reset(s, i, T + rand(0, 0.6)); ph = FALL }
     }
-  const t = new THREE.CanvasTexture(cv)
-  t.colorSpace = THREE.SRGBColorSpace
-  t.anisotropy = 4
-  return t
+    s.phase[i] = ph
+    dummy.position.set(s.x[i], s.y[i], s.z[i])
+    dummy.rotation.set(s.ra[i] * 0.7, s.ra[i], s.ra[i] * 0.4)
+    dummy.scale.setScalar(s.scale[i])
+    dummy.updateMatrix()
+    mesh.setMatrixAt(i, dummy.matrix)
+  }
+  mesh.instanceMatrix.needsUpdate = true
 }
 
-// нормализованная детальная модель: центр по XZ, низ на y=0, масштаб к target
-function Model({ url, target }) {
-  const { scene } = useModel(url)
-  return useMemo(() => {
-    const s = scene.clone(true)
-    const box = new THREE.Box3().setFromObject(s)
-    const size = new THREE.Vector3(); box.getSize(size)
-    const center = new THREE.Vector3(); box.getCenter(center)
-    const scl = target / (Math.max(size.x, size.y, size.z) || 1)
-    s.scale.setScalar(scl)
-    s.position.set(-center.x * scl, -box.min.y * scl, -center.z * scl)
-    s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false } })
-    return <primitive object={s} />
-  }, [scene, target])
-}
+function Vortex() {
+  const [gravelMap, sandMap] = useLoader(THREE.TextureLoader, ['/textures/gravel.webp', '/textures/sand.webp'])
+  useMemo(() => { [gravelMap, sandMap].forEach((t) => { t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 2); t.anisotropy = 4 }) }, [gravelMap, sandMap])
 
-function MeasureBox({ w, h, d, appearRef }) {
-  const grp = useRef()
-  const tagRef = useRef()
-  const box = useMemo(() => new THREE.BoxGeometry(w, h, d), [w, h, d])
-  const ticks = useMemo(() => new THREE.BoxGeometry(0.02, 0.18, 0.02), [])
-  useFrame(() => {
-    if (!grp.current) return
-    const s = smooth(appearRef.current)
-    grp.current.scale.set(1, Math.max(0.001, s), 1)
-    grp.current.visible = s > 0.02
-    grp.current.traverse((o) => { if (o.material) o.material.opacity = s })
-    // drei Html не скрывается с родителем — гасим DOM-подпись вручную
-    if (tagRef.current) { tagRef.current.style.opacity = String(s); tagRef.current.style.visibility = s > 0.06 ? 'visible' : 'hidden' }
+  const GN = MOBILE ? 800 : 1600
+  const SN = MOBILE ? 1100 : 2200
+  const gGeo = useMemo(() => new THREE.DodecahedronGeometry(0.085, 0), [])
+  const sGeo = useMemo(() => new THREE.IcosahedronGeometry(0.05, 0), [])
+  const gMat = useMemo(() => new THREE.MeshStandardMaterial({ map: gravelMap, roughness: 0.85, metalness: 0.04 }), [gravelMap])
+  const sMat = useMemo(() => new THREE.MeshStandardMaterial({ map: sandMap, roughness: 0.95, metalness: 0.02 }), [sandMap])
+
+  const field = useMemo(() => makeField(), [])
+  const gravel = useMemo(() => makeVortex(GN, 0.028, REDUCE ? 0 : 3), [])
+  const sand = useMemo(() => makeVortex(SN, 0.012, REDUCE ? 0 : 3.5), [])
+  const gRef = useRef(); const sRef = useRef()
+  const dummy = useMemo(() => new THREE.Object3D(), [])
+  const dq = useMemo(() => new THREE.Quaternion(), [])
+  const acc = useRef(0)
+
+  // reduced-motion: сразу «досыпаем» кучу оффлайн-прогоном
+  useEffect(() => {
+    if (!REDUCE) return
+    for (let s = 0; s < 240; s++) {
+      if (gRef.current) stepVortex(gravel, gRef.current, dummy, dq, 0.05, 999, field, 1e9)
+      if (sRef.current) stepVortex(sand, sRef.current, dummy, dq, 0.05, 999, field, 1e9)
+    }
+  }, [])
+
+  useFrame((_, dt) => {
+    if (REDUCE) return
+    acc.current += Math.min(dt, 0.05)
+    const T = acc.current
+    if (gRef.current) stepVortex(gravel, gRef.current, dummy, dq, Math.min(dt, 0.05), T, field, 8)
+    if (sRef.current) stepVortex(sand, sRef.current, dummy, dq, Math.min(dt, 0.05), T, field, 8)
   })
+
   return (
-    <group ref={grp} position={[0, 0, 0]}>
-      <lineSegments position={[0, h / 2, 0]}>
-        <edgesGeometry args={[box]} />
-        <lineBasicMaterial color="#c98a24" transparent />
-      </lineSegments>
-      {Array.from({ length: 7 }).map((_, i) => (
-        <lineSegments key={i} position={[-w / 2 + (w * i) / 6, 0.09, d / 2]}>
-          <edgesGeometry args={[ticks]} />
-          <lineBasicMaterial color="#9A6410" transparent />
-        </lineSegments>
-      ))}
-      <Html position={[0, h + 0.3, 0]} center distanceFactor={11} zIndexRange={[3, 0]}>
-        <div ref={tagRef} className="kb-l3d-tag" style={{ visibility: 'hidden' }}>V ≈ 1&nbsp;428&nbsp;м³ · 2&nbsp;271&nbsp;т</div>
-      </Html>
-    </group>
+    <>
+      {/* тени частиц выключены (их тысячи) — контакт даёт ContactShadows, перф ↑ */}
+      <instancedMesh ref={gRef} args={[gGeo, gMat, GN]} frustumCulled={false} />
+      <instancedMesh ref={sRef} args={[sGeo, sMat, SN]} frustumCulled={false} />
+    </>
   )
 }
 
-// шахматный калибровочный куб рядом с кучей
-function CalibCube({ dropRef }) {
+// пыль, ловящая свет
+function Dust() {
   const ref = useRef()
-  const map = useMemo(() => checkerTexture(4), [])
+  const { pos, N } = useMemo(() => {
+    const N = MOBILE ? 60 : 130
+    const pos = new Float32Array(N * 3)
+    for (let i = 0; i < N; i++) { pos[i * 3] = rand(-3, 3); pos[i * 3 + 1] = rand(0.2, 4); pos[i * 3 + 2] = rand(-3, 3) }
+    return { pos, N }
+  }, [])
   useFrame((_, dt) => {
-    if (!ref.current) return
-    const p = dropRef.current
-    const s = smooth(seg(p, 0, 1))
-    const size = 1.15
-    ref.current.visible = s > 0.02
-    // падает сверху на землю рядом с кучей + лёгкий доворот
-    ref.current.position.set(2.9, size / 2 + (1 - s) * 4.2, 2.7)
-    ref.current.scale.setScalar(size * (0.4 + 0.6 * s))
-    if (!REDUCE && s > 0.98) ref.current.rotation.y += dt * 0.25
-    else ref.current.rotation.set(0, s * 0.4, 0)
+    if (!ref.current || REDUCE) return
+    const a = ref.current.geometry.attributes.position.array
+    for (let i = 0; i < N; i++) { a[i * 3 + 1] += dt * 0.25; if (a[i * 3 + 1] > 4.2) a[i * 3 + 1] = 0.2 }
+    ref.current.geometry.attributes.position.needsUpdate = true
   })
   return (
-    <mesh ref={ref} castShadow receiveShadow visible={false}>
-      <boxGeometry args={[1, 1, 1]} />
+    <points ref={ref}>
+      <bufferGeometry><bufferAttribute attach="attributes-position" count={N} array={pos} itemSize={3} /></bufferGeometry>
+      <pointsMaterial size={0.03} color="#ffe6b0" transparent opacity={0.5} depthWrite={false} sizeAttenuation />
+    </points>
+  )
+}
+
+function CalibCube() {
+  const map = useMemo(() => {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 512
+    const ctx = cv.getContext('2d'); const s = 128
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { ctx.fillStyle = (x + y) % 2 ? '#161616' : '#f2ede1'; ctx.fillRect(x * s, y * s, s, s) }
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t
+  }, [])
+  const ref = useRef()
+  useFrame((_, dt) => { if (ref.current && !REDUCE) ref.current.rotation.y += dt * 0.2 })
+  return (
+    <mesh ref={ref} position={[2.7, 0.45, 1.4]} castShadow receiveShadow>
+      <boxGeometry args={[0.9, 0.9, 0.9]} />
       <meshStandardMaterial map={map} roughness={0.55} metalness={0.05} />
     </mesh>
   )
 }
 
-function Scene() {
-  const gravel = useRef(); const sand = useRef(); const stone = useRef()
-  const building = useRef()
-  const boxAppear = useRef(0)
-  const cubeDrop = useRef(0)
+function Backdrop() {
+  const { scene } = useModel('/models/site_crane.glb')
+  const obj = useMemo(() => {
+    const s = scene.clone(true)
+    const box = new THREE.Box3().setFromObject(s); const size = new THREE.Vector3(); box.getSize(size)
+    const center = new THREE.Vector3(); box.getCenter(center)
+    const scl = 9 / (Math.max(size.x, size.y, size.z) || 1)
+    s.scale.setScalar(scl); s.position.set(-center.x * scl - 3.5, -box.min.y * scl, -center.z * scl - 5)
+    s.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false } })
+    return s
+  }, [scene])
+  return <primitive object={obj} />
+}
 
-  // задаём scale+pos кучи по scroll-прогрессу (сборка снизу вверх).
-  // размер задаёт target модели → group растёт 0→1 (без двойного масштаба)
-  const grow = (ref, p, a, b, pos) => {
-    if (!ref.current) return
-    const s = smooth(seg(p, a, b))
-    ref.current.visible = s > 0.02
-    ref.current.position.set(pos[0], pos[1] + (1 - s) * -1.2, pos[2])
-    ref.current.scale.setScalar(0.0001 + s)
-  }
-
-  // самовоспроизводящийся луп: аккумулируем только отрисованные кадры
-  // (нет скачка при паузе за скроллом/скрытой вкладкой)
-  const acc = useRef(0)
-  useFrame((state, dt) => {
-    const cm = state.camera
-    acc.current += Math.min(dt, 0.05)
-    const T = acc.current
-
-    // build-прогресс: 0 → 1 (сборка) → удержание → 1 → 0 (сброс) → луп
-    let bp
-    if (REDUCE) bp = 1
-    else {
-      const CYCLE = 12
-      const t = T % CYCLE
-      if (t < 6.5) bp = smooth(seg(t, 0.3, 6))
-      else if (t < 9) bp = 1
-      else bp = 1 - smooth(seg(t, 9, 11.6))
-    }
-    const e = smooth(bp)
-
-    // здание ПРИБЛИЖАЕТСЯ: камера наезжает (+мягкий дрейф на удержании)
-    let cx = lerp(0.5, 3.6, e), cy = lerp(8.5, 3.3, e), cz = lerp(24, 12.5, e)
-    if (!REDUCE && bp > 0.985) { const d = T * 0.5; cx += Math.sin(d) * 1.2; cz += Math.cos(d) * 0.5 }
-    cm.position.set(cx, cy, cz)
-    cm.lookAt(0, lerp(3.4, 1.5, e), 1.8)
-
-    // куча из гравия + песка + камня собирается на земле (stagger)
-    grow(gravel, bp, 0.08, 0.5, [-0.7, 0, 2.2])
-    grow(sand, bp, 0.18, 0.6, [1.0, 0, 2.7])
-    grow(stone, bp, 0.28, 0.68, [0.25, 0.55, 1.8])
-
-    cubeDrop.current = seg(bp, 0.42, 0.72)
-    boxAppear.current = seg(bp, 0.76, 0.96)
-
-    if (building.current && !REDUCE) building.current.rotation.y = -0.35 + e * 0.25
+function Camera() {
+  useFrame((state) => {
+    const t = REDUCE ? 0 : state.clock.elapsedTime
+    // top-down изометрия, лёгкий дрейф
+    const a = 0.62 + (REDUCE ? 0 : Math.sin(t * 0.06) * 0.06)
+    const R = 12.5
+    state.camera.position.set(Math.sin(a) * R, 11, Math.cos(a) * R)
+    state.camera.lookAt(0, 0.9, 0)
   })
+  return null
+}
 
+function Scene() {
   return (
     <>
       <Environment resolution={256}>
-        <Lightformer intensity={2.2} position={[0, 5, 3]} scale={[10, 5, 1]} color="#fff4e0" />
-        <Lightformer intensity={1.1} position={[-5, 3, 1]} scale={[4, 5, 1]} color="#cfe0ff" />
-        <Lightformer intensity={0.9} position={[5, 2, -2]} scale={[4, 4, 1]} color="#ffd39a" />
+        <Lightformer intensity={2.4} position={[0, 6, 3]} scale={[12, 6, 1]} color="#fff2da" />
+        <Lightformer intensity={1.0} position={[-6, 3, 1]} scale={[4, 6, 1]} color="#cfe0ff" />
+        <Lightformer intensity={0.9} position={[6, 2, -3]} scale={[4, 4, 1]} color="#ffcf8f" />
       </Environment>
-      <ambientLight intensity={0.35} />
-      <directionalLight
-        position={[6, 12, 6]} intensity={1.7} castShadow
-        shadow-mapSize={[2048, 2048]} shadow-bias={-0.0002}
-        shadow-camera-left={-14} shadow-camera-right={14} shadow-camera-top={14} shadow-camera-bottom={-14}
-      />
+      <ambientLight intensity={0.4} />
+      <directionalLight position={[7, 13, 6]} intensity={1.9} castShadow
+        shadow-mapSize={[1024, 1024]} shadow-bias={-0.0002}
+        shadow-camera-left={-12} shadow-camera-right={12} shadow-camera-top={12} shadow-camera-bottom={-12} />
       <directionalLight position={[-7, 5, -4]} intensity={0.4} color="#c98a24" />
 
-      {/* ЗДАНИЕ со стройплощадки/краном — сзади, приближается камерой */}
-      <group ref={building} position={[0, 0, -3.5]} rotation={[0, -0.35, 0]}>
-        <Model url={M.site} target={13} />
-      </group>
+      {/* земля-грунт */}
+      <mesh position={[0, -0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[60, 60]} />
+        <meshStandardMaterial color="#4a4034" roughness={1} />
+      </mesh>
 
-      {/* КУЧА из песка + гравия + камня на земле здания */}
-      <group ref={gravel} visible={false}><Model url={M.gravel} target={2.7} /></group>
-      <group ref={sand} visible={false}><Model url={M.sand} target={1.9} /></group>
-      <group ref={stone} visible={false}><Model url={M.stone} target={1.7} /></group>
+      <Suspense fallback={null}><Backdrop /></Suspense>
+      <Vortex />
+      <Dust />
+      <CalibCube />
 
-      {/* ШАХМАТНЫЙ калибровочный куб рядом с кучей */}
-      <CalibCube dropRef={cubeDrop} />
-
-      {/* габаритный бокс + подпись м³/т вокруг кучи */}
-      <group position={[0.15, 0, 2.2]}>
-        <MeasureBox w={4.6} h={2.7} d={3.1} appearRef={boxAppear} />
-      </group>
-
-      <ContactShadows position={[0, 0.01, 1.6]} scale={20} blur={2.6} far={7} opacity={0.45} resolution={1024} />
+      <ContactShadows position={[0, 0.01, 0.6]} scale={18} blur={2.4} far={7} opacity={0.5} resolution={1024} />
     </>
   )
 }
@@ -214,12 +252,7 @@ function Scene() {
 function Loader() {
   const { active, progress } = useProgress()
   if (!active) return null
-  return (
-    <div className="kb-l3d-loader">
-      <div className="kb-l3d-loader__bar"><i style={{ width: `${progress}%` }} /></div>
-      <span>{Math.round(progress)}%</span>
-    </div>
-  )
+  return <div className="kb-l3d-loader"><div className="kb-l3d-loader__bar"><i style={{ width: `${progress}%` }} /></div><span>{Math.round(progress)}%</span></div>
 }
 
 export default function MaterialShowcaseHeroImpl() {
@@ -243,25 +276,17 @@ export default function MaterialShowcaseHeroImpl() {
     return () => { window.removeEventListener('scroll', onScroll); document.removeEventListener('visibilitychange', onVis) }
   }, [])
 
-  useEffect(() => {
-    const raf = requestAnimationFrame(() => setMounted(true))
-    return () => cancelAnimationFrame(raf)
-  }, [])
+  useEffect(() => { const raf = requestAnimationFrame(() => setMounted(true)); return () => cancelAnimationFrame(raf) }, [])
 
   return (
     <div ref={wrapRef} className="kb-l-flow">
       <Loader />
       {mounted && (
-        <Canvas
-          frameloop={frameloop}
-          shadows
-          dpr={[1, 2]}
+        <Canvas frameloop={REDUCE ? 'demand' : frameloop} shadows dpr={[1, 2]}
           gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
-          camera={{ position: [0.5, 8.5, 24], fov: 40 }}
-        >
-          <Suspense fallback={null}>
-            <Scene />
-          </Suspense>
+          camera={{ position: [8, 11, 9], fov: 32 }}>
+          <Camera />
+          <Suspense fallback={null}><Scene /></Suspense>
           <AdaptiveDpr pixelated />
         </Canvas>
       )}

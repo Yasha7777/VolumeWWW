@@ -145,12 +145,16 @@
 .kb-l-hero__sub { margin: 24px auto 0; max-width: 56ch; font-size: clamp(15px, 1.6vw, 18px); line-height: 1.64; color: rgba(241,237,225,.82); text-shadow: 0 1px 18px rgba(8,10,6,.6); }
 .kb-l-hero__cta { margin-top: 34px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; align-items: center; }
 
-/* плавающие glass-чипы «замер» */
-.kb-l-chip { position: absolute; z-index: 3; display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 14px; font-size: 13px; color: var(--text); }
-.kb-l-chip b { font-family: var(--serif); font-size: 18px; font-weight: 700; color: var(--green); }
-.kb-l-chip--l { left: clamp(16px, 6vw, 90px); top: 30%; }
-.kb-l-chip--r { right: clamp(16px, 6vw, 90px); bottom: 26%; }
-.kb-l-chip__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 3px rgba(184,122,24,.18); }
+/* AR-маркеры «замер» — жёлтые овалы, указывают на насыпь */
+.kb-l-chip { position: absolute; z-index: 3; display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 15px; border-radius: 999px; font-size: 13px; font-weight: 600; color: #1a1405;
+  background: #f2c14e; border: 1px solid #d9a52f; box-shadow: 0 8px 22px rgba(0,0,0,.28); white-space: nowrap; }
+.kb-l-chip b { font-family: var(--sans); font-size: 14px; font-weight: 700; color: #1a1405; }
+.kb-l-chip--sm { font-size: 11.5px; padding: 6px 12px; background: rgba(242,193,78,.92); }
+.kb-l-chip--sm b { font-size: 12px; }
+.kb-l-chip--l { left: clamp(16px, 7vw, 120px); top: 30%; }
+.kb-l-chip--m { right: clamp(16px, 7vw, 120px); top: 36%; }
+.kb-l-chip--r { right: clamp(24px, 12vw, 220px); top: 21%; }
 
 .kb-l-scrollcue { position: absolute; z-index: 3; left: 50%; bottom: 26px; transform: translateX(-50%);
   font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: rgba(241,237,225,.7); display: flex; flex-direction: column; align-items: center; gap: 9px; }
