@@ -104,7 +104,11 @@
 
 /* ─── НАВИГАЦИЯ ─────────────────────────────────────────────────────────────── */
 .kb-l-nav { position: fixed; inset: 12px 0 auto 0; z-index: 60;
-  display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 clamp(14px, 4vw, 34px); }
+  display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 clamp(14px, 4vw, 34px);
+  /* Fix 1: ВСЕГДА стекло — перебиваем глобальный header{background:cream} из styles.css */
+  background: transparent;
+  -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
+  border-bottom: 1px solid rgba(255,255,255,.08); }
 .kb-l-nav__center { display: flex; align-items: center; gap: 2px; padding: 5px; border-radius: 999px; }
 .kb-l-nav__center a { font-size: 14px; font-weight: 500; color: var(--muted); text-decoration: none;
   padding: 8px 16px; border-radius: 999px; transition: color .2s var(--ease), background .2s var(--ease); }
@@ -115,7 +119,7 @@
 .kb-l-nav .kb-l-mark__sub { color: rgba(241,237,225,.62); }
 /* тёмная плашка (и над тёмным hero, и над кремовым контентом), логотип светлый */
 .kb-l-nav.is-solid { inset: 0 0 auto 0; padding: 9px clamp(14px, 4vw, 34px);
-  background: rgba(11,15,8,.86); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  background: rgba(11,15,8,.55); -webkit-backdrop-filter: blur(16px) saturate(1.2); backdrop-filter: blur(16px) saturate(1.2);
   border-bottom: 1px solid rgba(255,255,255,.08); }
 .kb-l-nav.is-solid .kb-l-mark__name { color: #F1EDE1; }
 .kb-l-nav.is-solid .kb-l-mark__sub { color: rgba(241,237,225,.6); }
@@ -152,9 +156,10 @@
 .kb-l-chip b { font-family: var(--sans); font-size: 14px; font-weight: 700; color: #1a1405; }
 .kb-l-chip--sm { font-size: 11.5px; padding: 6px 12px; background: rgba(242,193,78,.92); }
 .kb-l-chip--sm b { font-size: 12px; }
-.kb-l-chip--l { left: clamp(16px, 7vw, 120px); top: 30%; }
-.kb-l-chip--m { right: clamp(16px, 7vw, 120px); top: 36%; }
-.kb-l-chip--r { right: clamp(24px, 12vw, 220px); top: 21%; }
+/* привязаны к куче (кластер у центра), не разбросаны по краям */
+.kb-l-chip--l { left: 25%; top: 34%; }
+.kb-l-chip--m { right: 25%; top: 40%; }
+.kb-l-chip--r { left: 50%; transform: translateX(-50%); top: 26%; }
 
 .kb-l-scrollcue { position: absolute; z-index: 3; left: 50%; bottom: 26px; transform: translateX(-50%);
   font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: rgba(241,237,225,.7); display: flex; flex-direction: column; align-items: center; gap: 9px; }
@@ -250,7 +255,7 @@
   .kb-l-w--recon { grid-column: span 2; }
   .kb-l-engine__grid { grid-template-columns: 1fr; }
   .kb-l-steps { grid-template-columns: 1fr; }
-  .kb-l-chip--l, .kb-l-chip--r { display: none; }
+  .kb-l-chip--l, .kb-l-chip--m, .kb-l-chip--r { display: none; }
 }
 @media (max-width: 560px) {
   .kb-l-bento { grid-template-columns: 1fr; }
