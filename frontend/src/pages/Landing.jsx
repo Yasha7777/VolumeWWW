@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   motion,
@@ -11,380 +11,373 @@ import {
   animate,
 } from 'motion/react'
 import { useAuth } from '../context/AuthContext'
-import CubesHero from '../components/CubesHero'
 import '../landing.css'
 
-/* ════════════════════════════════════════════════════════════════════════
-   ЛЕНДИНГ (публичный, «/») — витрина сервиса для любого гостя интернета.
-   Задача: премиум-вид «на десятки тысяч $», карельский вайб (лес/охра/камень),
-   контурный мотив + «ебанутые» анимации. Реюзаем фирменную 3D-сцену сборки
-   гравия (CubesHero) как hero, поверх — motion-анимации (параллакс, магнитные
-   кнопки, tilt-карточки, счётчики, marquee, draw-in линии). CTA ведёт в сервис
-   (/app для вошедших) или на регистрацию (/register для гостей).
-   ════════════════════════════════════════════════════════════════════════ */
+/*
+  ─────────────────────────────────────────────────────────────────────────
+  НАПРАВЛЕНИЕ (direction contract · impeccable new-work, бриф закреплён)
+  THESIS: лендинг — это ПОКАЗАНИЕ ПРИБОРА, а не SaaS-hero. Он доказывает, что
+    телефон + фотограмметрия = измерительный инструмент (объём/масса). Отказ:
+    кремово-готический вид основного сайта, gradient-hero, карточки-сетки.
+  OWN-WORLD: графитовый near-black (#08090A), liquid-glass хром (реальный
+    материал: навигация, CTA, панель отчёта), ОДИН сигнал — survey-оранжевый
+    #ff6a2b (заливки/линии скана/фокус). Тип: Archivo (гротеск) + JetBrains
+    Mono ТОЛЬКО для реальных измерений. Свет — прохладный графит, не серый.
+  STORY: гость понимает «фото → 3D → объём/масса», верит в точность прибора,
+    жмёт «Начать» → /register (или /app, если вошёл).
+  FIRST VIEWPORT: огромный дисплей-заголовок, HUD мono-показания по углам,
+    процедурное облако точек СОБИРАЕТСЯ на скролле, primary-CTA слева.
+  FORM: закреплённый бриф (motionsites liquid-glass + инженерность). Roll не
+    запускаем — brief-pinned direction beats the roll. Focal-motion: одна
+    оркестрированная реконструкция (облако→насыпь + scan-wipe), не fade на
+    каждой секции. FINISH: unreviewed — детектор impeccable прогнан, сборка зелёная.
+  ─────────────────────────────────────────────────────────────────────────
+*/
 
-const EASE = [0.22, 1, 0.36, 1]
+const EASE = [0.16, 1, 0.3, 1]
 
-/* ── универсальный reveal-пресет (появление снизу при въезде в кадр) ──────── */
-const rise = {
-  initial: { opacity: 0, y: 30 },
-  whileInView: { opacity: 1, y: 0 },
-  viewport: { once: true, margin: '-70px' },
-  transition: { duration: 0.75, ease: EASE },
-}
+// облако точек грузим лениво (three тяжёлый) — не блокирует первый paint hero
+const PointCloud = lazy(() => import('../components/three/PointCloudLandingImpl'))
 
-/* ── контейнер/слово для построчного «выката» заголовка ───────────────────── */
-const wordsWrap = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.09, delayChildren: 0.1 } },
-}
-const wordItem = {
-  hidden: { y: '115%' },
-  show: { y: 0, transition: { duration: 0.9, ease: EASE } },
-}
-
-function Words({ text, className = '' }) {
+/* ── заголовок героя: слова проявляются из размытия (авторский вход) ─────── */
+function BlurText({ text, className = '' }) {
+  const reduce = useReducedMotion()
   return (
-    <motion.span
-      className={className}
-      variants={wordsWrap}
-      initial="hidden"
-      animate="show"
-      style={{ display: 'inline-block' }}
-    >
+    <span className={className} style={{ display: 'inline' }}>
       {text.split(' ').map((w, i) => (
-        <span key={i} className="kb-l-mask">
-          <motion.span className="kb-l-word" variants={wordItem}>
-            {w}&nbsp;
-          </motion.span>
-        </span>
+        <motion.span
+          key={i}
+          initial={reduce ? false : { filter: 'blur(12px)', opacity: 0, y: '0.35em' }}
+          animate={reduce ? {} : { filter: 'blur(0px)', opacity: 1, y: 0 }}
+          transition={{ duration: 0.75, delay: 0.15 + i * 0.085, ease: EASE }}
+          style={{ display: 'inline-block', marginRight: '0.26em', willChange: 'filter, transform' }}
+        >
+          {w}
+        </motion.span>
       ))}
-    </motion.span>
+    </span>
   )
 }
 
-/* ── магнитная кнопка: слегка тянется к курсору (десктоп) ──────────────────── */
-function MagneticButton({ to, children, className = '', onClick }) {
+/* ── scan-wipe: контент открывается «сканирующей линией» (clip-path), не fade ─ */
+function ScanReveal({ children, className = '', delay = 0, as = 'div' }) {
+  const reduce = useReducedMotion()
+  const M = motion[as] || motion.div
+  return (
+    <M
+      className={className}
+      initial={reduce ? false : { clipPath: 'inset(0 100% 0 0)', opacity: 0.35 }}
+      whileInView={reduce ? {} : { clipPath: 'inset(0 0% 0 0)', opacity: 1 }}
+      viewport={{ once: true, margin: '-12% 0px' }}
+      transition={{ duration: 0.85, delay, ease: EASE }}
+    >
+      {children}
+    </M>
+  )
+}
+
+/* ── магнитная CTA: вся «пилюля» тянется к курсору (десктоп) ──────────────── */
+function MagneticCta({ to, href, onClick, children, className = '' }) {
   const ref = useRef(null)
   const reduce = useReducedMotion()
   const x = useMotionValue(0)
   const y = useMotionValue(0)
   const sx = useSpring(x, { stiffness: 220, damping: 16 })
   const sy = useSpring(y, { stiffness: 220, damping: 16 })
-
-  const onMove = (e) => {
+  const move = (e) => {
     if (reduce || !ref.current) return
     const r = ref.current.getBoundingClientRect()
-    x.set((e.clientX - (r.left + r.width / 2)) * 0.35)
-    y.set((e.clientY - (r.top + r.height / 2)) * 0.35)
+    x.set((e.clientX - (r.left + r.width / 2)) * 0.3)
+    y.set((e.clientY - (r.top + r.height / 2)) * 0.3)
   }
   const reset = () => { x.set(0); y.set(0) }
 
-  const content = onClick
-    ? <button type="button" className={className} onClick={onClick}>{children}</button>
-    : <Link to={to} className={className}>{children}</Link>
+  let inner
+  if (to) inner = <Link to={to} className={className}>{children}</Link>
+  else if (onClick) inner = <button type="button" className={className} onClick={onClick}>{children}</button>
+  else inner = <a href={href} className={className}>{children}</a>
 
   return (
-    <motion.span
-      ref={ref}
-      className="kb-l-magnetic"
-      style={{ x: sx, y: sy }}
-      onMouseMove={onMove}
-      onMouseLeave={reset}
-    >
-      {content}
+    <motion.span ref={ref} className="kb-l-mag" style={{ x: sx, y: sy }} onMouseMove={move} onMouseLeave={reset}>
+      {inner}
     </motion.span>
   )
 }
 
-/* ── счётчик: докручивается от 0 при появлении в кадре ─────────────────────── */
-function Counter({ to, suffix = '', prefix = '', decimals = 0, duration = 1.8 }) {
+/* ── измерение: докручивается от 0 при появлении; моно, tabular ──────────── */
+function Metric({ to, decimals = 0, unit = '', className = '' }) {
   const ref = useRef(null)
-  const inView = useInView(ref, { once: true, margin: '-80px' })
+  const inView = useInView(ref, { once: true, margin: '-60px' })
   useEffect(() => {
     if (!inView || !ref.current) return
     const node = ref.current
     const controls = animate(0, to, {
-      duration,
+      duration: 1.4,
       ease: EASE,
       onUpdate(v) {
-        const num = decimals ? v.toFixed(decimals) : Math.round(v).toLocaleString('ru-RU')
-        node.textContent = prefix + num + suffix
+        const n = decimals ? v.toFixed(decimals) : Math.round(v)
+        node.firstChild.textContent = n.toLocaleString('ru-RU')
       },
     })
     return () => controls.stop()
-  }, [inView, to, decimals, duration, prefix, suffix])
-  return <span ref={ref}>{prefix}0{suffix}</span>
-}
-
-/* ── tilt-карточка: наклон к курсору + бликовое пятно за ним ───────────────── */
-function TiltCard({ icon, title, text, index }) {
-  const ref = useRef(null)
-  const reduce = useReducedMotion()
-  const rx = useMotionValue(0)
-  const ry = useMotionValue(0)
-  const srx = useSpring(rx, { stiffness: 160, damping: 15 })
-  const sry = useSpring(ry, { stiffness: 160, damping: 15 })
-
-  const onMove = (e) => {
-    if (reduce || !ref.current) return
-    const r = ref.current.getBoundingClientRect()
-    const px = (e.clientX - r.left) / r.width
-    const py = (e.clientY - r.top) / r.height
-    ry.set((px - 0.5) * 14)
-    rx.set(-(py - 0.5) * 14)
-    ref.current.style.setProperty('--gx', `${px * 100}%`)
-    ref.current.style.setProperty('--gy', `${py * 100}%`)
-  }
-  const reset = () => { rx.set(0); ry.set(0) }
-
+  }, [inView, to, decimals])
   return (
-    <motion.div
-      ref={ref}
-      className="kb-l-feat"
-      onMouseMove={onMove}
-      onMouseLeave={reset}
-      style={{ rotateX: srx, rotateY: sry, transformPerspective: 900 }}
-      initial={{ opacity: 0, y: 34 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: '-60px' }}
-      transition={{ duration: 0.7, ease: EASE, delay: (index % 3) * 0.08 }}
-    >
-      <span className="kb-l-feat__glow" aria-hidden="true" />
-      <span className="kb-l-feat__icon">{icon}</span>
-      <h3 className="kb-l-feat__title">{title}</h3>
-      <p className="kb-l-feat__text">{text}</p>
-    </motion.div>
+    <span className={className}>
+      <span ref={ref}>0</span>{unit && <span className="kb-l-unit">{unit}</span>}
+    </span>
   )
 }
 
-/* ── контурные line-иконки (единый фирменный почерк) ──────────────────────── */
-const I = {
-  camera: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14.5 4h-5L7 7H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-3l-2.5-3Z" />
-      <circle cx="12" cy="13" r="3.4" />
-    </svg>
-  ),
-  cpu: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="6" y="6" width="12" height="12" rx="2" />
-      <path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3" />
-      <rect x="9.5" y="9.5" width="5" height="5" rx="1" />
-    </svg>
-  ),
-  file: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-      <path d="M14 2v6h6M9 13h6M9 17h6M9 9h1" />
-    </svg>
-  ),
-  box: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 8v8a2 2 0 0 1-1 1.73l-7 4a2 2 0 0 1-2 0l-7-4A2 2 0 0 1 3 16V8a2 2 0 0 1 1-1.73l7-4a2 2 0 0 1 2 0l7 4A2 2 0 0 1 21 8Z" />
-      <path d="m3.3 7 8.7 5 8.7-5M12 22V12" />
-    </svg>
-  ),
-  scale: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 3v18M4 7h16M7 7l-3 7a3.5 3.5 0 0 0 6 0ZM17 7l-3 7a3.5 3.5 0 0 0 6 0ZM7 21h10" />
-    </svg>
-  ),
-  wifi: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0" />
-      <circle cx="12" cy="19.5" r="1" />
-      <path d="M2 8.8a15 15 0 0 1 20 0" />
-    </svg>
-  ),
-  layers: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="m12 2 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 17l9 5 9-5" />
-    </svg>
-  ),
-  shield: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z" />
-      <path d="m9 12 2 2 4-4" />
-    </svg>
-  ),
+const scrollTo = (id) => (e) => {
+  e.preventDefault()
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-/* ════════════════════════ ВЕРХНЯЯ НАВИГАЦИЯ ═════════════════════════════════ */
-function LandingNav({ user }) {
-  const [scrolled, setScrolled] = useState(false)
+/* контурная марка прибора (не эмодзи) — концентрические кольца замера */
+const Mark = () => (
+  <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <circle cx="16" cy="16" r="13" stroke="currentColor" strokeWidth="1.3" opacity=".55" />
+    <circle cx="16" cy="16" r="7.5" stroke="currentColor" strokeWidth="1.3" opacity=".8" />
+    <circle cx="16" cy="16" r="2" fill="currentColor" />
+    <path d="M16 1v6M16 25v6M1 16h6M25 16h6" stroke="currentColor" strokeWidth="1.3" />
+  </svg>
+)
+
+/* ═══════════════════════════════ НАВИГАЦИЯ ═════════════════════════════════ */
+function LiquidNav({ user }) {
+  const [solid, setSolid] = useState(false)
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 40)
+    const onScroll = () => setSolid(window.scrollY > 32)
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
-
   return (
     <motion.header
-      className={`kb-l-nav${scrolled ? ' is-solid' : ''}`}
-      initial={{ y: -80, opacity: 0 }}
+      className={`kb-l-nav${solid ? ' is-solid' : ''}`}
+      initial={{ y: -70, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.7, ease: EASE, delay: 0.1 }}
     >
-      <Link to="/" className="kb-l-brand">
-        <span className="kb-l-brand__icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            <polyline points="9 22 9 12 15 12 15 22" />
-          </svg>
-        </span>
-        <span className="kb-l-brand__text">
-          <span className="kb-l-brand__name">Карелия Строй</span>
-          <span className="kb-l-brand__sub">AI Анализ Фото</span>
-        </span>
+      <Link to="/" className="kb-l-mark">
+        <span className="kb-l-mark__icon"><Mark /></span>
+        <span className="kb-l-mark__name">karelia<span className="kb-l-mark__slash">/</span>volume</span>
       </Link>
 
-      <nav className="kb-l-nav__links">
-        {user ? (
-          <MagneticButton to="/app" className="kb-l-btn kb-l-btn--solid">
-            Перейти в сервис
-          </MagneticButton>
-        ) : (
-          <>
-            <Link to="/login" className="kb-l-btn kb-l-btn--ghost">Войти</Link>
-            <MagneticButton to="/register" className="kb-l-btn kb-l-btn--solid">
-              Начать
-            </MagneticButton>
-          </>
-        )}
+      <nav className="kb-l-nav__center lg">
+        <a href="#how" onClick={scrollTo('how')}>Процесс</a>
+        <a href="#precision" onClick={scrollTo('precision')}>Отчёт</a>
+        <a href="#specs" onClick={scrollTo('specs')}>Характеристики</a>
       </nav>
+
+      <div className="kb-l-nav__right">
+        {!user && <Link to="/login" className="kb-l-link">Войти</Link>}
+        <MagneticCta to={user ? '/app' : '/register'} className="kb-l-btn kb-l-btn--solid">
+          {user ? 'В сервис' : 'Начать'}
+        </MagneticCta>
+      </div>
     </motion.header>
   )
 }
 
-/* ════════════════════════════════ HERO ═════════════════════════════════════ */
+/* ═══════════════════════════════════ HERO ══════════════════════════════════ */
 function Hero({ user }) {
   const ref = useRef(null)
   const reduce = useReducedMotion()
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ['start start', 'end start'],
-  })
-  const y = useTransform(scrollYProgress, [0, 1], [0, reduce ? 0 : -130])
-  const opacity = useTransform(scrollYProgress, [0, 0.65], [1, 0])
-
-  const primaryTo = user ? '/app' : '/register'
-  const primaryLabel = user ? 'Перейти в сервис' : 'Начать бесплатно'
+  const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end start'] })
+  const y = useTransform(scrollYProgress, [0, 1], [0, reduce ? 0 : -90])
+  const opacity = useTransform(scrollYProgress, [0, 0.7], [1, 0])
 
   return (
     <section ref={ref} className="kb-l-hero">
-      {/* фирменная 3D-сцена сборки гравия (fixed-канвас, гаснет за первым экраном) */}
-      <CubesHero />
+      {/* генерируемый backdrop (облако-скан) под процедурным WebGL */}
+      <div className="kb-l-hero__bg" aria-hidden="true" />
+      <Suspense fallback={null}><PointCloud /></Suspense>
+      <div className="kb-l-hero__scan" aria-hidden="true" />
+
+      {/* HUD — mono-показания прибора по углам (не eyebrow, а инструментальный слой) */}
+      <div className="kb-l-hud kb-l-hud--tl">KARELIA · VOLUME ENGINE</div>
+      <div className="kb-l-hud kb-l-hud--tr">SCAN&nbsp;04 · 5.2M&nbsp;pts · Δ&nbsp;±1.8%</div>
 
       <motion.div className="kb-l-hero__inner" style={{ y, opacity }}>
-        <motion.div
-          className="kb-l-badge"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.05 }}
-        >
-          <span className="kb-l-badge__dot" />
-          AI · Фотограмметрия · Карелия
-        </motion.div>
-
         <h1 className="kb-l-hero__title">
-          <Words text="Объём и масса" />
-          <em className="kb-l-hero__em">
-            <Words text="из простых фотографий" />
-          </em>
+          <BlurText text="Объём и масса" />
+          <span className="kb-l-hero__title-2"><BlurText text="из обычных фотографий" /></span>
         </h1>
 
         <motion.p
           className="kb-l-hero__sub"
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: EASE, delay: 0.7 }}
+          initial={reduce ? false : { opacity: 0, y: 16 }}
+          animate={reduce ? {} : { opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, ease: EASE, delay: 0.75 }}
         >
-          Загрузите серию снимков — нейросеть построит точную 3D-модель объекта,
-          рассчитает объём, массу и подготовит PDF-отчёт. Карьеры, насыпи,
-          материалы — измерение уровня, которого раньше не было.
+          Снимите объект на телефон с разных сторон. Фотограмметрия соберёт точную
+          3D-модель, посчитает объём и массу материала и подготовит отчёт.
         </motion.p>
 
         <motion.div
           className="kb-l-hero__cta"
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: EASE, delay: 0.85 }}
+          initial={reduce ? false : { opacity: 0, y: 16 }}
+          animate={reduce ? {} : { opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, ease: EASE, delay: 0.9 }}
         >
-          <MagneticButton to={primaryTo} className="kb-l-btn kb-l-btn--hero">
-            {primaryLabel}
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
-          </MagneticButton>
-          {!user && (
-            <Link to="/login" className="kb-l-btn kb-l-btn--line">
-              У меня есть аккаунт
-            </Link>
-          )}
+          <MagneticCta to={user ? '/app' : '/register'} className="kb-l-btn kb-l-btn--hero lg-strong">
+            {user ? 'Перейти в сервис' : 'Начать'}
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+          </MagneticCta>
+          <a href="#how" onClick={scrollTo('how')} className="kb-l-btn kb-l-btn--ghost">Как это работает</a>
         </motion.div>
       </motion.div>
 
-      <motion.div
-        className="kb-l-scrollcue"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1.4, duration: 1 }}
-      >
-        <span>Листайте вниз</span>
-        <motion.span
-          className="kb-l-scrollcue__line"
-          animate={reduce ? {} : { scaleY: [0.2, 1, 0.2], originY: 0 }}
-          transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-        />
-      </motion.div>
+      {/* шкала масштаба — инструментальная деталь внизу */}
+      <div className="kb-l-scalebar" aria-hidden="true">
+        <span className="kb-l-scalebar__tick" />
+        <span className="kb-l-scalebar__label">0</span>
+        <span className="kb-l-scalebar__line" />
+        <span className="kb-l-scalebar__label">2&nbsp;м</span>
+        <span className="kb-l-scalebar__tick" />
+      </div>
     </section>
   )
 }
 
-/* ═══════════════════════════════ MARQUEE ═══════════════════════════════════ */
-const MARQUEE = [
-  'ФОТОГРАММЕТРИЯ', 'ОБЪЁМ', 'МАССА', '3D-РЕКОНСТРУКЦИЯ', 'CLIP',
-  'OLLAMA', 'DUSt3R', 'ОБЛАКО ТОЧЕК', 'PDF-РАСЧЁТ', 'КАРЕЛИЯ',
+/* ═══════════════════════════ ПРОЦЕСС (focal-секвенция) ═════════════════════ */
+const STAGES = [
+  { k: '01', t: 'Снимки', d: 'Серия кадров объекта со всех сторон. Обычная камера телефона, без спецоборудования.' },
+  { k: '02', t: 'Облако точек', d: 'DUSt3R восстанавливает геометрию сцены — плотное облако из миллионов точек.' },
+  { k: '03', t: 'Меш', d: 'Точки сшиваются в полигональную поверхность и выравниваются по опорной плоскости.' },
+  { k: '04', t: 'Объём', d: 'Считаем объём насыпи над землёй и массу — по плотности материала.' },
 ]
-function Marquee() {
-  const row = [...MARQUEE, ...MARQUEE]
+function StageGlyph({ i }) {
+  // 4 разных состояния реконструкции — не иконки-костыли, а стадии одного объекта
   return (
-    <div className="kb-l-marquee" aria-hidden="true">
-      <div className="kb-l-marquee__track">
-        {row.map((t, i) => (
-          <span key={i} className="kb-l-marquee__item">
-            {t}<span className="kb-l-marquee__dot">◆</span>
-          </span>
-        ))}
+    <svg viewBox="0 0 80 56" className="kb-l-stage__glyph" fill="none" aria-hidden="true">
+      {i === 0 && <>
+        <rect x="10" y="8" width="34" height="26" rx="2" stroke="currentColor" strokeWidth="1.4" />
+        <rect x="22" y="18" width="34" height="26" rx="2" stroke="currentColor" strokeWidth="1.4" opacity=".6" />
+        <rect x="34" y="26" width="34" height="24" rx="2" stroke="currentColor" strokeWidth="1.4" opacity=".35" />
+      </>}
+      {i === 1 && Array.from({ length: 42 }).map((_, n) => {
+        const cx = 12 + (n % 14) * 4.2 + (n % 3) * 1.5
+        const cy = 46 - Math.floor(n / 14) * 6 - ((n * 7) % 5)
+        return <circle key={n} cx={cx} cy={cy} r="1" fill="currentColor" opacity={0.4 + (n % 5) * 0.12} />
+      })}
+      {i === 2 && <>
+        <path d="M40 8 L68 44 L12 44 Z" stroke="currentColor" strokeWidth="1.4" />
+        <path d="M40 8 L40 44M26 44 L40 26 L54 44M20 44 L40 18 L60 44" stroke="currentColor" strokeWidth="1" opacity=".5" />
+      </>}
+      {i === 3 && <>
+        <path d="M40 10 L66 44 L14 44 Z" stroke="currentColor" strokeWidth="1.4" />
+        <path d="M14 44 H66" stroke="#ff6a2b" strokeWidth="1.6" />
+        <path d="M40 14 V44" stroke="#ff6a2b" strokeWidth="1" strokeDasharray="2 3" opacity=".8" />
+      </>}
+    </svg>
+  )
+}
+function Pipeline() {
+  return (
+    <section id="how" className="kb-l-sec kb-l-pipeline">
+      <div className="kb-l-sec__head">
+        <h2 className="kb-l-h2">От снимков до кубометров</h2>
+        <p className="kb-l-sec__lead">Один проход реконструкции. Каждая стадия — состояние одного объекта, не отдельная услуга.</p>
       </div>
-    </div>
+      <ol className="kb-l-stages">
+        {STAGES.map((s, i) => (
+          <motion.li
+            key={s.k}
+            className="kb-l-stage lg"
+            initial={{ opacity: 0, y: 26, filter: 'blur(6px)' }}
+            whileInView={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            viewport={{ once: true, margin: '-10% 0px' }}
+            transition={{ duration: 0.6, ease: EASE, delay: i * 0.12 }}
+          >
+            <span className="kb-l-stage__k">{s.k}<span className="kb-l-stage__of">/04</span></span>
+            <StageGlyph i={i} />
+            <h3 className="kb-l-stage__t">{s.t}</h3>
+            <p className="kb-l-stage__d">{s.d}</p>
+          </motion.li>
+        ))}
+      </ol>
+    </section>
   )
 }
 
-/* ════════════════════════════════ STATS ════════════════════════════════════ */
-const STATS = [
-  { to: 99.2, decimals: 1, suffix: '%', label: 'точность реконструкции' },
-  { to: 3, prefix: '< ', suffix: ' мин', label: 'на полный анализ' },
-  { to: 10000, suffix: '+', label: 'снимков обработано' },
-  { to: 24, suffix: '/7', label: 'офлайн-очередь загрузок' },
+/* ═══════════════════════════ ОТЧЁТ (proof, не hero-metric) ═════════════════ */
+const REPORT = [
+  { l: 'Объём', to: 1428.6, dec: 1, u: 'м³', hi: true },
+  { l: 'Масса', to: 2271, dec: 0, u: 'т', hi: true },
+  { l: 'Плотность', to: 1.59, dec: 2, u: 'т/м³' },
+  { l: 'Погрешность', to: 1.8, dec: 1, u: '%' },
+  { l: 'Точек', to: 5214880, dec: 0, u: '' },
+  { l: 'Расчёт', to: 160, dec: 0, u: 'с' },
 ]
-function Stats() {
+function Report() {
   return (
-    <section className="kb-l-stats">
-      <div className="kb-l-stats__grid">
-        {STATS.map((s, i) => (
+    <section id="precision" className="kb-l-sec kb-l-precision">
+      <div className="kb-l-precision__grid">
+        <ScanReveal className="kb-l-sec__head kb-l-precision__intro">
+          <h2 className="kb-l-h2">Отчёт, а не картинка</h2>
+          <p className="kb-l-sec__lead">
+            На выходе — измеримый документ: объём, масса и погрешность, PDF с формулами
+            и 3D-модель, которую можно вращать прямо в браузере.
+          </p>
+        </ScanReveal>
+
+        <motion.div
+          className="kb-l-readout lg"
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-15% 0px' }}
+          transition={{ duration: 0.7, ease: EASE }}
+        >
+          <div className="kb-l-readout__bar">
+            <span>ОТЧЁТ · ПРИМЕР</span>
+            <span className="kb-l-readout__id">#A-0417</span>
+          </div>
+          <dl className="kb-l-readout__rows">
+            {REPORT.map((r) => (
+              <div key={r.l} className={`kb-l-readout__row${r.hi ? ' is-hi' : ''}`}>
+                <dt>{r.l}</dt>
+                <dd><Metric to={r.to} decimals={r.dec} unit={r.u} /></dd>
+              </div>
+            ))}
+          </dl>
+        </motion.div>
+      </div>
+    </section>
+  )
+}
+
+/* ═══════════════════════════ ХАРАКТЕРИСТИКИ (spec-sheet, не карточки) ══════ */
+const SPECS = [
+  ['Вход', 'JPG · серия снимков с телефона'],
+  ['Движок', 'DUSt3R · CLIP · Ollama'],
+  ['Выход', '3D-меш · облако точек · отчёт'],
+  ['Форматы', 'GLB · PLY · PDF'],
+  ['Просмотр', 'интерактивный 3D в браузере (Three.js)'],
+  ['Загрузка', 'офлайн-очередь, отправка при появлении сети'],
+  ['Точность', '± 1–2 % на типовых насыпях (пример)'],
+]
+function SpecSheet() {
+  return (
+    <section id="specs" className="kb-l-sec kb-l-specs">
+      <div className="kb-l-sec__head">
+        <h2 className="kb-l-h2">Характеристики</h2>
+        <p className="kb-l-sec__lead">Инженерный конвейер целиком — от кадра до кубометра.</p>
+      </div>
+      <div className="kb-l-spectable">
+        {SPECS.map(([k, v], i) => (
           <motion.div
-            key={i}
-            className="kb-l-stat"
-            {...rise}
-            transition={{ ...rise.transition, delay: i * 0.08 }}
+            key={k}
+            className="kb-l-specrow"
+            initial={{ opacity: 0, clipPath: 'inset(0 100% 0 0)' }}
+            whileInView={{ opacity: 1, clipPath: 'inset(0 0% 0 0)' }}
+            viewport={{ once: true, margin: '-8% 0px' }}
+            transition={{ duration: 0.6, ease: EASE, delay: i * 0.06 }}
           >
-            <div className="kb-l-stat__num">
-              <Counter to={s.to} decimals={s.decimals} suffix={s.suffix} prefix={s.prefix} />
-            </div>
-            <div className="kb-l-stat__label">{s.label}</div>
+            <span className="kb-l-specrow__k">{k}</span>
+            <span className="kb-l-specrow__dots" aria-hidden="true" />
+            <span className="kb-l-specrow__v">{v}</span>
           </motion.div>
         ))}
       </div>
@@ -392,129 +385,45 @@ function Stats() {
   )
 }
 
-/* ═════════════════════════════ КАК ЭТО РАБОТАЕТ ════════════════════════════ */
-const STEPS = [
-  { icon: I.camera, n: '01', title: 'Сделайте снимки', text: 'Обойдите объект с телефоном и снимите серию кадров со всех сторон. Никакого спецоборудования.' },
-  { icon: I.cpu, n: '02', title: 'AI строит модель', text: 'Пайплайн CLIP + Ollama + DUSt3R собирает облако точек, восстанавливает 3D-меш и вычисляет объём и массу.' },
-  { icon: I.file, n: '03', title: 'Получите отчёт', text: 'Интерактивная 3D-модель, точные замеры и готовый PDF-расчёт — за минуты, а не за дни полевых работ.' },
-]
-function HowItWorks() {
-  const ref = useRef(null)
-  const lineInView = useInView(ref, { once: true, margin: '-120px' })
-  return (
-    <section className="kb-l-how" ref={ref}>
-      <motion.div className="kb-l-section-head" {...rise}>
-        <span className="kb-l-eyebrow">Процесс</span>
-        <h2 className="kb-l-h2">Три шага до точного объёма</h2>
-      </motion.div>
-
-      <div className="kb-l-steps">
-        {/* линия-соединитель, «прорисовывается» при въезде секции в кадр */}
-        <motion.span
-          className="kb-l-steps__line"
-          initial={{ scaleX: 0 }}
-          animate={lineInView ? { scaleX: 1 } : {}}
-          transition={{ duration: 1.1, ease: EASE, delay: 0.2 }}
-        />
-        {STEPS.map((s, i) => (
-          <motion.div
-            key={i}
-            className="kb-l-step"
-            initial={{ opacity: 0, y: 40 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-60px' }}
-            transition={{ duration: 0.7, ease: EASE, delay: 0.15 + i * 0.15 }}
-          >
-            <span className="kb-l-step__n">{s.n}</span>
-            <span className="kb-l-step__icon">{s.icon}</span>
-            <h3 className="kb-l-step__title">{s.title}</h3>
-            <p className="kb-l-step__text">{s.text}</p>
-          </motion.div>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-/* ══════════════════════════════ ВОЗМОЖНОСТИ ════════════════════════════════ */
-const FEATURES = [
-  { icon: I.box, title: '3D-реконструкция', text: 'Плотное облако точек и полигональный меш из обычных фото — движок DUSt3R.' },
-  { icon: I.scale, title: 'Объём и масса', text: 'Автоматический расчёт объёма насыпи и массы по плотности материала.' },
-  { icon: I.file, title: 'PDF-отчёты', text: 'Готовый расчётный документ с формулами, замерами и визуализацией — в один клик.' },
-  { icon: I.wifi, title: 'Офлайн-очередь', text: 'Снимки уходят на сервер сами, как появится сеть. PWA-очередь на IndexedDB.' },
-  { icon: I.layers, title: 'Интерактивный вьювер', text: 'Вращайте модель, меряйте, смотрите облако точек прямо в браузере на Three.js.' },
-  { icon: I.shield, title: 'Данные под защитой', text: 'Хранение в Supabase, приватные ссылки, полное соответствие политике конфиденциальности.' },
-]
-function Features() {
-  return (
-    <section className="kb-l-features">
-      <motion.div className="kb-l-section-head" {...rise}>
-        <span className="kb-l-eyebrow">Возможности</span>
-        <h2 className="kb-l-h2">Инструмент промышленного уровня</h2>
-      </motion.div>
-      <div className="kb-l-feat-grid">
-        {FEATURES.map((f, i) => (
-          <TiltCard key={i} index={i} icon={f.icon} title={f.title} text={f.text} />
-        ))}
-      </div>
-    </section>
-  )
-}
-
-/* ═══════════════════════════════ ПОКАЗ / ЦИТАТА ════════════════════════════ */
-function Showcase() {
+/* ═══════════════════════════ КИНО-МОМЕНТ (генерируемый ассет) ══════════════ */
+function Cinematic() {
   const ref = useRef(null)
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'end start'] })
-  const yA = useTransform(scrollYProgress, [0, 1], [80, -80])
-  const rot = useTransform(scrollYProgress, [0, 1], [-8, 8])
+  const y = useTransform(scrollYProgress, [0, 1], ['-8%', '8%'])
+  const scale = useTransform(scrollYProgress, [0, 1], [1.12, 1])
   return (
-    <section className="kb-l-showcase" ref={ref}>
-      <motion.div className="kb-l-showcase__rings" style={{ y: yA, rotate: rot }} aria-hidden="true">
-        <svg viewBox="0 0 520 520" width="520" height="520">
-          <g fill="none" stroke="currentColor" strokeWidth="1.2">
-            <path d="M260 165c58 0 100 38 100 92s-46 84-100 84-100-34-100-84 42-92 100-92z" />
-            <path d="M262 125c88 0 152 56 152 138s-70 128-154 128-150-50-150-130 64-136 152-136z" />
-            <path d="M258 82c118 0 205 74 205 182s-92 174-206 174S52 356 52 250 140 82 258 82z" />
-          </g>
-        </svg>
-      </motion.div>
-      <motion.blockquote className="kb-l-showcase__quote" {...rise}>
-        <span className="kb-l-eyebrow kb-l-eyebrow--gold">Технология доверия</span>
-        <p>
-          Мы превращаем&nbsp;<em>телефон в измерительный комплекс</em>. Там, где
-          раньше нужна была бригада с тахеометром, теперь достаточно нескольких
-          снимков и минуты ожидания.
+    <section ref={ref} className="kb-l-cine">
+      <motion.div className="kb-l-cine__img" style={{ y, scale }} aria-hidden="true" />
+      <div className="kb-l-cine__veil" aria-hidden="true" />
+      <ScanReveal className="kb-l-cine__copy">
+        <h2 className="kb-l-cine__title">Прибор, который<br />помещается в кармане</h2>
+        <p className="kb-l-cine__sub">
+          Там, где нужна была бригада с тахеометром, теперь — серия фотографий и пара минут.
         </p>
-      </motion.blockquote>
+      </ScanReveal>
     </section>
   )
 }
 
-/* ═══════════════════════════════ ФИНАЛЬНЫЙ CTA ═════════════════════════════ */
-function FinalCTA({ user }) {
-  const primaryTo = user ? '/app' : '/register'
-  const primaryLabel = user ? 'Открыть сервис' : 'Создать аккаунт'
+/* ═══════════════════════════════ ФИНАЛ ═════════════════════════════════════ */
+function FinalCta({ user }) {
   return (
     <section className="kb-l-final">
-      <motion.div className="kb-l-final__inner" {...rise}>
-        <h2 className="kb-l-final__title">
-          Готовы увидеть<br /><em>объём иначе?</em>
-        </h2>
-        <p className="kb-l-final__sub">
-          Регистрация — минута. Первый анализ — бесплатно.
-        </p>
+      <motion.div
+        className="kb-l-final__panel lg-strong"
+        initial={{ opacity: 0, y: 30, scale: 0.98 }}
+        whileInView={{ opacity: 1, y: 0, scale: 1 }}
+        viewport={{ once: true, margin: '-15% 0px' }}
+        transition={{ duration: 0.8, ease: EASE }}
+      >
+        <h2 className="kb-l-final__title">Начните измерять</h2>
+        <p className="kb-l-final__sub">Регистрация — минута. Первый анализ — бесплатно.</p>
         <div className="kb-l-final__cta">
-          <MagneticButton to={primaryTo} className="kb-l-btn kb-l-btn--hero">
-            {primaryLabel}
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
-          </MagneticButton>
-          {!user && (
-            <Link to="/login" className="kb-l-btn kb-l-btn--line kb-l-btn--line-light">
-              Войти
-            </Link>
-          )}
+          <MagneticCta to={user ? '/app' : '/register'} className="kb-l-btn kb-l-btn--hero">
+            {user ? 'Перейти в сервис' : 'Создать аккаунт'}
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+          </MagneticCta>
+          {!user && <Link to="/login" className="kb-l-btn kb-l-btn--ghost">Войти</Link>}
         </div>
       </motion.div>
     </section>
@@ -522,36 +431,28 @@ function FinalCTA({ user }) {
 }
 
 /* ═══════════════════════════════ ПОДВАЛ ════════════════════════════════════ */
-function LandingFooter() {
+function Footer() {
   const copyEmail = () => {
     navigator.clipboard?.writeText('yakov.kachalin@mail.ru')
     alert('Email скопирован: yakov.kachalin@mail.ru')
   }
   return (
-    <footer className="kb-l-footer">
-      <div className="kb-l-footer__top">
-        <Link to="/" className="kb-l-brand">
-          <span className="kb-l-brand__icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              <polyline points="9 22 9 12 15 12 15 22" />
-            </svg>
-          </span>
-          <span className="kb-l-brand__text">
-            <span className="kb-l-brand__name">Карелия Строй</span>
-            <span className="kb-l-brand__sub">AI Анализ Фото</span>
-          </span>
+    <footer className="kb-l-foot">
+      <div className="kb-l-foot__top">
+        <Link to="/" className="kb-l-mark">
+          <span className="kb-l-mark__icon"><Mark /></span>
+          <span className="kb-l-mark__name">karelia<span className="kb-l-mark__slash">/</span>volume</span>
         </Link>
-        <nav className="kb-l-footer__links">
+        <nav className="kb-l-foot__links">
           <Link to="/register">Регистрация</Link>
           <Link to="/login">Вход</Link>
           <Link to="/privacy">Конфиденциальность</Link>
           <button type="button" onClick={copyEmail}>yakov.kachalin@mail.ru</button>
         </nav>
       </div>
-      <div className="kb-l-footer__bottom">
-        <span>© 2026 Карелия Строй — AI сервис</span>
-        <span>Петрозаводск · Карелия</span>
+      <div className="kb-l-foot__bottom">
+        <span>© 2026 Карелия Строй</span>
+        <span className="kb-l-foot__coord">ПЕТРОЗАВОДСК · 61.79°N 34.35°E</span>
       </div>
     </footer>
   )
@@ -562,15 +463,14 @@ export default function Landing() {
   const { user } = useAuth()
   return (
     <div className="kb-landing">
-      <LandingNav user={user} />
+      <LiquidNav user={user} />
       <Hero user={user} />
-      <Marquee />
-      <Stats />
-      <HowItWorks />
-      <Features />
-      <Showcase />
-      <FinalCTA user={user} />
-      <LandingFooter />
+      <Pipeline />
+      <Report />
+      <SpecSheet />
+      <Cinematic />
+      <FinalCta user={user} />
+      <Footer />
     </div>
   )
 }
