@@ -30,13 +30,6 @@ const seg = (t, a, b) => Math.min(1, Math.max(0, (t - a) / (b - a)))
 const smooth = (t) => t * t * t * (t * (t * 6 - 15) + 10)
 const lerp = THREE.MathUtils.lerp
 
-// прогресс = позиция скролла (0 вверху героя → 1 через ~1.1 экрана)
-function scrollP() {
-  if (REDUCE) return 1
-  const vh = window.innerHeight || 1
-  return Math.min(Math.max((window.scrollY || 0) / (vh * 1.1), 0), 1)
-}
-
 // процедурная шахматка 4×4 (калибровочный куб)
 function checkerTexture(cells = 4, px = 512) {
   const cv = document.createElement('canvas')
@@ -72,14 +65,17 @@ function Model({ url, target }) {
 
 function MeasureBox({ w, h, d, appearRef }) {
   const grp = useRef()
+  const tagRef = useRef()
   const box = useMemo(() => new THREE.BoxGeometry(w, h, d), [w, h, d])
   const ticks = useMemo(() => new THREE.BoxGeometry(0.02, 0.18, 0.02), [])
   useFrame(() => {
     if (!grp.current) return
     const s = smooth(appearRef.current)
-    grp.current.scale.set(1, s, 1)
+    grp.current.scale.set(1, Math.max(0.001, s), 1)
     grp.current.visible = s > 0.02
     grp.current.traverse((o) => { if (o.material) o.material.opacity = s })
+    // drei Html не скрывается с родителем — гасим DOM-подпись вручную
+    if (tagRef.current) { tagRef.current.style.opacity = String(s); tagRef.current.style.visibility = s > 0.06 ? 'visible' : 'hidden' }
   })
   return (
     <group ref={grp} position={[0, 0, 0]}>
@@ -94,7 +90,7 @@ function MeasureBox({ w, h, d, appearRef }) {
         </lineSegments>
       ))}
       <Html position={[0, h + 0.3, 0]} center distanceFactor={11} zIndexRange={[3, 0]}>
-        <div className="kb-l3d-tag">V ≈ 1&nbsp;428&nbsp;м³ · 2&nbsp;271&nbsp;т</div>
+        <div ref={tagRef} className="kb-l3d-tag" style={{ visibility: 'hidden' }}>V ≈ 1&nbsp;428&nbsp;м³ · 2&nbsp;271&nbsp;т</div>
       </Html>
     </group>
   )
@@ -140,26 +136,41 @@ function Scene() {
     ref.current.scale.setScalar(0.0001 + s)
   }
 
+  // самовоспроизводящийся луп: аккумулируем только отрисованные кадры
+  // (нет скачка при паузе за скроллом/скрытой вкладкой)
+  const acc = useRef(0)
   useFrame((state, dt) => {
-    const p = scrollP()
     const cm = state.camera
+    acc.current += Math.min(dt, 0.05)
+    const T = acc.current
 
-    // здание ПРИБЛИЖАЕТСЯ: камера наезжает по мере прокрутки
-    const e = smooth(p)
-    cm.position.x = lerp(0.5, 3.6, e)
-    cm.position.y = lerp(8.5, 3.3, e)
-    cm.position.z = lerp(24, 12.5, e)
+    // build-прогресс: 0 → 1 (сборка) → удержание → 1 → 0 (сброс) → луп
+    let bp
+    if (REDUCE) bp = 1
+    else {
+      const CYCLE = 12
+      const t = T % CYCLE
+      if (t < 6.5) bp = smooth(seg(t, 0.3, 6))
+      else if (t < 9) bp = 1
+      else bp = 1 - smooth(seg(t, 9, 11.6))
+    }
+    const e = smooth(bp)
+
+    // здание ПРИБЛИЖАЕТСЯ: камера наезжает (+мягкий дрейф на удержании)
+    let cx = lerp(0.5, 3.6, e), cy = lerp(8.5, 3.3, e), cz = lerp(24, 12.5, e)
+    if (!REDUCE && bp > 0.985) { const d = T * 0.5; cx += Math.sin(d) * 1.2; cz += Math.cos(d) * 0.5 }
+    cm.position.set(cx, cy, cz)
     cm.lookAt(0, lerp(3.4, 1.5, e), 1.8)
 
     // куча из гравия + песка + камня собирается на земле (stagger)
-    grow(gravel, p, 0.08, 0.5, [-0.7, 0, 2.2])
-    grow(sand, p, 0.18, 0.6, [1.0, 0, 2.7])
-    grow(stone, p, 0.28, 0.68, [0.25, 0.55, 1.8])
+    grow(gravel, bp, 0.08, 0.5, [-0.7, 0, 2.2])
+    grow(sand, bp, 0.18, 0.6, [1.0, 0, 2.7])
+    grow(stone, bp, 0.28, 0.68, [0.25, 0.55, 1.8])
 
-    cubeDrop.current = seg(p, 0.42, 0.72)
-    boxAppear.current = seg(p, 0.76, 0.96)
+    cubeDrop.current = seg(bp, 0.42, 0.72)
+    boxAppear.current = seg(bp, 0.76, 0.96)
 
-    if (building.current && !REDUCE) building.current.rotation.y = -0.35 + p * 0.25
+    if (building.current && !REDUCE) building.current.rotation.y = -0.35 + e * 0.25
   })
 
   return (

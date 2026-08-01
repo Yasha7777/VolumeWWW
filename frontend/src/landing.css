@@ -113,11 +113,14 @@
 /* over тёмного hero — светлый логотип; на кремовом (is-solid) — тёмный + бар */
 .kb-l-nav .kb-l-mark__name { color: #F1EDE1; }
 .kb-l-nav .kb-l-mark__sub { color: rgba(241,237,225,.62); }
+/* тёмная плашка (и над тёмным hero, и над кремовым контентом), логотип светлый */
 .kb-l-nav.is-solid { inset: 0 0 auto 0; padding: 9px clamp(14px, 4vw, 34px);
-  background: rgba(244,240,232,.82); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--border); }
-.kb-l-nav.is-solid .kb-l-mark__name { color: var(--text); }
-.kb-l-nav.is-solid .kb-l-mark__sub { color: var(--muted); }
+  background: rgba(11,15,8,.86); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(255,255,255,.08); }
+.kb-l-nav.is-solid .kb-l-mark__name { color: #F1EDE1; }
+.kb-l-nav.is-solid .kb-l-mark__sub { color: rgba(241,237,225,.6); }
+.kb-l-nav.is-solid .kb-l-link { color: rgba(241,237,225,.75); }
+.kb-l-nav.is-solid .kb-l-link:hover { color: #fff; }
 
 /* ═══════════════════════════════════ HERO ══════════════════════════════════ */
 .kb-l-hero {
