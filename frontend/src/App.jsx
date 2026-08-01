@@ -18,6 +18,7 @@ import SmoothScroll from './components/SmoothScroll'   // ← плавный с�
    через lazy в PlyViewer / RaschetDownloadButton / ReportPanel),
    а логин-страница останется лёгкой. Чанк качается при первом
    переходе на страницу и дальше сидит в кеше. ── */
+const Landing  = lazy(() => import('./pages/Landing'))   // ← публичный лендинг ( / )
 const Register = lazy(() => import('./pages/Register'))
 const Analyze  = lazy(() => import('./pages/Analyze'))
 const History  = lazy(() => import('./pages/History'))
@@ -56,12 +57,14 @@ function App() {
           <Suspense fallback={<PageLoader />}>
             <Routes>
               {/* Публичные */}
+              <Route path="/"         element={<Landing />} />
               <Route path="/login"    element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/privacy"  element={<Privacy />} />
 
-              {/* Приватные */}
-              <Route path="/" element={
+              {/* Приватные — приложение переехало с / на /app,
+                  чтобы корень был публичным лендингом для любого гостя */}
+              <Route path="/app" element={
                 <PrivateRoute>
                   <Layout><Analyze /></Layout>
                 </PrivateRoute>

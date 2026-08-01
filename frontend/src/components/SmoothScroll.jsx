@@ -9,11 +9,12 @@ export default function SmoothScroll() {
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
 
     const lenis = new Lenis({
-      // резче: короче инерция и более «прямой» easing, чтобы скролл-скраб героя
-      // ощущался чётким, а не «плавающим»
-      duration: 0.5,
-      lerp: 0.09,
-      easing: (t) => 1 - Math.pow(1 - t, 3),
+      // РЕЗКО и ЧЁТКО: почти нативная реакция колеса, минимум инерции. Раньше
+      // (duration:0.5 / lerp:0.09) скролл «плавал» — на сайте было неудобно
+      // находиться. Высокий lerp = каждый кадр почти догоняем цель → лист чёткий,
+      // но колесо остаётся унифицированным (скролл-скраб героя не дёргается).
+      lerp: 0.28,
+      wheelMultiplier: 1.05,
       smoothWheel: true,
       // на тач оставляем нативный скролл — он и так плавный, а перехват мешает
       syncTouch: false,

@@ -21,7 +21,7 @@ export default function Login() {
         ? 'Неверный email или пароль'
         : err.message)
     } else {
-      navigate('/')
+      navigate('/app')
     }
   }
 

@@ -13,7 +13,7 @@ import ScrollProgress from './ScrollProgress'  // ← золотая полос�
    ============================================================ */
 const NAV = [
   {
-    to: '/',
+    to: '/app',
     label: 'Анализ',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -71,7 +71,7 @@ export default function Layout({ children }) {
   return (
     <>
       <header>
-        <Link to="/" className="logo">
+        <Link to="/app" className="logo">
           <div className="logo-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -86,7 +86,7 @@ export default function Layout({ children }) {
 
         {/* десктопное меню — скрывается на мобиле (CSS), снизу появляется таб-бар */}
         <nav className="nav-desktop">
-          <Link to="/" className={isActive('/')}>Анализ</Link>
+          <Link to="/app" className={isActive('/app')}>Анализ</Link>
           <Link to="/history" className={isActive('/history')}>История</Link>
           <Link to="/profile" className={isActive('/profile')}>Профиль</Link>
         </nav>
