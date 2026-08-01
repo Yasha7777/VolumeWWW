@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   motion,
@@ -27,7 +27,7 @@ import '../landing.css'
 */
 
 const EASE = [0.16, 1, 0.3, 1]
-const Orbit = lazy(() => import('../components/three/ConstructionOrbitImpl'))
+const Flow = lazy(() => import('../components/three/MaterialFlowHeroImpl'))
 
 function BlurText({ text, className = '' }) {
   const reduce = useReducedMotion()
@@ -111,19 +111,16 @@ const Mark = () => (
   </Link>
 )
 
-/* ── прозрачная полоса-«облёт»: объекты видно целиком между секциями ──────── */
-function Band({ children }) {
-  return (
-    <div className="kb-l-band">
-      <motion.p className="kb-l-band__cap" {...reveal}>{children}</motion.p>
-    </div>
-  )
-}
-
 /* ═══════════════════════════════ НАВИГАЦИЯ ═════════════════════════════════ */
 function LiquidNav({ user }) {
+  const [solid, setSolid] = useState(false)
+  useEffect(() => {
+    const onScroll = () => setSolid(window.scrollY > 40)
+    onScroll(); window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
   return (
-    <motion.header className="kb-l-nav"
+    <motion.header className={`kb-l-nav${solid ? ' is-solid' : ''}`}
       initial={{ y: -60, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.7, ease: EASE, delay: 0.1 }}>
       <Mark />
@@ -151,6 +148,7 @@ function Hero({ user }) {
   const opacity = useTransform(scrollYProgress, [0, 0.75], [1, 0])
   return (
     <section ref={ref} className="kb-l-hero">
+      <Suspense fallback={null}><Flow /></Suspense>
       <div className="kb-l-hero__scrim" aria-hidden="true" />
 
       <motion.div className="kb-l-chip kb-l-chip--l lg"
@@ -379,15 +377,10 @@ export default function Landing() {
   const { user } = useAuth()
   return (
     <div className="kb-landing">
-      {/* fixed 3D-облёт на весь фон страницы */}
-      <Suspense fallback={null}><Orbit /></Suspense>
-
       <LiquidNav user={user} />
       <Hero user={user} />
-      <Band>песок, гравий и калибровочные кубы — в облёте площадки</Band>
       <Dashboard />
       <Engine />
-      <Band>прокрутите — материал стягивается в замер</Band>
       <Process />
       <Cinematic />
       <FinalCta user={user} />

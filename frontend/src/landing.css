@@ -35,13 +35,9 @@
 .kb-landing ::selection { background: var(--gold); color: #fff; }
 .kb-landing > section, .kb-landing > .kb-l-foot { position: relative; z-index: 1; }
 
-/* ─── FIXED 3D-ОБЛЁТ (на весь лайфтайм страницы) ──────────────────────────── */
-.kb-l-orbit {
-  position: fixed; inset: 0; z-index: 0; pointer-events: none;
-  -webkit-mask-image: radial-gradient(130% 100% at 50% 42%, #000 55%, transparent 100%);
-          mask-image: radial-gradient(130% 100% at 50% 42%, #000 55%, transparent 100%);
-}
-.kb-l-orbit canvas { display: block; }
+/* ─── 3D-СЦЕНА HERO (облёт здания + формирование кучи), absolute в hero ────── */
+.kb-l-flow { position: absolute; inset: 0; z-index: 0; pointer-events: none; will-change: opacity; }
+.kb-l-flow canvas { display: block; }
 
 /* ─── LIGHT LIQUID GLASS ───────────────────────────────────────────────────── */
 .kb-landing .lg, .kb-landing .lg-strong {
@@ -104,27 +100,36 @@
   padding: 8px 16px; border-radius: 999px; transition: color .2s var(--ease), background .2s var(--ease); }
 .kb-l-nav__center a:hover { color: var(--green); background: rgba(30,61,18,.06); }
 .kb-l-nav__right { display: flex; align-items: center; gap: 14px; padding: 6px 6px 6px 14px; border-radius: 999px; }
+/* over тёмного hero — светлый логотип; на кремовом (is-solid) — тёмный + бар */
+.kb-l-nav .kb-l-mark__name { color: #F1EDE1; }
+.kb-l-nav .kb-l-mark__sub { color: rgba(241,237,225,.62); }
+.kb-l-nav.is-solid { inset: 0 0 auto 0; padding: 9px clamp(14px, 4vw, 34px);
+  background: rgba(244,240,232,.82); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border); }
+.kb-l-nav.is-solid .kb-l-mark__name { color: var(--text); }
+.kb-l-nav.is-solid .kb-l-mark__sub { color: var(--muted); }
 
 /* ═══════════════════════════════════ HERO ══════════════════════════════════ */
 .kb-l-hero {
   position: relative; min-height: 100svh; overflow: hidden;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  text-align: center; padding: 130px 20px 90px; background: transparent;
+  text-align: center; padding: 130px 20px 90px;
+  background: linear-gradient(180deg, #26301c 0%, #171f10 52%, #0e140a 100%);
 }
-/* скрим для читаемости заголовка поверх движущейся сцены */
+/* тёмный скрим-виньетка для читаемости + плавный переход в кремовую страницу */
 .kb-l-hero__scrim { position: absolute; inset: 0; z-index: 2; pointer-events: none;
   background:
-    radial-gradient(ellipse 58% 50% at 50% 46%, rgba(244,240,232,.88), rgba(244,240,232,.35) 52%, transparent 76%),
-    linear-gradient(180deg, rgba(244,240,232,.5) 0%, transparent 20%, transparent 62%, var(--bg) 100%); }
+    radial-gradient(ellipse 64% 54% at 50% 46%, rgba(8,11,6,.52), transparent 72%),
+    linear-gradient(180deg, rgba(14,20,10,.4) 0%, transparent 24%, transparent 58%, var(--bg) 100%); }
 .kb-l-hero__inner { position: relative; z-index: 3; max-width: 900px; }
 .kb-l-badge { display: inline-flex; align-items: center; gap: 8px; padding: 7px 15px 7px 8px; margin-bottom: 26px;
   border-radius: 999px; font-size: 12px; color: var(--muted); }
 .kb-l-badge__pill { background: var(--green); color: #F4F0E8; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; letter-spacing: .02em; }
-.kb-l-hero__title { font-family: var(--serif); font-weight: 700; font-size: clamp(44px, 8vw, 96px); line-height: 1.02; letter-spacing: -.02em; color: var(--text);
-  text-shadow: 0 2px 16px var(--bg), 0 0 30px var(--bg), 0 0 50px var(--bg); }
-.kb-l-hero__em { display: block; font-style: italic; font-weight: 600; color: var(--gold-deep);
-  text-shadow: 0 2px 14px var(--bg), 0 0 24px var(--bg), 0 0 40px var(--bg); }
-.kb-l-hero__sub { margin: 24px auto 0; max-width: 56ch; font-size: clamp(15px, 1.6vw, 18px); line-height: 1.64; color: var(--muted); text-shadow: 0 1px 12px var(--bg), 0 0 20px var(--bg); }
+.kb-l-hero__title { font-family: var(--serif); font-weight: 700; font-size: clamp(44px, 8vw, 96px); line-height: 1.02; letter-spacing: -.02em; color: #F1EDE1;
+  text-shadow: 0 2px 24px rgba(8,10,6,.62), 0 0 46px rgba(8,10,6,.5); }
+.kb-l-hero__em { display: block; font-style: italic; font-weight: 600; color: #e7b552;
+  text-shadow: 0 2px 22px rgba(8,10,6,.62), 0 0 40px rgba(8,10,6,.4); }
+.kb-l-hero__sub { margin: 24px auto 0; max-width: 56ch; font-size: clamp(15px, 1.6vw, 18px); line-height: 1.64; color: rgba(241,237,225,.82); text-shadow: 0 1px 18px rgba(8,10,6,.6); }
 .kb-l-hero__cta { margin-top: 34px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; align-items: center; }
 
 /* плавающие glass-чипы «замер» */
@@ -135,17 +140,13 @@
 .kb-l-chip__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 3px rgba(184,122,24,.18); }
 
 .kb-l-scrollcue { position: absolute; z-index: 3; left: 50%; bottom: 26px; transform: translateX(-50%);
-  font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 9px; }
+  font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: rgba(241,237,225,.7); display: flex; flex-direction: column; align-items: center; gap: 9px; }
 .kb-l-scrollcue span:last-child { width: 1.5px; height: 34px; background: linear-gradient(var(--gold), transparent); }
-
-/* ═══════════════════════ ПРОЗРАЧНАЯ REVEAL-ПОЛОСА (облёт виден целиком) ════ */
-.kb-l-band { position: relative; z-index: 1; min-height: 58svh; display: grid; place-items: center; text-align: center; padding: 40px 20px; background: transparent; }
-.kb-l-band__cap { padding: 14px 22px; border-radius: 999px; font-family: var(--serif); font-style: italic; font-size: clamp(20px, 3vw, 34px); color: var(--text); text-shadow: 0 2px 14px var(--bg); }
 
 /* ═══════════════════════════ ОБЩЕЕ ДЛЯ СЕКЦИЙ ═════════════════════════════ */
 /* полупрозрачный кремовый фон → орбита слегка призрачно просвечивает */
 .kb-l-sec { max-width: none; margin: 0; padding: clamp(64px, 9vw, 128px) clamp(16px, 4vw, 40px);
-  background: rgba(244,240,232,0.93); }
+  background: var(--bg); }
 .kb-l-sec__in { max-width: var(--maxw); margin: 0 auto; }
 .kb-l-sec__head { max-width: 720px; margin-bottom: clamp(36px, 5vw, 60px); }
 .kb-l-h2 { font-family: var(--serif); font-weight: 700; letter-spacing: -.02em; font-size: clamp(32px, 4.8vw, 60px); line-height: 1.04; color: var(--text); }
@@ -174,7 +175,7 @@
 .kb-l-chips span { font-size: 12.5px; font-weight: 500; color: var(--green); background: rgba(30,61,18,.07); border: 1px solid rgba(30,61,18,.12); padding: 5px 12px; border-radius: 999px; }
 
 /* ─── СЕКЦИЯ «ДВИЖОК» (стекло, орбита сквозь) ─────────────────────────────── */
-.kb-l-engine { background: rgba(244,240,232,0.62); }
+.kb-l-engine { background: var(--bg-2); }
 .kb-l-engine__grid { max-width: var(--maxw); margin: 0 auto; display: grid; grid-template-columns: 1.1fr 1fr; gap: clamp(24px, 4vw, 56px); align-items: center; }
 .kb-l-engine__panel { padding: 32px 30px; }
 .kb-l-engine__copy { max-width: 42ch; }
@@ -203,7 +204,7 @@
 .kb-l-cine__sub { margin: 20px auto 0; max-width: 48ch; font-size: clamp(15px, 1.7vw, 19px); line-height: 1.6; color: var(--muted); text-shadow: 0 1px 12px var(--bg); }
 
 /* ─── ФИНАЛ ────────────────────────────────────────────────────────────────── */
-.kb-l-final { padding: clamp(72px, 10vw, 140px) clamp(16px, 4vw, 40px); display: grid; place-items: center; background: rgba(244,240,232,0.9); }
+.kb-l-final { padding: clamp(72px, 10vw, 140px) clamp(16px, 4vw, 40px); display: grid; place-items: center; background: var(--bg); }
 .kb-l-final__panel { max-width: 720px; width: 100%; padding: clamp(40px, 6vw, 66px); text-align: center; border-radius: 24px;
   background: linear-gradient(160deg, #22421a, #16290f); color: #F4F0E8; position: relative; overflow: hidden; box-shadow: 0 30px 80px rgba(30,61,18,.3); }
 .kb-l-final__panel::after { content: ''; position: absolute; right: -80px; bottom: -80px; width: 360px; height: 360px; opacity: .1; pointer-events: none;
