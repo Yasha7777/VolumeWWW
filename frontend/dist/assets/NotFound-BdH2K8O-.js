@@ -1,4 +1,4 @@
-import{j as e}from"./vendor-three-3nxrnoPM.js";import{D as s}from"./index-WVzHRNXS.js";import"./vendor-pdf-CfivX3Ob.js";import"./vendor-supabase-BazgpBWu.js";const o="/assets/cheremsha-B-PvWHo_.png";function c(){const i=s();return e.jsxs("div",{style:t.page,children:[e.jsx("style",{children:`
+import{j as e}from"./vendor-three-CQjY74Kg.js";import{D as s}from"./index-CZt0gPtP.js";import"./vendor-pdf-D2u3ODK5.js";import"./vendor-supabase-BazgpBWu.js";const o="/assets/cheremsha-B-PvWHo_.png";function c(){const i=s();return e.jsxs("div",{style:t.page,children:[e.jsx("style",{children:`
         @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@700&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap');
 
         @keyframes breathe {

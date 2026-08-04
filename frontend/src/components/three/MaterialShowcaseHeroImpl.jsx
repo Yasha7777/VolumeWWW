@@ -2,17 +2,26 @@ import { Suspense, useMemo, useRef, useState, useEffect } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { Environment, Lightformer, ContactShadows, useProgress, AdaptiveDpr } from '@react-three/drei'
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { useModel } from './ktx2gltf'
 
 /* ════════════════════════════════════════════════════════════════════════
-   HERO ЛЕНДИНГА · дрон садится к земле у стройплощадки; МНОГО ИНСТАНСОВ
-   гравия/песка/камня (геометрии из /3dmodels, meshopt+KTX2, полигоны целы)
-   слетаются в одну точку и УКЛАДЫВАЮТСЯ В ПЛОТНЫЙ КОНУС-НАСЫПЬ, затем
-   замирают. Рядом маленький калибровочный куб (~×5 меньше кучи). Здание с
-   краном — окружение на земле. Камера финиширует низко и близко (ракурс
-   снизу вверх), без клиппинга сквозь пол/модели. reduced-motion → статичный
-   собранный кадр. Инстансинг (одна геометрия × N), тени только у здания/куба,
-   dpr[1,2]. Всё на земле.
+   СЦЕНА СЕКЦИИ «ДВИЖОК» · МНОГО ИНСТАНСОВ гравия/песка/камня (геометрии из
+   /models, meshopt+KTX2, полигоны целы) сыплются сверху и УКЛАДЫВАЮТСЯ В
+   ПЛОТНЫЙ КОНУС-НАСЫПЬ, затем ЗАМИРАЮТ. Рядом калибровочный куб. Здание с
+   краном — окружение сзади. reduced-motion → статичный собранный кадр.
+
+   ПЕРФ-ИНВАРИАНТЫ (эталон — CubesHeroImpl):
+   • видимость гейтит рендер: IntersectionObserver на обёртке → frameloop
+     "always"↔"never" (работает В ЛЮБОЙ секции, не только вверху страницы);
+   • dirty-check + ЗАТУХАНИЕ дрожи: после укладки матрицы инстансов больше не
+     пересобираются (doneRef) — раньше drift не затухал и буфер жгли вечно;
+   • useInstGeo объединяет ВСЕ меши модели (stone_gravel: 9 мешей; раньше
+     брался только первый, 8 терялись) — безопасно, с фолбэком на largest;
+   • ContactShadows frames={1} + ребейк по КВАНТУ прогресса сборки (≤15 раз),
+     а не покадрово;
+   • разумные счётчики: pile_of_gravel — это ЦЕЛАЯ куча, поэтому единицы штук,
+     а не 1200 (куч внутри кучи).
    ════════════════════════════════════════════════════════════════════════ */
 
 const REDUCE = typeof window !== 'undefined'
@@ -27,26 +36,49 @@ const rand = (a, b) => a + Math.random() * (b - a)
 // куча-конус: R база, H высота
 const CONE = { R: 1.9, H: 2.4 }
 
-// достаём геометрию+материал модели, запекаем мировую матрицу, нормируем max-dim→1
+// Достаём геометрию модели: ОБЪЕДИНЯЕМ все меши (не теряем 8 из 9), запекаем
+// мировые матрицы, нормируем max-dim→1. Если меши разнородны (несовместимы для
+// merge) — безопасный фолбэк на самый крупный меш, консоль чистая.
+function bakeGeometryFromScene(scene) {
+  scene.updateWorldMatrix(true, true)
+  const baked = []
+  scene.traverse((o) => {
+    if (o.isMesh && o.geometry && o.geometry.attributes.position) {
+      const g = o.geometry.clone()
+      g.applyMatrix4(o.matrixWorld)
+      g.morphAttributes = {}                       // merge чувствителен к морфам
+      baked.push({
+        g,
+        count: g.attributes.position.count,
+        sig: Object.keys(g.attributes).sort().join(',') + '|' + (g.index ? 'i' : 'n'),
+        mat: Array.isArray(o.material) ? o.material[0] : o.material,
+      })
+    }
+  })
+  if (!baked.length) return null
+  const largest = baked.reduce((a, b) => (b.count > a.count ? b : a))
+  const mat = largest.mat
+  let geo = largest.g
+  if (baked.length > 1) {
+    const uniform = baked.every((b) => b.sig === baked[0].sig)
+    if (uniform) {
+      try {
+        const merged = mergeGeometries(baked.map((b) => b.g), false)
+        if (merged) geo = merged
+      } catch { /* оставляем largest */ }
+    }
+  }
+  geo.computeBoundingBox()
+  const size = new THREE.Vector3(); geo.boundingBox.getSize(size)
+  const c = new THREE.Vector3(); geo.boundingBox.getCenter(c)
+  const s = 1 / (Math.max(size.x, size.y, size.z) || 1)
+  geo.translate(-c.x, -c.y, -c.z); geo.scale(s, s, s)
+  return { geo, mat }
+}
+
 function useInstGeo(url) {
   const { scene } = useModel(url)
-  return useMemo(() => {
-    let picked = null
-    scene.updateWorldMatrix(true, true)
-    scene.traverse((o) => {
-      if (o.isMesh && o.geometry && !picked) {
-        const g = o.geometry.clone(); g.applyMatrix4(o.matrixWorld)
-        picked = { geo: g, mat: Array.isArray(o.material) ? o.material[0] : o.material }
-      }
-    })
-    if (!picked) return null
-    picked.geo.computeBoundingBox()
-    const size = new THREE.Vector3(); picked.geo.boundingBox.getSize(size)
-    const c = new THREE.Vector3(); picked.geo.boundingBox.getCenter(c)
-    const s = 1 / (Math.max(size.x, size.y, size.z) || 1)
-    picked.geo.translate(-c.x, -c.y, -c.z); picked.geo.scale(s, s, s)
-    return picked
-  }, [scene])
+  return useMemo(() => bakeGeometryFromScene(scene), [scene])
 }
 
 // упаковка «шкуры» конуса (плотная поверхность) + разлёт СВЕРХУ (сыплется на место)
@@ -75,13 +107,22 @@ function InstPile({ geo, mat, data, tRef }) {
   const ref = useRef()
   const dummy = useMemo(() => new THREE.Object3D(), [])
   const eul = useMemo(() => new THREE.Euler(), [])
+  const doneRef = useRef(false)
+  const lastT = useRef(-1)
+  // момент, когда уложится последняя частица (rel + окно падения 1.6) + запас
+  const settleT = useMemo(() => data.reduce((m, d) => Math.max(m, d.rel), 0) + 1.7, [data])
+
   useFrame(() => {
-    const mesh = ref.current; if (!mesh) return
-    const t = tRef.current
+    const mesh = ref.current
+    if (!mesh || doneRef.current) return          // после сборки буфер не трогаем
+    const t = REDUCE ? 99 : tRef.current
+    if (!REDUCE && Math.abs(t - lastT.current) < 1e-3) return  // dirty-check: t не сдвинулся
+    lastT.current = t
     for (let i = 0; i < data.length; i++) {
       const d = data[i]
       const s = REDUCE ? 1 : smooth(seg(t, d.rel, d.rel + 1.6))
-      const drift = REDUCE ? 0 : Math.sin(t * 0.8 + d.ph) * 0.006 * s
+      // дрожь ЗАТУХАЕТ по мере укладки (×(1-s)) → после сборки строго 0
+      const drift = REDUCE ? 0 : Math.sin(t * 0.8 + d.ph) * 0.006 * (1 - s)
       dummy.position.set(
         lerp(d.scatter[0], d.heap[0], s),
         lerp(d.scatter[1], d.heap[1], s) + drift,
@@ -92,12 +133,13 @@ function InstPile({ geo, mat, data, tRef }) {
       dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix)
     }
     mesh.instanceMatrix.needsUpdate = true
+    if (REDUCE || t >= settleT) doneRef.current = true   // фиксируем финальную укладку
   })
-  // тени частиц выключены (их сотни) — контакт даёт ContactShadows
+  // тени частиц выключены (их тысячи) — контакт даёт ContactShadows
   return <instancedMesh ref={ref} args={[geo, mat, data.length]} frustumCulled={false} receiveShadow />
 }
 
-// один блок модели → InstancedMesh с упаковкой в конус
+// один материал → InstancedMesh с упаковкой в конус
 function MaterialInstances({ url, count, sMin, sMax, span, tRef }) {
   const g = useInstGeo(url)
   const data = useMemo(() => packCone(count, sMin, sMax, span), [count, sMin, sMax, span])
@@ -147,6 +189,8 @@ function CalibCube({ tRef }) {
 function Scene() {
   const buildingRef = useRef()
   const tRef = useRef(0)
+  const shadowBucketRef = useRef(0)
+  const [shadowBucket, setShadowBucket] = useState(0)
 
   useFrame((state, dt) => {
     const cm = state.camera
@@ -164,6 +208,14 @@ function Scene() {
     cm.lookAt(0, lerp(3.0, 1.4, p), lerp(-3.5, -1.5, p))              // куча в центре, здание+кран сзади
 
     if (buildingRef.current && !REDUCE) buildingRef.current.rotation.y = -0.4 + Math.min(t, 25) * 0.003
+
+    // ребейк тени по кванту прогресса сборки: тень идёт за кучей, но ≤15 раз
+    // (а не покадрово). tRef растёт ТОЛЬКО пока сцена видна → бакеты меняются
+    // лишь во время реальной укладки, потом замирают.
+    if (!REDUCE) {
+      const b = Math.min(14, Math.floor(tRef.current / 0.4))
+      if (b !== shadowBucketRef.current) { shadowBucketRef.current = b; setShadowBucket(b) }
+    }
   })
 
   return (
@@ -189,18 +241,21 @@ function Scene() {
         <Suspense fallback={null}><Building url="/models/site_crane.glb" target={13} /></Suspense>
       </group>
 
-      {/* ПЛОТНАЯ КУЧА из МНОГИХ МЕЛКИХ ИНСТАНСОВ (сыплются сверху → укладываются) */}
+      {/* ПЛОТНАЯ КУЧА из МНОГИХ ИНСТАНСОВ (сыплются сверху → укладываются → замирают).
+          block_sand_rock — мелкие камни (основная масса); stone_gravel — крупные
+          акценты (объединённый кластер мешей); pile_of_gravel — ЦЕЛАЯ куча, потому
+          ЕДИНИЦЫ штук как низкие клумпы (не 1200 куч-в-куче). */}
       <group position={[0, 0, 0.2]}>
         <Suspense fallback={null}>
           <MaterialInstances url="/models/block_sand_rock.glb" count={MOBILE ? 3000 : 8000} sMin={0.020} sMax={0.036} span={2.8} tRef={tRef} />
-          <MaterialInstances url="/models/pile_of_gravel.glb" count={MOBILE ? 500 : 1200} sMin={0.03} sMax={0.06} span={3.0} tRef={tRef} />
-          <MaterialInstances url="/models/stone_gravel.glb" count={MOBILE ? 3 : 5} sMin={0.03} sMax={0.05} span={3.2} tRef={tRef} />
+          <MaterialInstances url="/models/stone_gravel.glb" count={MOBILE ? 4 : 7} sMin={0.05} sMax={0.085} span={3.2} tRef={tRef} />
+          <MaterialInstances url="/models/pile_of_gravel.glb" count={MOBILE ? 3 : 6} sMin={0.05} sMax={0.09} span={3.0} tRef={tRef} />
         </Suspense>
       </group>
 
       <CalibCube tRef={tRef} />
 
-      <ContactShadows position={[0, 0.01, 0.4]} scale={16} blur={2.4} far={7} opacity={0.55} resolution={1024} />
+      <ContactShadows key={shadowBucket} position={[0, 0.01, 0.4]} scale={16} blur={2.4} far={7} opacity={0.55} resolution={1024} frames={1} />
     </>
   )
 }
@@ -213,32 +268,33 @@ function Loader() {
 
 export default function MaterialShowcaseHeroImpl() {
   const wrapRef = useRef(null)
-  const visibleRef = useRef(true)
-  const [frameloop, setFrameloop] = useState('always')
+  const visibleRef = useRef(false)
+  const [frameloop, setFrameloop] = useState('never')   // включим, когда секция реально в кадре
   const [mounted, setMounted] = useState(false)
 
-  useEffect(() => {
-    const onScroll = () => {
-      const vh = window.innerHeight || 1
-      const fade = 1 - Math.min(Math.max((window.scrollY - vh * 0.95) / (vh * 0.5), 0), 1)
-      if (wrapRef.current) wrapRef.current.style.opacity = String(fade)
-      const vis = fade > 0.02 && !document.hidden
-      if (vis !== visibleRef.current) { visibleRef.current = vis; setFrameloop(vis ? 'always' : 'never') }
-    }
-    const onVis = () => { if (document.hidden) setFrameloop('never'); else onScroll() }
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    document.addEventListener('visibilitychange', onVis)
-    return () => { window.removeEventListener('scroll', onScroll); document.removeEventListener('visibilitychange', onVis) }
-  }, [])
-
+  // отложенный маунт канваса — не блокируем первый paint компиляцией PBR-шейдеров
   useEffect(() => { const raf = requestAnimationFrame(() => setMounted(true)); return () => cancelAnimationFrame(raf) }, [])
+
+  // Гейт рендера ПО ВИДИМОСТИ СЕКЦИИ (а не по scrollY от верха страницы) — сцена
+  // живёт в «Движке» посреди страницы. reduced-motion → 'demand' (один кадр).
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el || REDUCE) return
+    const io = new IntersectionObserver(([e]) => {
+      visibleRef.current = e.isIntersecting
+      setFrameloop(e.isIntersecting && !document.hidden ? 'always' : 'never')
+    }, { threshold: 0 })
+    io.observe(el)
+    const onVis = () => setFrameloop(!document.hidden && visibleRef.current ? 'always' : 'never')
+    document.addEventListener('visibilitychange', onVis)
+    return () => { io.disconnect(); document.removeEventListener('visibilitychange', onVis) }
+  }, [])
 
   return (
     <div ref={wrapRef} className="kb-l-flow">
       <Loader />
       {mounted && (
-        <Canvas frameloop={REDUCE ? 'demand' : frameloop} shadows dpr={[1, 2]}
+        <Canvas frameloop={REDUCE ? 'demand' : frameloop} shadows dpr={[1, 1.5]}
           gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
           camera={{ position: [6, 16, 12], fov: 40, near: 0.25, far: 200 }}>
           <Suspense fallback={null}><Scene /></Suspense>
