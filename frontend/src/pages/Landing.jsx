@@ -182,6 +182,9 @@ function Hero({ user }) {
         src="/landing/video.mp4" poster="/landing/build-still.webp"
         autoPlay={!reduce} loop muted playsInline preload="auto" />
       <div className="kb-l-hero__scrim" aria-hidden="true" />
+      {/* кинематографичное растворение хиро в тёплой дымке → cream (CSS, см. landing.css) */}
+      <div className="kb-l-hero__blur" aria-hidden="true" />
+      <div className="kb-l-hero__fade" aria-hidden="true" />
 
       <div className="kb-l-hero__pad" aria-hidden="true" />
 
