@@ -97,10 +97,11 @@
   display: flex; align-items: center; justify-content: space-between; gap: 18px;
   height: var(--nav-h); padding: 0 clamp(14px, 4vw, 34px);
   animation: none;                          /* гасим глобальный header{animation:slideDown} — вход рулит motion */
-  background: linear-gradient(180deg, rgba(24,32,17,.5), rgba(24,32,17,.24));
-  -webkit-backdrop-filter: blur(26px) saturate(1.7); backdrop-filter: blur(26px) saturate(1.7);
-  border-bottom: 1px solid rgba(255,255,255,.14);
-  box-shadow: 0 10px 34px rgba(20,26,14,.14), inset 0 1px 0 rgba(255,255,255,.24);
+  /* больше стекла: сильнее размытие, меньше подложки → сквозь видит видео */
+  background: linear-gradient(180deg, rgba(22,30,22,.34), rgba(22,30,22,.14));
+  -webkit-backdrop-filter: blur(30px) saturate(1.8); backdrop-filter: blur(30px) saturate(1.8);
+  border-bottom: 1px solid rgba(255,255,255,.16);
+  box-shadow: 0 12px 38px rgba(20,26,14,.16), inset 0 1px 0 rgba(255,255,255,.26);
 }
 .kb-l-nav__center { display: flex; align-items: center; gap: 2px; padding: 5px; border-radius: 999px; }
 .kb-l-nav__center a { font-size: 14px; font-weight: 500; color: rgba(241,237,225,.72); text-decoration: none;
@@ -155,10 +156,11 @@
   display: flex; flex-direction: column;
   align-items: center; justify-content: center; text-align: center;
 }
-.kb-l-hero .kb-l-badge { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px 6px 7px;
-  border-radius: 999px; color: rgba(241,237,225,.86); font-weight: 500;
-  background: rgba(18,24,12,.4); border: 1px solid rgba(255,255,255,.18);
-  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+.kb-l-hero .kb-l-badge { display: inline-flex; align-items: center; gap: 8px; padding: 6px 15px 6px 7px;
+  border-radius: 999px; color: rgba(244,240,232,.9); font-weight: 500;
+  background: rgba(20,28,20,.32); border: 1px solid rgba(255,255,255,.26);
+  -webkit-backdrop-filter: blur(22px) saturate(1.6); backdrop-filter: blur(22px) saturate(1.6);
+  box-shadow: 0 8px 26px rgba(8,12,8,.3), inset 0 1px 0 rgba(255,255,255,.24);
   font-size: min(3.4cqh, 12px); }
 .kb-l-badge__pill { background: var(--green); color: #F4F0E8; font-size: .92em; font-weight: 600; padding: 3px 10px; border-radius: 999px; letter-spacing: .02em; }
 .kb-l-hero__title { font-family: var(--serif); font-weight: 700; letter-spacing: -.02em; color: #F1EDE1;
@@ -176,28 +178,39 @@
 /* полоса 3 — CTA */
 .kb-l-hero__cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; align-items: center;
   padding: clamp(10px, 2.4vh, 22px) 0 clamp(6px, 1.4vh, 14px); }
-.kb-l-hero .kb-l-btn--ghost { color: #F7F3E9; border-color: rgba(255,255,255,.34);
-  background: rgba(18,24,12,.4); -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5); }
-.kb-l-hero .kb-l-btn--ghost:hover { border-color: rgba(255,255,255,.62); color: #fff; }
+/* светлое морозное стекло (как «Смотреть показания» на прототипе) */
+.kb-l-hero .kb-l-btn--ghost { color: #F7F3E9; border-color: rgba(255,255,255,.42);
+  background: rgba(255,255,255,.12); -webkit-backdrop-filter: blur(22px) saturate(1.6); backdrop-filter: blur(22px) saturate(1.6); }
+.kb-l-hero .kb-l-btn--ghost:hover { border-color: rgba(255,255,255,.7); background: rgba(255,255,255,.18); color: #fff; }
 
-/* полоса 4 — чипы показаний (в потоке, не absolute) */
+/* полоса 4 — чипы показаний: тёплое ЗОЛОТОЕ стекло + точка (по прототипу) */
 .kb-l-hero__chips { display: flex; align-items: center; justify-content: center; flex-wrap: wrap;
-  gap: 8px 12px; padding-bottom: clamp(18px, 3.4vh, 36px); }
-.kb-l-hero__sep { color: rgba(255,255,255,.42); font-weight: 400; }
+  gap: 10px 12px; padding-bottom: clamp(18px, 3.4vh, 36px); }
+.kb-l-hero__sep { display: none; }               /* разделители убраны — чипы отдельными пилюлями */
 .kb-l-hero__chip {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 8px 16px; border-radius: 999px;
-  font-size: 13px; font-weight: 600; color: #F7F3E9; white-space: nowrap;
-  background: linear-gradient(140deg, rgba(18,24,12,.62), rgba(18,24,12,.4));
-  border: 1px solid rgba(255,255,255,.34);
-  -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6);
-  box-shadow: 0 10px 28px rgba(10,14,8,.3), inset 0 1px 0 rgba(255,255,255,.3);
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 8px 17px 8px 14px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; color: #F5E7C8; white-space: nowrap;
+  background: linear-gradient(140deg, rgba(120,86,22,.46), rgba(52,38,12,.34));
+  border: 1px solid rgba(231,181,82,.5);
+  -webkit-backdrop-filter: blur(22px) saturate(1.7); backdrop-filter: blur(22px) saturate(1.7);
+  box-shadow: 0 12px 30px rgba(10,14,8,.32), inset 0 1px 0 rgba(255,225,160,.28);
 }
-.kb-l-hero__chip b { font-family: var(--serif); font-size: 16px; font-weight: 700; color: #e7b552; }
+.kb-l-hero__chip::before { content: ''; flex: none; width: 7px; height: 7px; border-radius: 50%;
+  background: #F2C14E; box-shadow: 0 0 8px rgba(242,193,78,.85); }
+.kb-l-hero__chip b { font-family: var(--serif); font-size: 16px; font-weight: 700; color: #F2C14E; margin-left: 2px; }
 
 /* ═══════════════════════════ ОБЩЕЕ ДЛЯ СЕКЦИЙ ═════════════════════════════ */
 .kb-l-sec { position: relative; overflow: hidden; max-width: none; margin: 0;
+  scroll-margin-top: var(--nav-h);
   padding: clamp(64px, 9vw, 128px) clamp(16px, 4vw, 40px); background: var(--bg); }
+
+/* ─── ОЧЕНЬ МЯГКИЕ ЦВЕТОВЫЕ ПЕРЕХОДЫ МЕЖДУ СЕКЦИЯМИ ────────────────────────
+   Каждый стык делит один цвет с соседом → границ не видно, при прокрутке цвет
+   «перетекает». bg #F4F0E8 ↔ bg-2 #EFEADF. (engine/cine/final красятся в своих
+   правилах ниже — здесь только id-секции, которые бьют по специфичности.) */
+#dash { background: linear-gradient(180deg, var(--bg) 0%, var(--bg) 52%, var(--bg-2) 100%); }
+#proc { background: var(--bg); }   /* стык engine→proc→cine — единый --bg, без границы */
 .kb-l-sec__in { position: relative; z-index: 1; max-width: var(--maxw); margin: 0 auto; }
 .kb-l-sec__head { max-width: 720px; margin-bottom: clamp(36px, 5vw, 60px); }
 .kb-l-h2 { font-family: var(--serif); font-weight: 700; letter-spacing: -.02em; font-size: clamp(32px, 4.8vw, 60px); line-height: 1.04; color: var(--text); }
@@ -208,8 +221,14 @@
 .kb-l-bento { display: flex; flex-direction: column; gap: 14px; }
 .kb-l-bento__row { display: flex; flex-wrap: wrap; gap: 14px; }
 .kb-l-bento__row--wide { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+/* метрики: 2×2, чуть «вытянуто по диагонали» — левая колонка выше, правая ниже.
+   padding-block резервирует место под сдвиг ±16px → диагональ не вылезает за блок. */
 .kb-l-bento__metrics { flex: 3 1 420px; min-width: 0;
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 1fr; gap: 14px; padding-block: 18px; }
+.kb-l-bento__metrics > :nth-child(odd)  { transform: translateY(-16px); }
+.kb-l-bento__metrics > :nth-child(even) { transform: translateY(16px); }
+@media (max-width: 560px) { .kb-l-bento__metrics > * { transform: none; } }
 
 .kb-l-w { min-width: 0; padding: 22px 24px; display: flex; flex-direction: column; border-radius: 22px; }
 .kb-l-w__label { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
@@ -242,7 +261,8 @@
 .kb-l-chips span { font-size: 12.5px; font-weight: 500; color: var(--green); background: rgba(30,61,18,.07); border: 1px solid rgba(30,61,18,.12); padding: 5px 12px; border-radius: 999px; }
 
 /* ─── СЕКЦИЯ «ДВИЖОК» (стекло + сцена сквозь + флора) ──────────────────────── */
-.kb-l-engine { position: relative; overflow: hidden; background: var(--bg-2); }
+.kb-l-engine { position: relative; overflow: hidden; scroll-margin-top: var(--nav-h);
+  background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg-2) 58%, var(--bg) 100%); }
 .kb-l-engine__scene { position: absolute; inset: 0; z-index: 0; }   /* сюда монтируется .kb-l-flow */
 .kb-l-engine__grid { position: relative; z-index: 1; max-width: var(--maxw); margin: 0 auto; display: grid; grid-template-columns: 1.1fr 1fr; gap: clamp(24px, 4vw, 56px); align-items: center; }
 .kb-l-engine__panel { padding: 32px 30px; }
@@ -289,7 +309,8 @@
 .kb-l-cine__sub { margin: 20px auto 0; max-width: 48ch; font-size: clamp(15px, 1.7vw, 19px); line-height: 1.6; color: var(--muted); }
 
 /* ─── ФИНАЛ ────────────────────────────────────────────────────────────────── */
-.kb-l-final { position: relative; overflow: hidden; padding: clamp(72px, 10vw, 140px) clamp(16px, 4vw, 40px); display: grid; place-items: center; background: var(--bg); }
+.kb-l-final { position: relative; overflow: hidden; padding: clamp(72px, 10vw, 140px) clamp(16px, 4vw, 40px); display: grid; place-items: center;
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%); }
 .kb-l-final__panel { position: relative; z-index: 1; max-width: 720px; width: 100%; padding: clamp(40px, 6vw, 66px); text-align: center; border-radius: 24px;
   background: linear-gradient(160deg, #22421a, #16290f); color: #F4F0E8; overflow: hidden; box-shadow: 0 30px 80px rgba(30,61,18,.3); }
 .kb-l-final__panel::after { content: ''; position: absolute; right: -80px; bottom: -80px; width: 360px; height: 360px; opacity: .1; pointer-events: none;

@@ -226,8 +226,8 @@ function Scene() {
         <Lightformer intensity={0.9} position={[7, 2, -3]} scale={[5, 5, 1]} color="#ffcf8f" />
       </Environment>
       <ambientLight intensity={0.4} />
-      <directionalLight position={[7, 14, 7]} intensity={1.9} castShadow
-        shadow-mapSize={[2048, 2048]} shadow-bias={-0.0002}
+      <directionalLight position={[7, 14, 7]} intensity={1.9} castShadow={!MOBILE}
+        shadow-mapSize={[1024, 1024]} shadow-bias={-0.0002}
         shadow-camera-left={-14} shadow-camera-right={14} shadow-camera-top={14} shadow-camera-bottom={-14} />
       <directionalLight position={[-8, 5, -4]} intensity={0.4} color="#c98a24" />
 
@@ -236,26 +236,26 @@ function Scene() {
         <meshStandardMaterial color="#4a4034" roughness={1} />
       </mesh>
 
-      {/* ЗДАНИЕ с краном — ОКРУЖЕНИЕ СЗАДИ (отодвинуто, чтобы не загораживать кучу) */}
-      <group ref={buildingRef} position={[0, 0, -9.5]} rotation={[0, -0.35, 0]}>
-        <Suspense fallback={null}><Building url="/models/site_crane.glb" target={13} /></Suspense>
-      </group>
+      {/* ЗДАНИЕ с краном — ОКРУЖЕНИЕ СЗАДИ. МАКС.ОПТИМ: только на десктопе
+          (site_crane ~12МБ) — на мобиле не грузим вовсе. */}
+      {!MOBILE && (
+        <group ref={buildingRef} position={[0, 0, -9.5]} rotation={[0, -0.35, 0]}>
+          <Suspense fallback={null}><Building url="/models/site_crane.glb" target={13} /></Suspense>
+        </group>
+      )}
 
-      {/* ПЛОТНАЯ КУЧА из МНОГИХ ИНСТАНСОВ (сыплются сверху → укладываются → замирают).
-          block_sand_rock — мелкие камни (основная масса); stone_gravel — крупные
-          акценты (объединённый кластер мешей); pile_of_gravel — ЦЕЛАЯ куча, потому
-          ЕДИНИЦЫ штук как низкие клумпы (не 1200 куч-в-куче). */}
+      {/* ПЛОТНАЯ КУЧА из ИНСТАНСОВ block_sand_rock (сыплются сверху → укладываются →
+          замирают). МАКС.ОПТИМ: убраны stone_gravel и pile_of_gravel (≈17МБ и лишние
+          draw-calls; куча целиком строится из одной геометрии), счётчик снижен. */}
       <group position={[0, 0, 0.2]}>
         <Suspense fallback={null}>
-          <MaterialInstances url="/models/block_sand_rock.glb" count={MOBILE ? 3000 : 8000} sMin={0.020} sMax={0.036} span={2.8} tRef={tRef} />
-          <MaterialInstances url="/models/stone_gravel.glb" count={MOBILE ? 4 : 7} sMin={0.05} sMax={0.085} span={3.2} tRef={tRef} />
-          <MaterialInstances url="/models/pile_of_gravel.glb" count={MOBILE ? 3 : 6} sMin={0.05} sMax={0.09} span={3.0} tRef={tRef} />
+          <MaterialInstances url="/models/block_sand_rock.glb" count={MOBILE ? 1600 : 4000} sMin={0.020} sMax={0.038} span={2.8} tRef={tRef} />
         </Suspense>
       </group>
 
       <CalibCube tRef={tRef} />
 
-      <ContactShadows key={shadowBucket} position={[0, 0.01, 0.4]} scale={16} blur={2.4} far={7} opacity={0.55} resolution={1024} frames={1} />
+      <ContactShadows key={shadowBucket} position={[0, 0.01, 0.4]} scale={16} blur={2.4} far={7} opacity={0.55} resolution={512} frames={1} />
     </>
   )
 }
@@ -294,8 +294,8 @@ export default function MaterialShowcaseHeroImpl() {
     <div ref={wrapRef} className="kb-l-flow">
       <Loader />
       {mounted && (
-        <Canvas frameloop={REDUCE ? 'demand' : frameloop} shadows dpr={[1, 1.5]}
-          gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
+        <Canvas frameloop={REDUCE ? 'demand' : frameloop} shadows={!MOBILE} dpr={MOBILE ? [1, 1] : [1, 1.25]}
+          gl={{ alpha: true, antialias: !MOBILE, powerPreference: 'high-performance' }}
           camera={{ position: [6, 16, 12], fov: 40, near: 0.25, far: 200 }}>
           <Suspense fallback={null}><Scene /></Suspense>
           <AdaptiveDpr pixelated />

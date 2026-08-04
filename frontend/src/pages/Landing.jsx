@@ -189,7 +189,7 @@ function Hero({ user }) {
         <motion.div className="kb-l-badge"
           initial={reduce ? false : { opacity: 0, y: 12 }} animate={reduce ? {} : { opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.05 }}>
-          <span className="kb-l-badge__pill">НОВОЕ</span> Динамическая сборка насыпи · Карелия
+          <span className="kb-l-badge__pill">НОВОЕ</span> Замер по фото прямо на площадке · Карелия
         </motion.div>
         <h1 className="kb-l-hero__title">
           <BlurText text="Объём и масса" />
@@ -217,9 +217,7 @@ function Hero({ user }) {
         initial={reduce ? false : { opacity: 0, y: 14 }} animate={reduce ? {} : { opacity: 1, y: 0 }}
         transition={{ duration: 0.7, ease: EASE, delay: 1.1 }}>
         <span className="kb-l-hero__chip">Объём&nbsp;<b>~ 1&nbsp;428 м³</b></span>
-        <span className="kb-l-hero__sep" aria-hidden="true">·</span>
         <span className="kb-l-hero__chip">Точность&nbsp;<b>±1.8%</b></span>
-        <span className="kb-l-hero__sep" aria-hidden="true">·</span>
         <span className="kb-l-hero__chip">Масса&nbsp;<b>~ 2&nbsp;271 т</b></span>
       </motion.div>
     </section>
@@ -306,11 +304,28 @@ const ENGINE = [
   ['Выравнивание по земле', 'объём считается над опорной плоскостью'],
 ]
 function Engine() {
+  const secRef = useRef(null)
+  const reduce = useReducedMotion()
+  const [show3d, setShow3d] = useState(false)
+  // МАКС. ОПТИМИЗАЦИЯ: three.js-чанк и тяжёлые GLB грузятся ТОЛЬКО когда секция
+  // подъезжает (rootMargin 500px), а не на входе на страницу. На reduced-motion
+  // 3D вообще не монтируем — экономим ~17МБ загрузки и весь GPU-бюджет.
+  useEffect(() => {
+    if (reduce) return
+    const el = secRef.current
+    if (!el) return
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) { setShow3d(true); io.disconnect() }
+    }, { rootMargin: '500px 0px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [reduce])
   return (
-    <section id="engine" className="kb-l-sec kb-l-engine">
-      {/* scroll-привязанная 3D-сцена (lazy, KTX2, AdaptiveDpr) — просвечивает сквозь стекло */}
+    <section id="engine" ref={secRef} className="kb-l-sec kb-l-engine">
+      {/* scroll-привязанная 3D-сцена (lazy, KTX2, AdaptiveDpr) — просвечивает сквозь стекло.
+          Монтируется по близости (см. show3d) → до подъезда ни байта three/GLB. */}
       <div className="kb-l-engine__scene" aria-hidden="true">
-        <Suspense fallback={null}><EngineScene /></Suspense>
+        {show3d && <Suspense fallback={null}><EngineScene /></Suspense>}
       </div>
       <img className="kb-l-engine__flora kb-l-engine__flora--l" src="/decor/flora-left.png" alt="" aria-hidden="true" />
       <img className="kb-l-engine__flora kb-l-engine__flora--r" src="/decor/flora-right.png" alt="" aria-hidden="true" />
