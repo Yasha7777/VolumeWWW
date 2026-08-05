@@ -202,7 +202,6 @@ function HeroAtmosphere({ px, py }) {
 /* Видео вместо 3D. Grid-полосы: pad · center(cq) · CTA · чипы. */
 function Hero({ user }) {
   const ref = useRef(null)
-  const vidRef = useRef(null)
   const reduce = useReducedMotion()
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end start'] })
   const y = useTransform(scrollYProgress, [0, 1], [0, reduce ? 0 : -60])
@@ -219,26 +218,10 @@ function Hero({ user }) {
     my.set(((e.clientY - r.top) / r.height - 0.5) * 2)
   }
 
-  // видео: играет только пока хиро в кадре; reduced-motion → пауза на постере
-  useEffect(() => {
-    const v = vidRef.current
-    const sec = ref.current
-    if (!v) return
-    if (reduce) { v.pause(); return }
-    if (!sec) return
-    const io = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting) v.play?.().catch(() => {})
-      else v.pause?.()
-    }, { threshold: 0.05 })
-    io.observe(sec)
-    return () => io.disconnect()
-  }, [reduce])
-
   return (
     <section ref={ref} className="kb-l-hero" onPointerMove={onPointerMove}>
-      <video ref={vidRef} className="kb-l-hero__video" aria-hidden="true" tabIndex={-1}
-        src="/landing/video.mp4" poster="/landing/build-still.webp"
-        autoPlay={!reduce} loop muted playsInline preload="auto" />
+      {/* эталонный тёплый кадр стройплощадки (изумруд→золото); object-fit:cover, рабочие по центру */}
+      <img className="kb-l-hero__photo" src="/landing/hero.webp" alt="" aria-hidden="true" fetchpriority="high" />
       <div className="kb-l-hero__scrim" aria-hidden="true" />
       {/* пыль (боке) + звёзды с параллаксом от курсора — над скримом, под растворением */}
       {!reduce && <HeroAtmosphere px={px} py={py} />}
