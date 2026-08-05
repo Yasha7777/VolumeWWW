@@ -26,8 +26,10 @@ import '../landing.css'
 
 const EASE = [0.16, 1, 0.3, 1]
 const EASE_OUT_CUBIC = [0.33, 1, 0.68, 1]
-// 3D-сцена движка — lazy (three.js не в главном бандле), Suspense оборачивает
-const EngineScene = lazy(() => import('../components/three/MaterialShowcaseHeroImpl'))
+// 3D-сцена движка — lazy (three.js не в главном бандле), Suspense оборачивает.
+// Показывает РЕАЛЬНЫЕ облака DUSt3R (те же, что отдаёт сервис); грузит только
+// выбранную реконструкцию — см. EngineCloudImpl.
+const EngineScene = lazy(() => import('../components/three/EngineCloudImpl'))
 
 function BlurText({ text, className = '' }) {
   const reduce = useReducedMotion()
@@ -361,6 +363,8 @@ function Engine() {
   const secRef = useRef(null)
   const reduce = useReducedMotion()
   const [show3d, setShow3d] = useState(false)
+  // какую из 3 реальных реконструкций сервиса показываем (грузится по выбору)
+  const [recon, setRecon] = useState(0)
   // МАКС. ОПТИМИЗАЦИЯ: three.js-чанк и тяжёлые GLB грузятся ТОЛЬКО когда секция
   // подъезжает (rootMargin 500px), а не на входе на страницу. На reduced-motion
   // 3D вообще не монтируем — экономим ~17МБ загрузки и весь GPU-бюджет.
@@ -376,17 +380,36 @@ function Engine() {
   }, [reduce])
   return (
     <section id="engine" ref={secRef} className="kb-l-sec kb-l-engine">
-      {/* scroll-привязанная 3D-сцена (lazy, KTX2, AdaptiveDpr) — просвечивает сквозь стекло.
-          Монтируется по близости (см. show3d) → до подъезда ни байта three/GLB. */}
+      {/* Реальное облако точек DUSt3R (lazy) — просвечивает сквозь стекло. Монтируется
+          по близости (см. show3d) → до подъезда ни байта three/PLY; грузится только
+          выбранная реконструкция (index=recon). */}
       <div className="kb-l-engine__scene" aria-hidden="true">
-        {show3d && <Suspense fallback={null}><EngineScene /></Suspense>}
+        {show3d && <Suspense fallback={null}><EngineScene index={recon} /></Suspense>}
       </div>
       <img className="kb-l-engine__flora kb-l-engine__flora--l" src="/decor/flora-left.png" alt="" aria-hidden="true" />
       <img className="kb-l-engine__flora kb-l-engine__flora--r" src="/decor/flora-right.png" alt="" aria-hidden="true" />
       <div className="kb-l-engine__grid">
         <motion.div className="kb-l-engine__copy" {...reveal}>
           <h2 className="kb-l-h2">Тот же движок, <em>что в сервисе</em></h2>
-          <p className="kb-l-lead">Объекты вокруг — не декор. Это те же кубы, гравий и песок, из которых сервис собирает измеримую 3D-сцену. Прокрутите — материал облетает площадку и стягивается к замеру.</p>
+          <p className="kb-l-lead">За стеклом — не декор, а настоящая реконструкция DUSt3R: облако точек, собранное сервисом из обычных фотографий. Ровно то, что вы получите на выходе. Переключайте объекты — модель подгружается по клику.</p>
+          {!reduce && (
+            <div className="kb-l-recon" role="group" aria-label="Реальные реконструкции сервиса">
+              <span className="kb-l-recon__cap">Реальные облака DUSt3R</span>
+              <div className="kb-l-recon__tabs">
+                {[0, 1, 2].map((i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className={`kb-l-recon__tab${recon === i ? ' is-on' : ''}`}
+                    aria-pressed={recon === i}
+                    onClick={() => setRecon(i)}
+                  >
+                    {String(i + 1).padStart(2, '0')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </motion.div>
         <motion.ul className="kb-l-engine__panel kb-l-engine__list kb-l-glass" {...reveal} transition={{ ...reveal.transition, delay: 0.1 }}>
           {ENGINE.map(([b, d]) => (
