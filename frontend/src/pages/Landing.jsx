@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   motion,
@@ -151,6 +151,53 @@ function LiquidNav({ user }) {
   )
 }
 
+/* ═══════════════════════ АТМОСФЕРА ГЕРОЯ (пыль + звёзды) ════════════════════
+   DOM-частицы (компоновка transform/opacity), два слоя глубины с параллаксом от
+   курсора. Позиции стабильны (useMemo) — на ремаунтах не «прыгают». Монтируется
+   только если reduced-motion выключен (см. Hero). */
+const STAR_COUNT = 22
+const DUST_COUNT = 16
+function useHeroField() {
+  return useMemo(() => {
+    const rnd = (a, b) => a + Math.random() * (b - a)
+    const stars = Array.from({ length: STAR_COUNT }, () => ({
+      left: rnd(2, 98), top: rnd(4, 64), size: rnd(1.4, 3.2),
+      dur: rnd(3.2, 6), delay: rnd(0, 6), peak: rnd(0.5, 1),
+    }))
+    const dust = Array.from({ length: DUST_COUNT }, () => ({
+      left: rnd(2, 98), top: rnd(24, 92), size: rnd(6, 17),
+      dur: rnd(9, 16), delay: rnd(0, 12), peak: rnd(0.32, 0.7),
+    }))
+    return { stars, dust }
+  }, [])
+}
+function HeroAtmosphere({ px, py }) {
+  const { stars, dust } = useHeroField()
+  // разная глубина → параллакс: звёзды дальше (мягче), пыль ближе (сильнее)
+  const farX = useTransform(px, (v) => v * 9);  const farY = useTransform(py, (v) => v * 7)
+  const nearX = useTransform(px, (v) => v * 26); const nearY = useTransform(py, (v) => v * 20)
+  return (
+    <div className="kb-l-atm" aria-hidden="true">
+      <motion.div className="kb-l-atm__layer" style={{ x: farX, y: farY }}>
+        {stars.map((s, i) => (
+          <span key={i} className="kb-l-atm__star" style={{
+            left: `${s.left}%`, top: `${s.top}%`, width: s.size, height: s.size,
+            '--dur': `${s.dur}s`, '--delay': `${s.delay}s`, '--peak': s.peak,
+          }} />
+        ))}
+      </motion.div>
+      <motion.div className="kb-l-atm__layer" style={{ x: nearX, y: nearY }}>
+        {dust.map((d, i) => (
+          <span key={i} className="kb-l-atm__dust" style={{
+            left: `${d.left}%`, top: `${d.top}%`, width: d.size, height: d.size,
+            '--dur': `${d.dur}s`, '--delay': `${d.delay}s`, '--peak': d.peak,
+          }} />
+        ))}
+      </motion.div>
+    </div>
+  )
+}
+
 /* ═══════════════════════════════════ HERO ══════════════════════════════════ */
 /* Видео вместо 3D. Grid-полосы: pad · center(cq) · CTA · чипы. */
 function Hero({ user }) {
@@ -160,6 +207,17 @@ function Hero({ user }) {
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end start'] })
   const y = useTransform(scrollYProgress, [0, 1], [0, reduce ? 0 : -60])
   const opacity = useTransform(scrollYProgress, [0, 0.7], [1, 0])
+
+  // курсорный параллакс для атмосферы: нормируем позицию в -1..1, сглаживаем пружиной
+  const mx = useMotionValue(0); const my = useMotionValue(0)
+  const px = useSpring(mx, { stiffness: 55, damping: 18 })
+  const py = useSpring(my, { stiffness: 55, damping: 18 })
+  const onPointerMove = (e) => {
+    if (reduce || !ref.current) return
+    const r = ref.current.getBoundingClientRect()
+    mx.set(((e.clientX - r.left) / r.width - 0.5) * 2)
+    my.set(((e.clientY - r.top) / r.height - 0.5) * 2)
+  }
 
   // видео: играет только пока хиро в кадре; reduced-motion → пауза на постере
   useEffect(() => {
@@ -177,11 +235,13 @@ function Hero({ user }) {
   }, [reduce])
 
   return (
-    <section ref={ref} className="kb-l-hero">
+    <section ref={ref} className="kb-l-hero" onPointerMove={onPointerMove}>
       <video ref={vidRef} className="kb-l-hero__video" aria-hidden="true" tabIndex={-1}
         src="/landing/video.mp4" poster="/landing/build-still.webp"
         autoPlay={!reduce} loop muted playsInline preload="auto" />
       <div className="kb-l-hero__scrim" aria-hidden="true" />
+      {/* пыль (боке) + звёзды с параллаксом от курсора — над скримом, под растворением */}
+      {!reduce && <HeroAtmosphere px={px} py={py} />}
       {/* кинематографичное растворение хиро в тёплой дымке → cream (CSS, см. landing.css) */}
       <div className="kb-l-hero__blur" aria-hidden="true" />
       <div className="kb-l-hero__fade" aria-hidden="true" />
@@ -196,7 +256,15 @@ function Hero({ user }) {
         </motion.div>
         <h1 className="kb-l-hero__title">
           <BlurText text="Объём и масса" />
-          <em className="kb-l-hero__em"><BlurText text="из простых фотографий" /></em>
+          {/* em с ПРЯМЫМ текстом (не через BlurText): нужно для background-clip:text
+              shimmer — сквозь пословные спаны клип не работает и текст пропадал.
+              Blur-in делаем на всю строку через motion. */}
+          <motion.em className="kb-l-hero__em"
+            initial={reduce ? false : { filter: 'blur(12px)', opacity: 0, y: '0.22em' }}
+            animate={reduce ? {} : { filter: 'blur(0px)', opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.5, ease: EASE }}>
+            из простых фотографий
+          </motion.em>
         </h1>
         <motion.p className="kb-l-hero__sub"
           initial={reduce ? false : { opacity: 0, y: 16 }} animate={reduce ? {} : { opacity: 1, y: 0 }}
@@ -457,6 +525,8 @@ export default function Landing() {
   const { user } = useAuth()
   return (
     <div className="kb-landing">
+      {/* плёночное зерно поверх всей страницы — гасит бандинг на градиентах/стыках */}
+      <div className="kb-l-grain" aria-hidden="true" />
       <LiquidNav user={user} />
       <Hero user={user} />
       <Dashboard />

@@ -39,16 +39,42 @@
 .kb-landing ::selection { background: var(--gold); color: #fff; }
 .kb-landing > section, .kb-landing > .kb-l-foot { position: relative; z-index: 1; }
 
-/* ─── УНИВЕРСАЛЬНОЕ СТЕКЛО (усиленное) ─────────────────────────────────────── */
-/* Стекло видно только когда под ним что-то есть → в светлых секциях кладём орбы. */
+/* ─── УНИВЕРСАЛЬНОЕ СТЕКЛО (матовое / soft-glass 2026) ─────────────────────────
+   Полупрозрачная матовая заливка (низкая) + сильный blur/saturate → фростит то, что
+   под ним (орбы, кадр, сцена). Держится за счёт тонкой светлой рамки, мягкой
+   внутренней подсветки и лёгкой тени. По диагонали редко проходит световой блик
+   (::after, kbGlint). isolation:isolate → блик сидит над фростом, но под контентом. */
 .kb-l-glass {
-  position: relative;
-  background: linear-gradient(150deg, rgba(255,255,255,.78), rgba(255,255,255,.4));
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-          backdrop-filter: blur(24px) saturate(1.6);
-  border: 1px solid rgba(255,255,255,.78);
-  box-shadow: 0 20px 50px rgba(26,29,20,.1), inset 0 1px 0 rgba(255,255,255,.9);
+  position: relative; isolation: isolate; overflow: hidden;
+  background: linear-gradient(150deg, rgba(255,255,255,.56), rgba(255,255,255,.30));
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+          backdrop-filter: blur(22px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,.68);
+  box-shadow:
+    0 24px 56px rgba(26,29,20,.14),
+    0 4px 14px rgba(26,29,20,.07),
+    0 1px 2px rgba(26,29,20,.05),
+    inset 0 1px 0 rgba(255,255,255,.9),
+    inset 0 0 44px rgba(255,255,255,.22);
   border-radius: 22px;
+}
+/* редкий диагональный блик — движение занимает ~первые 12% цикла, дальше покой */
+.kb-l-glass::after {
+  content: ''; position: absolute; inset: -1px; z-index: -1; pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(114deg,
+    transparent 24%, rgba(255,255,255,.0) 38%,
+    rgba(255,255,255,.42) 48%, rgba(255,255,255,.0) 60%, transparent 76%);
+  transform: translateX(-130%);
+  animation: kbGlint 11s ease-in-out infinite;
+}
+/* лёгкая рассинхронизация бликов между карточками */
+.kb-l-glass:nth-child(2n)::after { animation-delay: -3.5s; }
+.kb-l-glass:nth-child(3n)::after { animation-delay: -7s; }
+@keyframes kbGlint {
+  0%   { transform: translateX(-130%); }
+  12%  { transform: translateX(130%); }
+  100% { transform: translateX(130%); }
 }
 
 /* ─── ЦВЕТНЫЕ ОРБЫ ПОД СТЕКЛОМ ────────────────────────────────────────────── */
@@ -58,6 +84,86 @@
 .kb-l-orb--gold  { background: radial-gradient(circle, rgba(184,122,24,.17), transparent 66%); }
 @keyframes kbDrift { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(3%,-4%) scale(1.08); } }
 @keyframes kbFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+
+/* ─── ПЛЁНОЧНОЕ ЗЕРНО (убирает бандинг на длинных градиентах/стыках) ──────────
+   Фиксированный слой feTurbulence поверх страницы, soft-light ~5% — «дорогая»
+   плёнка, незаметная глазу, но гасящая ступеньки в градиентах (в т.ч. на стыке
+   тёмного героя со светлой секцией). Ниже нава (z:80), не кликается. */
+.kb-l-grain {
+  position: fixed; inset: 0; z-index: 70; pointer-events: none;
+  opacity: .05; mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+
+/* ─── ЗОЛОТОЙ SHIMMER НА АКЦЕНТНЫХ ЗАГОЛОВКАХ ───────────────────────────────
+   Медленный перелив светлого блика по золоту (background-clip:text). text-shadow
+   у ем-ов остаётся видимым (рисуется по форме глифа) → читаемость над видео/фоном
+   сохранена. Применяется ко всем золотым ем (герой, секции, кино, финал). */
+.kb-l-hero__em, .kb-l-h2 em, .kb-l-cine__title em, .kb-l-final__title em {
+  background-size: 260% 100%;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: kbShimmer 6s ease-in-out infinite;
+}
+/* тёмный фон (видео/зелёная панель) → яркий кремово-золотой блик */
+.kb-l-hero__em, .kb-l-final__title em {
+  background-image: linear-gradient(100deg,
+    #b07d1e 0%, #e7b552 26%, #fff3d2 42%, #e7b552 58%, #b07d1e 84%);
+}
+/* светлый (кремовый) фон → золото-в-золоте, без белого стопа → всегда читаемо */
+.kb-l-h2 em, .kb-l-cine__title em {
+  background-image: linear-gradient(100deg,
+    var(--gold-deep) 0%, #cf9327 30%, #eabb59 46%, #cf9327 62%, var(--gold-deep) 88%);
+}
+@keyframes kbShimmer {
+  0%, 100% { background-position: 118% 50%; }
+  50%      { background-position: -18% 50%; }
+}
+
+/* ─── ПУЛЬС ЗЕЛЁНОЙ ТОЧКИ «МЕШ ГОТОВ» ──────────────────────────────────────── */
+@keyframes kbDotPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(111,220,122,.5),  0 0 8px  rgba(111,220,122,.8); }
+  50%      { box-shadow: 0 0 0 7px rgba(111,220,122,0),  0 0 15px rgba(111,220,122,.95); }
+}
+/* ─── ЛЕВИТАЦИЯ КАРТИНКИ (шахматные кубы «дышат») ──────────────────────────── */
+@keyframes kbLevitate {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.02); }
+  50%      { transform: translate3d(0, -7px, 0) scale(1.035); }
+}
+/* ─── ПОТОК «КОНВЕЙЕРА» (бегущий блик по дорожке) ──────────────────────────── */
+@keyframes kbFlow {
+  0%   { transform: translateX(-100%); }
+  60%  { transform: translateX(320%); }
+  100% { transform: translateX(320%); }
+}
+
+/* ─── АТМОСФЕРА ГЕРОЯ: пыль (боке) + звёзды с параллаксом от курсора ─────────
+   DOM-слои (компоновка transform/opacity), два уровня глубины для параллакса.
+   Числа/позиции задаются инлайном из JSX (стабильно через useMemo). */
+.kb-l-atm { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+.kb-l-atm__layer { position: absolute; inset: -6%; will-change: transform; }
+.kb-l-atm__star {
+  position: absolute; border-radius: 50%;
+  background: radial-gradient(circle, #fff 0%, rgba(255,246,214,.9) 40%, rgba(255,246,214,0) 72%);
+  opacity: .0; animation: kbTwinkle var(--dur, 4s) ease-in-out var(--delay, 0s) infinite;
+}
+.kb-l-atm__dust {
+  position: absolute; border-radius: 50%;
+  background: radial-gradient(circle, rgba(242,193,78,.7) 0%, rgba(201,138,36,.35) 45%, rgba(201,138,36,0) 72%);
+  filter: blur(.5px); opacity: 0;
+  animation: kbDustRise var(--dur, 12s) linear var(--delay, 0s) infinite;
+}
+@keyframes kbTwinkle {
+  0%, 100% { opacity: 0; transform: scale(.6); }
+  50%      { opacity: var(--peak, .9); transform: scale(1); }
+}
+@keyframes kbDustRise {
+  0%   { opacity: 0; transform: translateY(12px) scale(.9); }
+  12%  { opacity: var(--peak, .7); }
+  85%  { opacity: var(--peak, .7); }
+  100% { opacity: 0; transform: translateY(-46px) scale(1.05); }
+}
 
 /* ─── КНОПКИ ───────────────────────────────────────────────────────────────── */
 .kb-l-mag { display: inline-flex; }
@@ -246,6 +352,19 @@
   radial-gradient(120% 44% at 50% -8%, rgba(201,138,36,.13), rgba(201,138,36,0) 62%),
   linear-gradient(180deg, var(--bg) 0%, var(--bg) 52%, var(--bg-2) 100%); }
 #proc { background: var(--bg); }   /* стык engine→proc→cine — единый --bg, без границы */
+
+/* ─── МЯГКИЕ ДИАГОНАЛЬНЫЕ РАЗДЕЛИТЕЛИ (вместо ровного края) ────────────────────
+   Секции делят цвет с соседом (границы нет), поэтому «разделитель» — это не линия,
+   а широкая размытая полоса тёплого света под лёгким наклоном на стыке: даёт «живой»
+   диагональный шов без бандинга. Сидит на z:0, весь контент выше. */
+#proc::before, .kb-l-cine::before, .kb-l-final::before {
+  content: ''; position: absolute; left: -12%; right: -12%; top: -120px; height: 300px;
+  z-index: 0; pointer-events: none; transform: rotate(-1.5deg); filter: blur(26px);
+  background: linear-gradient(102deg,
+    rgba(255,255,255,0) 6%, rgba(255,251,242,.6) 40%, rgba(224,203,150,.18) 58%, rgba(255,255,255,0) 82%);
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 44%, transparent);
+          mask-image: linear-gradient(180deg, transparent, #000 44%, transparent);
+}
 .kb-l-sec__in { position: relative; z-index: 1; max-width: var(--maxw); margin: 0 auto; }
 .kb-l-sec__head { max-width: 720px; margin-bottom: clamp(36px, 5vw, 60px); }
 .kb-l-h2 { font-family: var(--serif); font-weight: 700; letter-spacing: -.02em; font-size: clamp(32px, 4.8vw, 60px); line-height: 1.04; color: var(--text); }
@@ -274,7 +393,9 @@
 /* карточка 3D-реконструкции — фон-кадр (без стекла), бейдж + подпись */
 .kb-l-w--recon { flex: 2 1 320px; min-width: 0; padding: 0; overflow: hidden; position: relative; min-height: 280px; border-radius: 22px;
   box-shadow: 0 20px 50px rgba(26,29,20,.14); }
-.kb-l-w--recon .kb-l-recon-img { position: absolute; inset: 0; background: var(--bg-2) center/cover no-repeat; }
+/* inset:-3% прячет край при левитации; кубы «дышат» очень медленно */
+.kb-l-w--recon .kb-l-recon-img { position: absolute; inset: -3%; background: var(--bg-2) center/cover no-repeat;
+  will-change: transform; animation: kbLevitate 7.5s ease-in-out infinite; }
 .kb-l-w--recon .kb-l-recon-cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 20px 24px; background: linear-gradient(0deg, rgba(20,22,14,.72), transparent); color: #F4F0E8; }
 .kb-l-w--recon .kb-l-recon-cap h3 { font-family: var(--serif); font-size: 26px; font-weight: 600; }
 .kb-l-w--recon .kb-l-recon-cap p { font-size: 13px; opacity: .85; margin-top: 4px; }
@@ -285,12 +406,25 @@
   border: 1px solid rgba(255,255,255,.34);
   -webkit-backdrop-filter: blur(16px) saturate(1.6); backdrop-filter: blur(16px) saturate(1.6);
   box-shadow: 0 8px 20px rgba(10,14,8,.28), inset 0 1px 0 rgba(255,255,255,.3); }
-.kb-l-recon-dot { width: 8px; height: 8px; border-radius: 50%; background: #6fdc7a; box-shadow: 0 0 8px rgba(111,220,122,.8); }
+.kb-l-recon-dot { width: 8px; height: 8px; border-radius: 50%; background: #6fdc7a;
+  box-shadow: 0 0 8px rgba(111,220,122,.8); animation: kbDotPulse 2.6s ease-in-out infinite; }
+/* редкий диагональный блик по карточке 3D-реконструкции (как по стеклу) */
+.kb-l-w--recon::after { content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  background: linear-gradient(114deg, transparent 26%, rgba(255,255,255,.32) 48%, transparent 70%);
+  transform: translateX(-130%); animation: kbGlint 13s ease-in-out infinite; animation-delay: -5s; }
 
 .kb-l-mini { display: flex; align-items: center; gap: 6px; margin-top: auto; }
 .kb-l-mini__step { flex: 1; min-width: 0; text-align: center; }
 .kb-l-mini__bar { height: 6px; border-radius: 3px; background: var(--dash); position: relative; overflow: hidden; }
 .kb-l-mini__bar i { position: absolute; inset: 0; background: var(--green); transform-origin: left; transition: transform .9s var(--ease); }
+/* бегущий по дорожке блик = «конвейер работает»; каскад по шагам ниже даёт
+   ощущение потока Снимки→Облако→Меш→Объём */
+.kb-l-mini__bar::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 34%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent);
+  transform: translateX(-100%); animation: kbFlow 2.8s ease-in-out infinite; }
+.kb-l-mini__step:nth-child(2) .kb-l-mini__bar::after { animation-delay: .3s; }
+.kb-l-mini__step:nth-child(3) .kb-l-mini__bar::after { animation-delay: .6s; }
+.kb-l-mini__step:nth-child(4) .kb-l-mini__bar::after { animation-delay: .9s; }
 .kb-l-mini__t { font-size: 11px; color: var(--muted); margin-top: 7px; display: block; }
 .kb-l-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
 .kb-l-chips span { font-size: 12.5px; font-weight: 500; color: var(--green); background: rgba(30,61,18,.07); border: 1px solid rgba(30,61,18,.12); padding: 5px 12px; border-radius: 999px; }
@@ -381,7 +515,14 @@
 
 /* ═══════════════════════════ REDUCED MOTION ═══════════════════════════════ */
 @media (prefers-reduced-motion: reduce) {
-  .kb-l-orb, .kb-l-engine__flora, .kb-l-flow { animation: none !important; }
+  .kb-l-orb, .kb-l-engine__flora, .kb-l-flow,
+  .kb-l-glass::after, .kb-l-w--recon::after, .kb-l-mini__bar::after,
+  .kb-l-recon-dot, .kb-l-recon-img,
+  .kb-l-hero__em, .kb-l-h2 em, .kb-l-cine__title em, .kb-l-final__title em,
+  .kb-l-atm__star, .kb-l-atm__dust { animation: none !important; }
   .kb-l-flow { opacity: 1; }
+  .kb-l-recon-img { transform: none !important; }
   .kb-l-cine__img { transform: none !important; }
+  /* shimmer выключен → золото остаётся статичным градиентом (читаемо) */
+  .kb-l-hero__em, .kb-l-h2 em, .kb-l-cine__title em, .kb-l-final__title em { background-position: 50% 50%; }
 }
