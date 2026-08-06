@@ -42,7 +42,6 @@
   --serif:       'Cormorant Garamond', Georgia, serif;
 }
 
-html { scroll-behavior: smooth; }
 body {
   font-family: var(--sans);
   background: var(--bg);

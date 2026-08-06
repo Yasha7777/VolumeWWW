@@ -11,7 +11,6 @@ import { useTheme } from './theme/ThemeProvider'
 import SwagAtmosphere from './components/swag/SwagAtmosphere'
 import IntroVeil from './components/swag/IntroVeil'
 import Fracture from './components/swag/Fracture'
-import SmoothScroll from './components/SmoothScroll'   // ← плавный скролл (Lenis)
 
 /* ── code splitting: каждая страница — отдельный чанк.
    Analyze утянет за собой PDF/3D-обёртки (сами движки — ещё глубже,
@@ -44,7 +43,6 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <SmoothScroll />
         {/* фон, вуаль и разлом рендерятся порталом в body и сами решают,
             показываться ли (gtc / flipping). Переключатель тем — в шапке (Layout). */}
         <SwagAtmosphere />

@@ -13,24 +13,26 @@
    ════════════════════════════════════════════════════════════════════════ */
 
 .kb-landing {
-  --bg:        #F4F0E8;
-  --bg-2:      #EFEADF;
-  --card:      #FFFFFF;
-  --green:     #1E3D12;
-  --green-h:   #162D0D;
-  --gold:      #B87A18;
-  --gold-deep: #9A6410;
-  --text:      #1A1A0A;
-  --muted:     #6B6657;
-  --border:    #E0DBD0;
-  --dash:      #C8C3B8;
-  --stone:     #8a8577;
+  --bg:        #0E140A;   /* фон страницы = низ видео (ОДНО значение — иначе полоса на стыке) */
+  --bg-2:      #121A0C;   /* секция «Движок» — чуть светлее, для ритма */
+  --foot:      #0A0F07;   /* подвал */
+  --card:      rgba(255,255,255,.05);
+  --green:     #1E3D12;   /* зелёный (кнопки) */
+  --green-h:   #274c1d;   /* hover: на тёмном осветляем, не темним */
+  --gold:      #e7b552;   /* золотой акцент */
+  --gold-deep: #c98a24;   /* глубокая охра — вторичное золото */
+  --text:      #F1EDE1;   /* основной текст (заголовки) */
+  --muted:     rgba(241,237,225,.68);   /* вторичный текст */
+  --faint:     rgba(241,237,225,.5);    /* подписи */
+  --border:    rgba(255,255,255,.12);
+  --dash:      rgba(255,255,255,.16);
+  --stone:     rgba(241,237,225,.5);
   --serif:     'Cormorant Garamond', Georgia, serif;
   --sans:      'Onest', system-ui, -apple-system, sans-serif;
   --ease:      cubic-bezier(0.16, 1, 0.3, 1);
   --maxw:      1160px;
   --nav-h:     72px;
-  --hero-scrim: .2;          /* итоговая непрозрачность скрима над видео (20%) */
+  --hero-scrim: 1;           /* множитель непрозрачности скрима под текстом хиро */
 
   position: relative; width: 100%;
   background: var(--bg); color: var(--text);
@@ -227,132 +229,118 @@
 }
 
 /* ═══════════════════════════════════ HERO ══════════════════════════════════ */
-/* Grid-полосы вместо абсолютного позиционирования: height:100svh + overflow:hidden
-   + box-sizing:border-box → scrollHeight === clientHeight на ЛЮБОЙ высоте окна.
-   Полосы: [nav-pad · auto] [центр · minmax(0,1fr)] [CTA · auto] [чипы · auto]. */
+/* Fullscreen-видео + слоёное растворение низа РОВНО в фон страницы (#0E140A).
+   Grid-полосы: [пад под нав · auto] [центр · minmax(0,1fr)] [низ · auto] →
+   height:100svh + overflow:hidden + box-sizing:border-box → scrollHeight === clientHeight
+   на ЛЮБОЙ высоте окна. Типографика на container-queries (min(), БЕЗ нижних clamp-полов)
+   → min-content полосы не выпихивает шрифт в соседние ряды. */
 .kb-l-hero {
   box-sizing: border-box;
   position: relative; height: 100vh; height: 100svh; overflow: hidden;
   display: grid;
   /* ЕДИНСТВЕННАЯ колонка, жёстко = ширине контейнера. Без неё неявная auto-колонка
-     сайзится по max-content самой широкой полосы (чипы в одну строку ~600px) и
-     переполняет вьюпорт по горизонтали на узких экранах. */
+     сайзится по max-content самой широкой полосы и переполняет вьюпорт по горизонтали. */
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   margin-top: calc(-1 * var(--nav-h));       /* уезжает под прозрачный sticky-хедер */
   padding: 0 clamp(16px, 4vw, 24px);
-  /* тёплый градиент героя: изумруд вверху → золото к центру → крем внизу (виден сверху/снизу
-     от фото-ленты и как фолбэк). Верх чуть светлее, чтобы под навбаром не «глушило». */
-  background: linear-gradient(180deg, #22381b 0%, #2c4a22 14%, #6f5020 44%, #b57e22 62%, #dab86e 79%, #efe7d4 92%, var(--bg) 100%);
+  background: var(--bg);                      /* низ видео растворяется РОВНО в этот цвет */
 }
-/* эталонный кадр стройплощадки. ДЕСКТОП: резкая полноширинная лента (весь кадр целиком,
-   рабочие по центру), мягко растворяется сверху/снизу в тёплый градиент героя (маска по
-   краям → без границ). Палитра зелёный-верх→золото-центр идёт и из фото, и из градиента —
-   НИКАКОГО глушащего оверлея на всю высоту. УЗКИЕ экраны: object-fit:cover-заливка. */
-.kb-l-hero__photo {
-  position: absolute; left: 50%; top: 48%; transform: translate(-50%, -50%);
-  width: 168%; max-width: none; height: auto; z-index: 0;
-  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 17%, #000 80%, transparent 100%);
-          mask-image: linear-gradient(180deg, transparent 0%, #000 17%, #000 80%, transparent 100%);
+/* сырое видео холодновато-синее → тёплый цветокор (числа из макета) */
+.kb-l-hero__video {
+  position: absolute; inset: 0; z-index: 0;
+  width: 100%; height: 100%; object-fit: cover; object-position: center;
+  filter: saturate(.84) contrast(1.06) brightness(.97) sepia(.17) hue-rotate(-8deg);
 }
-@media (max-width: 760px) {
-  .kb-l-hero__photo { left: 0; top: 0; transform: none; width: 100%; height: 100%;
-    object-fit: cover; object-position: center;
-    -webkit-mask-image: none; mask-image: none; }
-}
-/* ЛОКАЛЬНОЕ затемнение (не на всю высоту): полоса под навбаром + мягкий эллипс под
-   текстовым блоком, чтобы белый заголовок читался. Остальной кадр — в полную силу. */
+/* ① затемнение под текст — ТОЛЬКО читаемость (множитель --hero-scrim) */
 .kb-l-hero__scrim {
   position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  opacity: var(--hero-scrim, 1);
   background:
-    linear-gradient(180deg, rgba(9,14,7,.46) 0%, rgba(9,14,7,.16) 8%, rgba(9,14,7,0) 16%),
-    radial-gradient(54% 28% at 50% 41%, rgba(7,11,5,.46), rgba(7,11,5,0) 72%);
+    linear-gradient(180deg, rgba(6,10,4,.52) 0%, rgba(6,10,4,.16) 11%, rgba(6,10,4,0) 22%),
+    radial-gradient(62% 44% at 50% 47%, rgba(4,7,3,.56), rgba(4,7,3,0) 70%);
 }
 
-/* ─── КИНЕМАТОГРАФИЧНОЕ РАСТВОРЕНИЕ HERO → «ПОКАЗАНИЯ» ─────────────────────────
-   НЕ «видео→gradient→cream», а «ночная стройка → холодный teal → тёплый янтарный
-   свет → песочный haze → cream». Три слоя (все z:1, под контентом z:2, не кликаются;
-   absolute → не влияют на grid, heroV остаётся 0):
-   ① __blur  — умеренный backdrop-blur, маской включается только к низу (сцена
-               «уходит в дымку», верх кадра остаётся резким);
-   ② __fade  — цветовая атмосфера: 2 radial (тёплый блум снизу + холодный teal-шаг)
-               + вертикальная растяжка teal→амбер→песок→cream (низ ПЛОТНЫЙ --bg
-               → бесшовный стык со светлой секцией). */
-/* удлинённое мягкое растворение фото → cream (~25% высоты героя), без видимой границы:
-   лёгкая дымка в самом низу + тёплый ЗОЛОТОЙ градиент (никакого teal/синего). */
+/* ─── РАСТВОРЕНИЕ НИЗА ВИДЕО В ФОН — 4 слоя, ПОРЯДОК ВАЖЕН (z:1→2, контент z:3) ─
+   Один мягкий градиент оставляет видимую горизонтальную полосу на стыке. Поэтому:
+   ① скрим под текст (выше), ② нарастающий blur, ③ 4 овальных облака #0E140A на
+   РАЗНОЙ высоте (разбивают ровный фронт растворения), ④ финальный градиент до
+   чистого #0E140A. Плюс симметричное золотое свечение по центру стыка. */
+/* ② нарастающий backdrop-blur низа (24%), маска — чтобы размытие включалось не резко */
 .kb-l-hero__blur {
-  position: absolute; left: 0; right: 0; bottom: 0; z-index: 1; height: 46%;
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; height: 24%;
   pointer-events: none;
-  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
-  -webkit-mask-image: linear-gradient(180deg, transparent 24%, #000 82%);
-          mask-image: linear-gradient(180deg, transparent 24%, #000 82%);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 60%);
+          mask-image: linear-gradient(180deg, transparent 0%, #000 60%);
 }
+/* ③ четыре овальных облака цвета фона на разной высоте — КЛЮЧ: разбивают
+   горизонтальный фронт растворения, иначе полоса видна даже у мягкого градиента */
+.kb-l-hero__clouds { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; height: 34%; pointer-events: none; }
+.kb-l-hero__clouds i { position: absolute; display: block; background: var(--bg); border-radius: 50%; }
+.kb-l-hero__clouds i:nth-child(1) { width: 76%; left: -6%;  bottom: -4%; height: 62%; filter: blur(42px); }
+.kb-l-hero__clouds i:nth-child(2) { width: 58%; right: -4%; bottom:  3%; height: 52%; filter: blur(32px); }
+.kb-l-hero__clouds i:nth-child(3) { width: 66%; left: 14%;  bottom:  4%; height: 46%; filter: blur(38px); }
+.kb-l-hero__clouds i:nth-child(4) { width: 62%; right: 12%; bottom: -2%; height: 56%; filter: blur(30px); }
+/* ④ финальный градиент до чистого #0E140A — последние строки хиро строго = фону */
 .kb-l-hero__fade {
-  position: absolute; left: 0; right: 0; bottom: 0; z-index: 1; height: 46%;
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; height: 11%;
   pointer-events: none;
-  background:
-    radial-gradient(120% 76% at 50% 116%, rgba(201,138,36,.40), rgba(201,138,36,0) 58%),
-    linear-gradient(180deg,
-      transparent 0%,
-      rgba(201,138,36,.10) 32%,
-      rgba(216,180,120,.46) 62%,
-      rgba(240,235,224,.90) 86%,
-      var(--bg) 100%);
+  background: linear-gradient(180deg, rgba(14,20,10,0) 0%, var(--bg) 76%, var(--bg) 100%);
 }
-/* контент-полосы над видео/скримом/растворением */
-.kb-l-hero__pad, .kb-l-hero__center, .kb-l-hero__cta, .kb-l-hero__chips { position: relative; z-index: 2; }
-.kb-l-hero__pad { height: var(--nav-h); }    /* полоса 1 — клиренс под нав */
+/* золотое свечение на стыке — СИММЕТРИЧНЫЙ овал по центру (не две половины слева/справа) */
+.kb-l-hero__glow {
+  position: absolute; left: 0; right: 0; bottom: -3%; z-index: 2; height: 26%; pointer-events: none;
+  background: radial-gradient(56% 130% at 50% 100%, rgba(231,181,82,.22), rgba(231,181,82,0) 60%);
+  mix-blend-mode: screen;
+}
+/* контент над видео/растворением */
+.kb-l-hero__pad, .kb-l-hero__center, .kb-l-hero__foot { position: relative; z-index: 3; }
+.kb-l-hero__pad  { height: var(--nav-h); }              /* полоса 1 — клиренс под нав */
+.kb-l-hero__foot { height: clamp(16px, 4vh, 40px); }    /* полоса 3 — низ не липнет к растворению */
 
-/* полоса 2 — центр; container-type:size → типографика мерится ОТ ПОЛОСЫ */
+/* полоса 2 — центр; container-type:size → типографика мерится ОТ ПОЛОСЫ.
+   ВАЖНО: НИКАКОГО padding-bottom в cqh здесь (паддинг вычитается из базы cqh). */
 .kb-l-hero__center {
   min-height: 0; overflow: hidden;
   container-type: size;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center; text-align: center;
 }
-.kb-l-hero .kb-l-badge { display: inline-flex; align-items: center; gap: 8px; padding: 6px 15px 6px 7px;
-  border-radius: 999px; color: rgba(244,240,232,.9); font-weight: 500;
-  background: rgba(20,28,20,.32); border: 1px solid rgba(255,255,255,.26);
-  -webkit-backdrop-filter: blur(22px) saturate(1.6); backdrop-filter: blur(22px) saturate(1.6);
-  box-shadow: 0 8px 26px rgba(8,12,8,.3), inset 0 1px 0 rgba(255,255,255,.24);
-  font-size: min(3.4cqh, 12px); }
-.kb-l-badge__pill { background: var(--green); color: #F4F0E8; font-size: .92em; font-weight: 600; padding: 3px 10px; border-radius: 999px; letter-spacing: .02em; }
-.kb-l-hero__title { font-family: var(--serif); font-weight: 700; letter-spacing: -.02em; color: #F1EDE1;
-  margin-top: min(2.6cqh, 20px); text-wrap: balance;
-  font-size: min(8cqi, 15cqh, 96px); line-height: 1.02;
-  text-shadow: 0 2px 24px rgba(8,10,6,.62), 0 0 46px rgba(8,10,6,.5); }
+.kb-l-hero__title { font-family: var(--serif); font-weight: 700; letter-spacing: -.015em; color: #F1EDE1;
+  text-wrap: balance; font-size: min(8cqi, 15cqh, 96px); line-height: 1.0;
+  text-shadow: 0 2px 26px rgba(4,7,3,.6), 0 0 48px rgba(4,7,3,.5); }
 .kb-l-hero__em { display: block; font-style: italic; font-weight: 600; color: #e7b552;
-  text-shadow: 0 2px 22px rgba(8,10,6,.62), 0 0 40px rgba(8,10,6,.4); }
-/* NB: cqi поднят с прототипных 1.6 до 4.4 — иначе на узком экране (350px) sub
-   вырождается в ~5px и не читается; cqh-кап держит короткие ландшафтные полосы. */
-.kb-l-hero__sub { margin: min(2.4cqh, 18px) auto 0; max-width: 52ch; text-wrap: balance;
-  font-size: min(4.4cqi, 4.6cqh, 18px); line-height: 1.6; color: rgba(241,237,225,.84);
-  text-shadow: 0 1px 18px rgba(8,10,6,.6); }
+  text-shadow: 0 2px 22px rgba(4,7,3,.6), 0 0 40px rgba(4,7,3,.4); }
+/* min() без нижнего пола: на узком экране sub не выпихивает полосу выше minmax(0,1fr) */
+.kb-l-hero__sub { margin: min(2.6cqh, 18px) auto 0; max-width: 46ch; text-wrap: balance;
+  font-size: min(4.2cqi, 4.4cqh, 18px); line-height: 1.55; color: rgba(241,237,225,.78);
+  text-shadow: 0 1px 18px rgba(4,7,3,.6); }
 
-/* полоса 3 — CTA */
+/* CTA — ВНУТРИ центральной колонки (не отдельная grid-полоса) */
 .kb-l-hero__cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; align-items: center;
-  padding: clamp(10px, 2.4vh, 22px) 0 clamp(6px, 1.4vh, 14px); }
-/* светлое морозное стекло (как «Смотреть показания» на прототипе) */
-.kb-l-hero .kb-l-btn--ghost { color: #F7F3E9; border-color: rgba(255,255,255,.42);
-  background: rgba(255,255,255,.12); -webkit-backdrop-filter: blur(22px) saturate(1.6); backdrop-filter: blur(22px) saturate(1.6); }
-.kb-l-hero .kb-l-btn--ghost:hover { border-color: rgba(255,255,255,.7); background: rgba(255,255,255,.18); color: #fff; }
+  margin-top: min(3.4cqh, 28px); }
+/* светлое морозное стекло на тёмном видео */
+.kb-l-hero .kb-l-btn--ghost { color: #F7F3E9; border-color: rgba(255,255,255,.4);
+  background: rgba(255,255,255,.08); -webkit-backdrop-filter: blur(20px) saturate(1.5); backdrop-filter: blur(20px) saturate(1.5); }
+.kb-l-hero .kb-l-btn--ghost:hover { border-color: rgba(255,255,255,.7); background: rgba(255,255,255,.14); color: #fff; }
 
-/* полоса 4 — чипы показаний: тёплое ЗОЛОТОЕ стекло + точка (по прототипу) */
+/* чипы показаний — ПОД кнопками внутри центра, тёмное стекло, значения золотом #e7b552 */
 .kb-l-hero__chips { display: flex; align-items: center; justify-content: center; flex-wrap: wrap;
-  gap: 10px 12px; padding-bottom: clamp(18px, 3.4vh, 36px); }
+  gap: 10px 12px; margin-top: min(2.8cqh, 22px); }
 .kb-l-hero__sep { display: none; }               /* разделители убраны — чипы отдельными пилюлями */
 .kb-l-hero__chip {
   display: inline-flex; align-items: center; gap: 9px;
   padding: 8px 17px 8px 14px; border-radius: 999px;
-  font-size: 13px; font-weight: 600; color: #F5E7C8; white-space: nowrap;
-  background: linear-gradient(140deg, rgba(120,86,22,.46), rgba(52,38,12,.34));
-  border: 1px solid rgba(231,181,82,.5);
-  -webkit-backdrop-filter: blur(22px) saturate(1.7); backdrop-filter: blur(22px) saturate(1.7);
-  box-shadow: 0 12px 30px rgba(10,14,8,.32), inset 0 1px 0 rgba(255,225,160,.28);
+  font-size: min(3.6cqh, 13px); font-weight: 600; color: rgba(241,237,225,.8); white-space: nowrap;
+  background: rgba(16,22,11,.82);
+  border: 1px solid rgba(231,181,82,.28);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5);
+  box-shadow: 0 12px 30px rgba(4,7,3,.42), inset 0 1px 0 rgba(255,255,255,.08);
 }
 .kb-l-hero__chip::before { content: ''; flex: none; width: 7px; height: 7px; border-radius: 50%;
-  background: #F2C14E; box-shadow: 0 0 8px rgba(242,193,78,.85); }
-.kb-l-hero__chip b { font-family: var(--serif); font-size: 16px; font-weight: 700; color: #F2C14E; margin-left: 2px; }
+  background: #e7b552; box-shadow: 0 0 8px rgba(231,181,82,.85); }
+.kb-l-hero__chip b { font-family: var(--serif); font-size: 1.28em; font-weight: 700; color: #e7b552; margin-left: 2px; }
 
 /* ═══════════════════════════ ОБЩЕЕ ДЛЯ СЕКЦИЙ ═════════════════════════════ */
 .kb-l-sec { position: relative; overflow: hidden; max-width: none; margin: 0;
@@ -363,10 +351,12 @@
    Каждый стык делит один цвет с соседом → границ не видно, при прокрутке цвет
    «перетекает». bg #F4F0E8 ↔ bg-2 #EFEADF. (engine/cine/final красятся в своих
    правилах ниже — здесь только id-секции, которые бьют по специфичности.) */
-#dash { background:
-  /* тёплое эхо янтарной дымки продолжается ИЗ hero в начало секции — стык не «обрывается» */
-  radial-gradient(120% 44% at 50% -8%, rgba(201,138,36,.13), rgba(201,138,36,0) 62%),
-  linear-gradient(180deg, var(--bg) 0%, var(--bg) 52%, var(--bg-2) 100%); }
+#dash {
+  margin-top: -1px;                        /* стык хиро/#dash без волосяной линии */
+  background:
+    /* ЗЕРКАЛЬНОЕ золотое свечение сверху секции — стык читается как одна сцена */
+    radial-gradient(56% 40% at 50% -6%, rgba(231,181,82,.16), rgba(231,181,82,0) 62%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg) 60%, var(--bg-2) 100%); }
 #proc { background: var(--bg); }   /* стык engine→proc→cine — единый --bg, без границы */
 
 /* ─── МЯГКИЕ ДИАГОНАЛЬНЫЕ РАЗДЕЛИТЕЛИ (вместо ровного края) ────────────────────

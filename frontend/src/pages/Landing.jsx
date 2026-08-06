@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   motion,
@@ -101,7 +101,7 @@ function Metric({ to, decimals = 0 }) {
 
 const scrollTo = (id) => (e) => {
   e.preventDefault()
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  document.getElementById(id)?.scrollIntoView({ behavior: 'auto', block: 'start' })
 }
 
 /* декоративные орбы под стеклом (aria-hidden, не кликаются) */
@@ -153,129 +153,70 @@ function LiquidNav({ user }) {
   )
 }
 
-/* ═══════════════════════ АТМОСФЕРА ГЕРОЯ (пыль + звёзды) ════════════════════
-   DOM-частицы (компоновка transform/opacity), два слоя глубины с параллаксом от
-   курсора. Позиции стабильны (useMemo) — на ремаунтах не «прыгают». Монтируется
-   только если reduced-motion выключен (см. Hero). */
-const STAR_COUNT = 22
-const DUST_COUNT = 16
-function useHeroField() {
-  return useMemo(() => {
-    const rnd = (a, b) => a + Math.random() * (b - a)
-    const stars = Array.from({ length: STAR_COUNT }, () => ({
-      left: rnd(2, 98), top: rnd(4, 64), size: rnd(1.4, 3.2),
-      dur: rnd(3.2, 6), delay: rnd(0, 6), peak: rnd(0.5, 1),
-    }))
-    const dust = Array.from({ length: DUST_COUNT }, () => ({
-      left: rnd(2, 98), top: rnd(24, 92), size: rnd(6, 17),
-      dur: rnd(9, 16), delay: rnd(0, 12), peak: rnd(0.32, 0.7),
-    }))
-    return { stars, dust }
-  }, [])
-}
-function HeroAtmosphere({ px, py }) {
-  const { stars, dust } = useHeroField()
-  // разная глубина → параллакс: звёзды дальше (мягче), пыль ближе (сильнее)
-  const farX = useTransform(px, (v) => v * 9);  const farY = useTransform(py, (v) => v * 7)
-  const nearX = useTransform(px, (v) => v * 26); const nearY = useTransform(py, (v) => v * 20)
-  return (
-    <div className="kb-l-atm" aria-hidden="true">
-      <motion.div className="kb-l-atm__layer" style={{ x: farX, y: farY }}>
-        {stars.map((s, i) => (
-          <span key={i} className="kb-l-atm__star" style={{
-            left: `${s.left}%`, top: `${s.top}%`, width: s.size, height: s.size,
-            '--dur': `${s.dur}s`, '--delay': `${s.delay}s`, '--peak': s.peak,
-          }} />
-        ))}
-      </motion.div>
-      <motion.div className="kb-l-atm__layer" style={{ x: nearX, y: nearY }}>
-        {dust.map((d, i) => (
-          <span key={i} className="kb-l-atm__dust" style={{
-            left: `${d.left}%`, top: `${d.top}%`, width: d.size, height: d.size,
-            '--dur': `${d.dur}s`, '--delay': `${d.delay}s`, '--peak': d.peak,
-          }} />
-        ))}
-      </motion.div>
-    </div>
-  )
-}
-
 /* ═══════════════════════════════════ HERO ══════════════════════════════════ */
-/* Видео вместо 3D. Grid-полосы: pad · center(cq) · CTA · чипы. */
+/* Fullscreen-видео + 4-слойное растворение низа в фон (#0E140A). Grid-полосы:
+   pad · center · foot. Весь контент (заголовок, кнопки, чипы) — в центральной
+   колонке (container-type:size), поэтому хиро не переполняется по вертикали. */
 function Hero({ user }) {
   const ref = useRef(null)
   const reduce = useReducedMotion()
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end start'] })
-  const y = useTransform(scrollYProgress, [0, 1], [0, reduce ? 0 : -60])
+  const y = useTransform(scrollYProgress, [0, 1], [0, reduce ? 0 : -40])
   const opacity = useTransform(scrollYProgress, [0, 0.7], [1, 0])
 
-  // курсорный параллакс для атмосферы: нормируем позицию в -1..1, сглаживаем пружиной
-  const mx = useMotionValue(0); const my = useMotionValue(0)
-  const px = useSpring(mx, { stiffness: 55, damping: 18 })
-  const py = useSpring(my, { stiffness: 55, damping: 18 })
-  const onPointerMove = (e) => {
-    if (reduce || !ref.current) return
-    const r = ref.current.getBoundingClientRect()
-    mx.set(((e.clientX - r.left) / r.width - 0.5) * 2)
-    my.set(((e.clientY - r.top) / r.height - 0.5) * 2)
-  }
-
   return (
-    <section ref={ref} className="kb-l-hero" onPointerMove={onPointerMove}>
-      {/* эталонный тёплый кадр стройплощадки (изумруд→золото); object-fit:cover, рабочие по центру */}
-      <img className="kb-l-hero__photo" src="/landing/hero.webp" alt="" aria-hidden="true" fetchpriority="high" />
+    <section ref={ref} className="kb-l-hero">
+      {/* fullscreen-видео сборки насыпи; тёплый цветокор — в CSS (.kb-l-hero__video) */}
+      <video className="kb-l-hero__video" src="/landing/video.mp4" poster="/landing/hero.webp"
+        autoPlay loop muted playsInline preload="auto" aria-hidden="true" />
+      {/* растворение низа видео в фон — 4 слоя, порядок важен (см. landing.css) */}
       <div className="kb-l-hero__scrim" aria-hidden="true" />
-      {/* пыль (боке) + звёзды с параллаксом от курсора — над скримом, под растворением */}
-      {!reduce && <HeroAtmosphere px={px} py={py} />}
-      {/* кинематографичное растворение хиро в тёплой дымке → cream (CSS, см. landing.css) */}
       <div className="kb-l-hero__blur" aria-hidden="true" />
+      <div className="kb-l-hero__clouds" aria-hidden="true"><i /><i /><i /><i /></div>
       <div className="kb-l-hero__fade" aria-hidden="true" />
+      <div className="kb-l-hero__glow" aria-hidden="true" />
 
       <div className="kb-l-hero__pad" aria-hidden="true" />
 
       <motion.div className="kb-l-hero__center" style={{ y, opacity }}>
-        <motion.div className="kb-l-badge"
-          initial={reduce ? false : { opacity: 0, y: 12 }} animate={reduce ? {} : { opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.05 }}>
-          <span className="kb-l-badge__pill">НОВОЕ</span> Замер по фото прямо на площадке · Карелия
-        </motion.div>
         <h1 className="kb-l-hero__title">
-          <BlurText text="Объём и масса" />
-          {/* em с ПРЯМЫМ текстом (не через BlurText): нужно для background-clip:text
-              shimmer — сквозь пословные спаны клип не работает и текст пропадал.
-              Blur-in делаем на всю строку через motion. */}
+          <BlurText text="Volumetric" />
+          {/* em с ПРЯМЫМ текстом (не через BlurText): background-clip:text shimmer сквозь
+              пословные спаны не работает. Blur-in — на всю строку через motion. */}
           <motion.em className="kb-l-hero__em"
             initial={reduce ? false : { filter: 'blur(12px)', opacity: 0, y: '0.22em' }}
             animate={reduce ? {} : { filter: 'blur(0px)', opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.5, ease: EASE }}>
-            из простых фотографий
+            Gottland
           </motion.em>
         </h1>
         <motion.p className="kb-l-hero__sub"
           initial={reduce ? false : { opacity: 0, y: 16 }} animate={reduce ? {} : { opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: EASE, delay: 0.7 }}>
-          Снимите насыпь или материал на телефон со всех сторон. Соберём точную
-          3D-модель, посчитаем объём и массу и подготовим отчёт.
+          Объём и масса материала из простых фотографий: снимите насыпь со всех сторон —
+          соберём 3D-модель и посчитаем.
         </motion.p>
+
+        <motion.div className="kb-l-hero__cta"
+          initial={reduce ? false : { opacity: 0, y: 16 }} animate={reduce ? {} : { opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, ease: EASE, delay: 0.85 }}>
+          <MagneticCta to={user ? '/app' : '/register'} className="kb-l-btn kb-l-btn--hero">
+            {user ? 'Перейти в сервис' : 'Начать'}
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+          </MagneticCta>
+          <a href="#dash" onClick={scrollTo('dash')} className="kb-l-btn kb-l-btn--ghost">Смотреть показания</a>
+        </motion.div>
+
+        <motion.div className="kb-l-hero__chips"
+          initial={reduce ? false : { opacity: 0, y: 14 }} animate={reduce ? {} : { opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, ease: EASE, delay: 1.1 }}>
+          <span className="kb-l-hero__chip">Объём&nbsp;<b>~ 1&nbsp;428 м³</b></span>
+          <span className="kb-l-hero__chip">Точность&nbsp;<b>±1.8%</b></span>
+          <span className="kb-l-hero__chip">Масса&nbsp;<b>~ 2&nbsp;271 т</b></span>
+        </motion.div>
       </motion.div>
 
-      <motion.div className="kb-l-hero__cta"
-        initial={reduce ? false : { opacity: 0, y: 16 }} animate={reduce ? {} : { opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, ease: EASE, delay: 0.85 }}>
-        <MagneticCta to={user ? '/app' : '/register'} className="kb-l-btn kb-l-btn--hero">
-          {user ? 'Перейти в сервис' : 'Начать'}
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-        </MagneticCta>
-        <a href="#dash" onClick={scrollTo('dash')} className="kb-l-btn kb-l-btn--ghost">Смотреть показания</a>
-      </motion.div>
-
-      <motion.div className="kb-l-hero__chips"
-        initial={reduce ? false : { opacity: 0, y: 14 }} animate={reduce ? {} : { opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, ease: EASE, delay: 1.1 }}>
-        <span className="kb-l-hero__chip">Объём&nbsp;<b>~ 1&nbsp;428 м³</b></span>
-        <span className="kb-l-hero__chip">Точность&nbsp;<b>±1.8%</b></span>
-        <span className="kb-l-hero__chip">Масса&nbsp;<b>~ 2&nbsp;271 т</b></span>
-      </motion.div>
+      <div className="kb-l-hero__foot" aria-hidden="true" />
     </section>
   )
 }
