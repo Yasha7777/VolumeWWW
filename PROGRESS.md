@@ -5,6 +5,7 @@
 
 [2026-08-09] CubesHeroImpl.jsx — DodecahedronGeometry detail 0→1 (~144 граней), IcosahedronGeometry detail 0→2 (~320 граней); добавлен случайный несимметричный масштаб по Y/Z (0.72–1.28) для органичного вида камней без потери производительности (2 InstancedMesh draw-call не меняются).
 [2026-08-09] History.jsx — кнопка «Скачать все» теперь собирает ZIP-архив через fflate (store-mode, параллельная загрузка) вместо поочерёдных blob-скачиваний; добавлено состояние «Архивирую…» во время формирования архива.
+[2026-08-09] swag.css — флора (медведи) теперь видна на тёмной теме: убрано `display:none`, добавлен `filter:invert(1)` + opacity 0.32 вместо 0.72 (светлые линии на тёмном фоне визуально ярче, чем тёмные на кремовом).
 
 - Hero переведён на scroll-scrubbed сборку кучи (прогресс = scrollY секции, без setTimeout): `frontend/src/components/three/CubesHeroImpl.jsx` — переписан на две текстурированные InstancedMesh (гравий-додекаэдры + песок-икосаэдры), сборка/рассыпание строго по позиции скролла, prefers-reduced-motion → статичная собранная куча.
 - Сгенерированы и добавлены текстуры материала (higgsfield nano_banana): `frontend/public/textures/gravel.png`, `frontend/public/textures/sand.png` (карельская палитра: камень/охра/лес).

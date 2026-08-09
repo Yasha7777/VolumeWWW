@@ -494,8 +494,12 @@
 [data-theme="dark"] .auth-err   { background: rgba(70,20,22,.4);  color: #e7a9a3; border-color: rgba(192,57,43,.4); }
 [data-theme="dark"] .status.success { background: rgba(18,40,28,.5);  color: #9fd9b6; border-color: rgba(46,160,90,.35); }
 [data-theme="dark"] .status.info    { background: rgba(20,28,46,.5);  color: #a9c0e7; border-color: rgba(70,110,180,.35); }
-/* кремовая флора Истории не нужна и на тёмной теме */
-[data-theme="dark"] .kh-flora { display: none; }
+/* флора на тёмном фоне: инвертируем (тёмные линии → светлые),
+   прижимаем opacity — иначе белые линии громче, чем тёмные на креме */
+[data-theme="dark"] .kh-flora {
+  filter: invert(1);
+  opacity: 0.32;
+}
 
 /* ============================================================
    9. ПЕРЕКЛЮЧАТЕЛЬ ТЕМ В ШАПКЕ  — сегментный, 3 позиции
