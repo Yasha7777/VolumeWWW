@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { zipSync } from 'fflate';
 import { createPortal } from 'react-dom';
 import { api } from '../api';
 import PlyViewer from '../components/PlyViewer';
@@ -380,15 +381,37 @@ async function downloadPhoto(url, filename) {
   }
 }
 
-// Пачкой: качаем последовательно с небольшой паузой — иначе браузер душит
-// множественные загрузки. Имя файла — из названия замера + порядковый номер.
+// Пачкой: качаем параллельно и упаковываем в ZIP (store, без сжатия — JPEG
+// уже сжат, compression ничего не даст но замедлит). Один клик — один файл.
 async function downloadAllPhotos(photos, title) {
   const base = (title || 'karelia').trim()
     .replace(/[^\wа-яёА-ЯЁ\- ]+/gi, '').replace(/\s+/g, '-').slice(0, 40) || 'karelia';
-  for (let i = 0; i < photos.length; i++) {
-    await downloadPhoto(photos[i], `${base}-${i + 1}.jpg`);
-    await new Promise((r) => setTimeout(r, 350));
+
+  const results = await Promise.all(
+    photos.map(async (url, i) => {
+      try {
+        const res = await fetch(url, { mode: 'cors' });
+        if (!res.ok) throw new Error('fetch failed');
+        return { name: `${base}-${i + 1}.jpg`, data: new Uint8Array(await res.arrayBuffer()) };
+      } catch {
+        // если фото недоступно — пропускаем, не ломаем весь архив
+        return null;
+      }
+    })
+  );
+
+  const files = {};
+  for (const r of results) {
+    if (r) files[r.name] = [r.data, { level: 0 }]; // store-mode: без сжатия
   }
+
+  const zip = zipSync(files);
+  const blob = new Blob([zip], { type: 'application/zip' });
+  const obj = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = obj; a.download = `${base}.zip`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(obj), 2000);
 }
 
 function photoName(url, i) {
@@ -506,12 +529,20 @@ function ExpandedContent({ item, onPhoto }) {
   const photos = item.photo_urls || [];
   const thumbs = item.thumbnail_urls || [];
   const thumbAt = (i) => thumbs[i] || photos[i];
+  const [zipping, setZipping] = useState(false);
 
   const glb = extractGlbUrl(item.result);
   const ply = extractPlyUrl(item.result);
   const up = extractUp(item.result);
   const upGlb = extractUpGlb(item.result);
   const has3d = glb || ply;
+
+  const handleDownloadAll = async (e) => {
+    e.stopPropagation();
+    setZipping(true);
+    try { await downloadAllPhotos(photos, item.title); }
+    finally { setZipping(false); }
+  };
 
   return (
     <div className="kh-expand">
@@ -525,9 +556,11 @@ function ExpandedContent({ item, onPhoto }) {
               <button
                 type="button"
                 className="kh-dl-all"
-                onClick={(e) => { e.stopPropagation(); downloadAllPhotos(photos, item.title); }}
+                disabled={zipping}
+                onClick={handleDownloadAll}
               >
-                <DownloadIcon /> Скачать все ({photos.length})
+                {zipping ? <span className="kh-spin" /> : <DownloadIcon />}
+                {zipping ? 'Архивирую…' : `Скачать все (${photos.length})`}
               </button>
             )}
           </div>

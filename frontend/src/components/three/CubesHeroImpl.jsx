@@ -160,6 +160,9 @@ function buildParticles(count, R, H, spreadX, spreadY, yBase, sMin, sMax, tint) 
     if (!spread) continue
     const rot = [Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI]
     const s = sMin + Math.random() * (sMax - sMin)
+    // несимметричный масштаб: реальные камни не идеальные сферы
+    const sy = 0.72 + Math.random() * 0.56
+    const sz = 0.72 + Math.random() * 0.56
 
     // лёгкая палитровая подкраска поверх текстуры: лес у земли → охра выше,
     // редкие камни. tint держим слабым, чтобы фактура текстуры доминировала.
@@ -168,7 +171,7 @@ function buildParticles(count, R, H, spreadX, spreadY, yBase, sMin, sMax, tint) 
     if (Math.random() < 0.2) c.lerp(stone, 0.5)
     c.lerp(new THREE.Color('#ffffff'), 1 - tint)  // приглушаем тинт
 
-    arr.push({ scatter, heap, rot, s, color: c.clone() })
+    arr.push({ scatter, heap, rot, s, sy, sz, color: c.clone() })
   }
   return arr
 }
@@ -206,7 +209,7 @@ function Particles({ map, normalMap, normalScale, geometry, data, spinBase, roug
         )
         const spin = (1 - e) * spinBase          // рассыпанные крутятся, собранные — замирают
         dummy.rotation.set(d.rot[0] + spin, d.rot[1] + spin, d.rot[2])
-        dummy.scale.setScalar(d.s)
+        dummy.scale.set(d.s, d.s * d.sy, d.s * d.sz)
         dummy.updateMatrix()
         mesh.setMatrixAt(i, dummy.matrix)
       }
@@ -274,8 +277,10 @@ function Heap() {
   const gravelNScale = useMemo(() => new THREE.Vector2(0.9, 0.9), [])
   const sandNScale   = useMemo(() => new THREE.Vector2(0.6, 0.6), [])
 
-  const gravelGeo = useMemo(() => new THREE.DodecahedronGeometry(1, 0), [])
-  const sandGeo   = useMemo(() => new THREE.IcosahedronGeometry(1, 0), [])
+  // detail=1 (dodecahedron: ~144 tri) и detail=2 (icosahedron: ~320 tri) —
+  // всё равно 2 draw-call (InstancedMesh), общий triangle count ~190K: скромно.
+  const gravelGeo = useMemo(() => new THREE.DodecahedronGeometry(1, 1), [])
+  const sandGeo   = useMemo(() => new THREE.IcosahedronGeometry(1, 2), [])
 
   // Разлёт по X привязан к АСПЕКТУ вьюпорта: на широком мониторе поле достаёт до
   // обоих краёв симметрично (камера в x=0, origin в x=0 — центрировано). Это
