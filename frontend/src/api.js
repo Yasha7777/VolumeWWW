@@ -47,6 +47,16 @@ export const api = {
 
   deleteAnalysis: (id) => req(`/analyses/${id}`, { method: 'DELETE' }),
 
+  // Повторный прогон существующего замера: бэкенд сам достаёт фото из Storage
+  // и заново дёргает n8n (TEST или PROD — по isProd). Прежний результат
+  // затирается, статус возвращается в pending.
+  rerunAnalysis: (id, { isProd = false, cube = null } = {}) =>
+    req(`/analyses/${id}/rerun`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_prod: !!isProd, cube }),
+    }),
+
   // ─── Admin (суперадмин) ──────────────────────────────────
   // 200 + список профилей — ты админ; 403 — обычный пользователь.
   adminListUsers: () => req('/analyses/admin/users'),

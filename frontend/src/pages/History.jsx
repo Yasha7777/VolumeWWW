@@ -324,6 +324,39 @@ const ChevronIcon = ({ s = 18 }) => (
   </svg>
 );
 
+const CheckIcon = ({ s = 16 }) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m5 13 4 4L19 7" />
+  </svg>
+);
+const PlayIcon = ({ s = 16 }) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 4.5v15l13-7.5z" />
+  </svg>
+);
+const CloseIcon = ({ s = 16 }) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 6 6 18M6 6l12 12" />
+  </svg>
+);
+
+/* Массовые операции гоняем пулом: N параллельных запросов вместо «все разом»
+   (десяток одновременных DELETE с удалением файлов из Storage кладёт бэкенд)
+   и вместо строго последовательного цикла (на 30 замерах это минуты). */
+async function mapPool(items, limit, worker) {
+  const queue = [...items];
+  const runners = Array.from({ length: Math.min(limit, queue.length) }, async () => {
+    while (queue.length) {
+      const item = queue.shift();
+      await worker(item);
+    }
+  });
+  await Promise.all(runners);
+}
+
 /* ============================================================
    Лесной декор по бокам (base64-картинки из flora-*.txt)
    ============================================================ */
@@ -610,7 +643,10 @@ function ExpandedContent({ item, onPhoto }) {
   );
 }
 
-function MeasureCard({ item, expanded, deleting, onToggle, onPhoto, onDelete, index = 0 }) {
+function MeasureCard({
+  item, expanded, deleting, onToggle, onPhoto, onDelete, index = 0,
+  selectMode = false, selected = false, onSelect, onSelectStart,
+}) {
   const m = metaFor(item.status);
   const heading = getHeading(item);
   const site = getSite(item);
@@ -627,15 +663,71 @@ function MeasureCard({ item, expanded, deleting, onToggle, onPhoto, onDelete, in
   const weight = item.status === 'error' ? null : getWeight(item);
   const hasMetrics = volume != null || weight != null || photos.length > 0;
 
+  /* Клик по шапке: в режиме выбора — выделяет, иначе разворачивает.
+     Ctrl/⌘/Shift+клик выделяет и БЕЗ режима выбора (привычка из файловых
+     менеджеров), Shift дополнительно тянет диапазон — этим рулит History. */
+  const handleTopClick = (e) => {
+    // после долгого тапа браузер всё равно шлёт click — он бы сразу снял
+    // только что поставленное выделение, поэтому гасим ровно один клик
+    if (skipClick.current) { skipClick.current = false; return; }
+    if (selectMode || e.metaKey || e.ctrlKey || e.shiftKey) {
+      onSelect?.(item.id, e);
+      return;
+    }
+    onToggle(item.id);
+  };
+
+  /* Тач: двойного клика на телефоне нет — вход в режим выбора долгим тапом
+     (500 мс). Скролл отменяет: touchmove сбрасывает таймер. */
+  const pressTimer = useRef(null);
+  const skipClick = useRef(false);
+  const cancelPress = () => {
+    if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; }
+  };
+  const startPress = () => {
+    // новый тап — «глушитель» от прошлого лонг-тапа больше не актуален
+    // (если тот перешёл в скролл, click так и не прилетел и не съел флаг)
+    skipClick.current = false;
+    if (selectMode) return;
+    cancelPress();
+    pressTimer.current = setTimeout(() => {
+      pressTimer.current = null;
+      skipClick.current = true;
+      onSelectStart?.(item.id);
+    }, 500);
+  };
+  useEffect(() => cancelPress, []);
+
   return (
     <div
-      className={`kh-card${expanded ? ' is-open' : ''}`}
+      className={`kh-card${expanded ? ' is-open' : ''}${selected ? ' is-selected' : ''}`}
       style={{ animationDelay: `${Math.min(index * 0.04, 0.32)}s` }}
     >
       {/* Разворачивание реагирует ТОЛЬКО на шапку (этот блок).
           Раньше onClick висел на всей .kh-card — поэтому клик по вьюверу
           или выделение текста в развёрнутой части сворачивали карточку. */}
-      <div className="kh-card__top" onClick={() => onToggle(item.id)}>
+      <div
+        className="kh-card__top"
+        onClick={handleTopClick}
+        onDoubleClick={() => { if (!selectMode) onSelectStart?.(item.id); }}
+        onTouchStart={startPress}
+        onTouchMove={cancelPress}
+        onTouchEnd={cancelPress}
+        onTouchCancel={cancelPress}
+      >
+        {selectMode && (
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={selected}
+            aria-label={selected ? 'Снять выделение' : 'Выбрать замер'}
+            className={`kh-check${selected ? ' is-on' : ''}`}
+            onClick={(e) => { e.stopPropagation(); onSelect?.(item.id, e); }}
+          >
+            {selected && <CheckIcon s={14} />}
+          </button>
+        )}
+
         <div className="kh-card__main">
           <div className="kh-card__title-row">
             <span className={`kh-card__dot ${m.cls}`} />
@@ -793,6 +885,104 @@ function QueueCard({ item, sending, onSend, onRemove }) {
   );
 }
 
+/* ============================================================
+   Панель массовых действий (появляется, когда что-то выбрано).
+   Живёт порталом в body: страница истории скроллится внутри
+   .content, а панель должна быть приклеена к низу окна и лежать
+   ПОВЕРХ бокового декора (.kh-flora).
+   ============================================================ */
+function BulkBar({
+  count, totalVisible, isProd, onProdChange,
+  onSelectAll, onClear, onDelete, onRerun, busy,
+}) {
+  const empty = count === 0;
+  const label = busy
+    ? `${busy.kind === 'delete' ? 'Удаляю' : 'Перезапускаю'} ${busy.done} / ${busy.total}`
+    : empty
+      ? 'Отметьте замеры'
+      : `Выбрано ${count} ${zamerWord(count)}`;
+
+  // Пока панель открыта — запас снизу у страницы, чтобы она не накрывала
+  // последнюю карточку (сама панель fixed и лежит в body, вне .content).
+  useEffect(() => {
+    document.body.classList.add('kh-bulk-open');
+    return () => document.body.classList.remove('kh-bulk-open');
+  }, []);
+
+  return createPortal(
+    <div className="kh-bulk" role="region" aria-label="Действия над выбранными замерами">
+      <div className="kh-bulk__inner">
+        <span className="kh-bulk__count">
+          {busy && <span className="kh-spin" />}
+          {label}
+        </span>
+
+        {!busy && count < totalVisible && (
+          <button type="button" className="kh-bulk__link" onClick={onSelectAll}>
+            Выбрать все ({totalVisible})
+          </button>
+        )}
+
+        <span className="kh-bulk__sep" />
+
+        {/* Тот же переключатель, что на странице анализа (.mode-toggle) —
+            ссылка n8n выбирается прямо здесь, отдельного окна не нужно. */}
+        <div className="kh-bulk__env">
+          <span className="kh-bulk__env-label">Ссылка</span>
+          <div className="mode-toggle">
+            <button
+              type="button"
+              className={`test ${!isProd ? 'active' : ''}`}
+              disabled={!!busy}
+              onClick={() => onProdChange(false)}
+            >
+              TEST
+            </button>
+            <button
+              type="button"
+              className={`prod ${isProd ? 'active' : ''}`}
+              disabled={!!busy}
+              onClick={() => onProdChange(true)}
+            >
+              PROD
+            </button>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          onClick={onRerun}
+          disabled={!!busy || empty}
+          title={`Запустить заново на ${isProd ? 'PROD' : 'TEST'}`}
+        >
+          <PlayIcon /> Перезапустить
+        </button>
+        <button
+          type="button"
+          className="btn btn-danger btn-sm"
+          onClick={onDelete}
+          disabled={!!busy || empty}
+        >
+          <TrashIcon s={15} /> Удалить
+        </button>
+
+        <button
+          type="button"
+          className="kh-bulk__close"
+          onClick={onClear}
+          disabled={!!busy}
+          aria-label="Выйти из режима выбора"
+          title="Выйти из режима выбора (Esc)"
+        >
+          <CloseIcon />
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function Swan() {
   // Лебедь на воде — тонкий контурный лайн-арт, в один почерк с берёзами и
   // медведями остального декора (stroke, без заливки). Цвет из currentColor
@@ -842,6 +1032,15 @@ export default function History() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+
+  // ── Множественный выбор + массовые действия ──
+  // selectMode — включает чекбоксы и переводит клик по шапке в «выделить».
+  // Вход: кнопка «Выбрать», двойной клик по карточке, Ctrl/⌘/Shift+клик.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
+  const [bulkProd, setBulkProd] = useState(false);   // ссылка n8n: TEST по умолчанию
+  const [bulkBusy, setBulkBusy] = useState(null);    // { kind, done, total }
+  const lastPickedRef = useRef(null);                // якорь для Shift-диапазона
 
   // ── Суперадмин: просмотр чужих историй ──
   // adminUsers === null  → обычный пользователь, селектора нет
@@ -958,6 +1157,7 @@ export default function History() {
     load();
   };
 
+
   // ── действия над локальной очередью ──
   const sendNow = async (id) => {
     setSendingQ((s) => ({ ...s, [id]: true }));
@@ -1047,8 +1247,143 @@ export default function History() {
       groups[idx[key]].items.push(it);
     }
 
-    return { counts, sumVol, sumWeight, groups };
+    // Плоский список id в том же порядке, в каком карточки на экране —
+    // по нему работает выбор диапазона Shift-кликом и «выбрать все».
+    const flatIds = sorted.map((it) => it.id);
+
+    return { counts, sumVol, sumWeight, groups, flatIds };
   }, [items, query, from, to, statusFilter]);
+
+  /* ── Множественный выбор ─────────────────────────────────────────────── */
+
+  const exitSelect = () => {
+    setSelectMode(false);
+    setSelected(new Set());
+    lastPickedRef.current = null;
+  };
+
+  // Клик по чекбоксу/шапке. Shift тянет диапазон от последней выбранной
+  // карточки — по видимому порядку (view.flatIds), а не по порядку в items.
+  const toggleSelect = (id, e) => {
+    setSelectMode(true);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const anchor = lastPickedRef.current;
+      if (e?.shiftKey && anchor && anchor !== id) {
+        const ids = view.flatIds;
+        const a = ids.indexOf(anchor);
+        const b = ids.indexOf(id);
+        if (a !== -1 && b !== -1) {
+          for (let i = Math.min(a, b); i <= Math.max(a, b); i++) next.add(ids[i]);
+          return next;
+        }
+      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    lastPickedRef.current = id;
+  };
+
+  // Двойной клик по карточке — вход в режим выбора с этой карточкой.
+  // Одиночные клики до этого успели развернуть и свернуть карточку обратно,
+  // поэтому просто гарантируем, что ничего не осталось раскрытым.
+  const startSelect = (id) => {
+    setExpanded(null);
+    setSelectMode(true);
+    setSelected(new Set([id]));
+    lastPickedRef.current = id;
+  };
+
+  const selectAllVisible = () => {
+    setSelected(new Set(view.flatIds));
+    lastPickedRef.current = view.flatIds[view.flatIds.length - 1] || null;
+  };
+
+  // Выбранное, что реально есть в текущем списке (фильтры могли спрятать часть).
+  const selectedIds = useMemo(
+    () => view.flatIds.filter((id) => selected.has(id)),
+    [view.flatIds, selected]
+  );
+
+  // Esc — выход из режима выбора
+  useEffect(() => {
+    if (!selectMode) return;
+    const onKey = (e) => { if (e.key === 'Escape' && !bulkBusy) exitSelect(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectMode, bulkBusy]);
+
+  // Замер исчез с сервера (удалён в другой вкладке) — выкидываем его из выбора,
+  // иначе счётчик в панели врёт и массовое действие бьёт по фантому.
+  useEffect(() => {
+    setSelected((prev) => {
+      if (!prev.size) return prev;
+      const alive = new Set(items.map((i) => i.id));
+      const next = new Set([...prev].filter((id) => alive.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [items]);
+
+  /* ── Массовые действия ───────────────────────────────────────────────── */
+
+  const deleteSelected = async () => {
+    const ids = selectedIds;
+    if (!ids.length || bulkBusy) return;
+    if (!window.confirm(
+      `Удалить ${ids.length} ${zamerWord(ids.length)} вместе со всеми фото? Отменить нельзя.`
+    )) return;
+
+    setBulkBusy({ kind: 'delete', done: 0, total: ids.length });
+    const failed = [];
+    await mapPool(ids, 3, async (id) => {
+      try {
+        await api.deleteAnalysis(id);
+        setItems((list) => list.filter((x) => x.id !== id));
+        setSelected((s) => { const n = new Set(s); n.delete(id); return n; });
+      } catch {
+        failed.push(id);
+      } finally {
+        setBulkBusy((b) => (b ? { ...b, done: b.done + 1 } : b));
+      }
+    });
+    setBulkBusy(null);
+
+    if (failed.length) alert(`Не удалось удалить: ${failed.length} из ${ids.length}. Попробуйте ещё раз.`);
+    else exitSelect();
+  };
+
+  const rerunSelected = async () => {
+    const ids = selectedIds;
+    if (!ids.length || bulkBusy) return;
+    const env = bulkProd ? 'PROD' : 'TEST';
+    if (!window.confirm(
+      `Запустить заново ${ids.length} ${zamerWord(ids.length)} на ${env}?\n` +
+      'Прежний результат будет перезаписан.'
+    )) return;
+
+    setBulkBusy({ kind: 'rerun', done: 0, total: ids.length });
+    const failed = [];
+    await mapPool(ids, 3, async (id) => {
+      try {
+        await api.rerunAnalysis(id, { isProd: bulkProd });
+        // Оптимистично: карточка сразу уходит в «в обработке», а поллинг
+        // (он просыпается как раз на pending) дотянет реальный результат.
+        setItems((list) => list.map((x) =>
+          x.id === id ? { ...x, status: 'pending', result: null, completed_at: null } : x
+        ));
+      } catch {
+        failed.push(id);
+      } finally {
+        setBulkBusy((b) => (b ? { ...b, done: b.done + 1 } : b));
+      }
+    });
+    setBulkBusy(null);
+
+    if (failed.length) alert(`Не удалось перезапустить: ${failed.length} из ${ids.length}.`);
+    else exitSelect();
+  };
 
   const tabs = [
     { key: 'all', label: 'Все', count: view.counts.all },
@@ -1086,6 +1421,14 @@ export default function History() {
             <h1 className="kh-h1">История анализов</h1>
           </div>
           <div className="kh-head__actions">
+            <button
+              className={`btn btn-secondary${selectMode ? ' is-active' : ''}`}
+              onClick={() => (selectMode ? exitSelect() : setSelectMode(true))}
+              disabled={!!bulkBusy}
+              title="Выбрать несколько замеров (или двойной клик по карточке)"
+            >
+              <CheckIcon /> {selectMode ? 'Готово' : 'Выбрать'}
+            </button>
             <button className="btn btn-secondary" onClick={refresh} disabled={refreshing}>
               {refreshing ? <span className="kh-spin" /> : <RefreshIcon />} Обновить
             </button>
@@ -1237,6 +1580,10 @@ export default function History() {
                     onToggle={toggle}
                     onPhoto={openPhoto}
                     onDelete={deleteItem}
+                    selectMode={selectMode}
+                    selected={selected.has(item.id)}
+                    onSelect={toggleSelect}
+                    onSelectStart={startSelect}
                   />
                 </Reveal>
               ))}
@@ -1244,6 +1591,20 @@ export default function History() {
           ))
         )}
       </div>
+
+      {(selectMode || bulkBusy) && (
+        <BulkBar
+          count={selectedIds.length}
+          totalVisible={view.flatIds.length}
+          isProd={bulkProd}
+          onProdChange={setBulkProd}
+          onSelectAll={selectAllVisible}
+          onClear={exitSelect}
+          onDelete={deleteSelected}
+          onRerun={rerunSelected}
+          busy={bulkBusy}
+        />
+      )}
 
       {lightbox && (
         <Lightbox

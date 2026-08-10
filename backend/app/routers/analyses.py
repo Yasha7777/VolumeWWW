@@ -17,6 +17,7 @@ from fastapi import (
     Query,
     UploadFile,
 )
+from pydantic import BaseModel
 
 from ..auth import get_current_user
 from ..config import settings
@@ -43,6 +44,28 @@ CUBE_DEFAULT_SIZE_M  = 0.0175
 # всех сразу (?user_id=all), открывать и удалять чужие замеры,
 # получать список пользователей для селектора (/analyses/admin/users).
 # Вся проверка прав — ТОЛЬКО здесь, на бэкенде. Фронтовый селектор — просто UI.
+
+def _cube_block(cube_raw) -> dict:
+    """Нормализует блок калибровочного куба к двум полям для n8n.
+
+    Фронт (CubeSettings.jsx) уже переводит сторону клетки в метры и шлёт
+    готовый блок. Берём только два обязательных поля; конвертацию из мм не
+    дублируем. Панель не трогали / прислали мусор → стандартный куб.
+    """
+    if not isinstance(cube_raw, dict):
+        cube_raw = {}
+
+    try:
+        squares = int(cube_raw.get("squares_per_side"))
+    except (TypeError, ValueError):
+        squares = CUBE_DEFAULT_SQUARES
+    try:
+        size_m = round(float(cube_raw.get("square_size_m")), 5)
+    except (TypeError, ValueError):
+        size_m = CUBE_DEFAULT_SIZE_M
+
+    return {"squares_per_side": squares, "square_size_m": size_m}
+
 
 def _is_superadmin(user_id: str) -> bool:
     try:
@@ -127,6 +150,104 @@ async def _call_n8n_and_save(
         ).eq("id", analysis_id).execute()
 
 
+# ─── RERUN (повторный прогон уже загруженного замера) ────────────────────────
+#
+# Фото повторно НЕ загружаются — они уже лежат в Storage. Тянем их обратно
+# (по storage_path, фолбэк — public_url) и заново дёргаем n8n на выбранной
+# ссылке (TEST/PROD). EXIF и параметры куба в БД не хранятся: exif уходит
+# пустым, куб — тот, что прислал клиент, иначе стандартный.
+
+def _download_photo(row: dict) -> Optional[bytes]:
+    """Байты оригинала фото: сначала из Storage, потом по публичной ссылке."""
+    path = row.get("storage_path")
+    if path:
+        try:
+            return supabase.storage.from_(COLMAP_BUCKET).download(path)
+        except Exception:
+            logger.warning("Не удалось скачать из Storage: %s", path)
+
+    url = row.get("public_url")
+    if url:
+        try:
+            resp = httpx.get(url, timeout=60, follow_redirects=True)
+            resp.raise_for_status()
+            return resp.content
+        except Exception:
+            logger.warning("Не удалось скачать по ссылке: %s", url)
+
+    return None
+
+
+async def _rerun_and_save(
+    analysis_id: str,
+    photo_urls: list[str],
+    title: str,
+    notes: str,
+    user_info: dict,
+    cube: dict,
+    webhook_url: str,
+):
+    now = lambda: datetime.now(timezone.utc).isoformat()
+
+    # Порядок фото берём из analyses.photo_urls (это порядок загрузки), а
+    # строки colmap_photos подтягиваем по public_url — id самих строк нужны
+    # n8n в meta.photo_ids.
+    try:
+        rows = (
+            supabase.table("colmap_photos")
+            .select("id, storage_path, public_url")
+            .eq("analyze_id", analysis_id)
+            .execute()
+        ).data or []
+    except Exception:
+        logger.warning("colmap_photos недоступна для %s — качаем по ссылкам", analysis_id)
+        rows = []
+
+    by_url = {r.get("public_url"): r for r in rows if r.get("public_url")}
+    ordered = [by_url.get(u) or {"id": None, "public_url": u} for u in photo_urls]
+    if not ordered:                      # старая запись без photo_urls
+        ordered = rows
+
+    photo_ids: list[str] = []
+    photo_b64_list: list[str] = []
+    for row in ordered:
+        content = await asyncio.to_thread(_download_photo, row)
+        if content is None:
+            continue
+        # массив id держим ПАРАЛЛЕЛЬНЫМ фотографиям (None, если строки
+        # colmap_photos нет) — иначе meta.photo_count в payload соврёт
+        photo_ids.append(row.get("id"))
+        b64 = base64.b64encode(content).decode("utf-8")
+        photo_b64_list.append(f"data:image/jpeg;base64,{b64}")
+
+    if not photo_b64_list:
+        supabase.table("analyses").update(
+            {
+                "status": "error",
+                "result": "Ошибка: не удалось получить фото замера для повторного запуска.",
+                "completed_at": now(),
+            }
+        ).eq("id", analysis_id).execute()
+        return
+
+    await _call_n8n_and_save(
+        analysis_id,
+        photo_ids,
+        title,
+        notes,
+        [None] * len(photo_b64_list),   # EXIF исходного замера не сохраняется
+        photo_b64_list,
+        user_info,
+        cube,
+        webhook_url,
+    )
+
+
+class RerunRequest(BaseModel):
+    is_prod: bool = False
+    cube: Optional[dict] = None
+
+
 # ─── ENDPOINTS ───────────────────────────────────────────────────────────────
 
 @router.post("/", status_code=202)
@@ -156,29 +277,12 @@ async def create_analysis(
         exif_list = []
 
     # ── Параметры калибровочного куба ────────────────────────────────────────
-    #   Фронт (CubeSettings.jsx) уже переводит сторону клетки в метры и шлёт
-    #   готовый блок. Берём только два обязательных поля; конвертацию из мм не
-    #   дублируем. Панель не трогали / прислали мусор → стандартный куб.
     try:
         cube_raw = json.loads(cube) if cube else None
     except Exception:
         cube_raw = None
-    if not isinstance(cube_raw, dict):
-        cube_raw = {}
 
-    try:
-        cube_squares = int(cube_raw.get("squares_per_side"))
-    except (TypeError, ValueError):
-        cube_squares = CUBE_DEFAULT_SQUARES
-    try:
-        cube_size_m = round(float(cube_raw.get("square_size_m")), 5)
-    except (TypeError, ValueError):
-        cube_size_m = CUBE_DEFAULT_SIZE_M
-
-    cube_block = {
-        "squares_per_side": cube_squares,
-        "square_size_m":    cube_size_m,
-    }
+    cube_block = _cube_block(cube_raw)
 
     # ── 0. Идемпотентность по client_id ──────────────────────────────────────
     #   Фронт (queue.js) при постановке в очередь генерит UUID и шлёт его как
@@ -468,6 +572,82 @@ def get_analysis(analysis_id: str, current_user: dict = Depends(get_current_user
     if not row:
         raise HTTPException(404, "Анализ не найден")
     return row
+
+
+@router.post("/{analysis_id}/rerun", status_code=202)
+def rerun_analysis(
+    analysis_id: str,
+    body: RerunRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
+):
+    """Повторный прогон замера по уже загруженным фото (TEST/PROD).
+
+    Прежний результат затирается, статус возвращается в pending — History
+    подхватит запись своим 10-секундным поллингом. Замер в статусе pending
+    перезапустить МОЖНО намеренно: фоновая задача умирает вместе с процессом
+    uvicorn, и это единственный способ раскачать зависшую запись.
+    """
+    webhook_url = settings.n8n_webhook_url_prod if body.is_prod else settings.n8n_webhook_url
+    if not webhook_url:
+        raise HTTPException(500, "Конфигурация n8n URL не найдена")
+
+    q = (
+        supabase.table("analyses")
+        .select("id, user_id, title, notes, photo_urls")
+        .eq("id", analysis_id)
+    )
+    if not _is_superadmin(current_user["id"]):
+        q = q.eq("user_id", current_user["id"])
+
+    try:
+        rec = q.single().execute().data
+    except Exception:
+        rec = None
+    if not rec:
+        raise HTTPException(404, "Анализ не найден")
+
+    # Профиль ВЛАДЕЛЬЦА замера, а не того, кто нажал (админ может перезапускать
+    # чужие) — иначе n8n отправит письмо не тому человеку.
+    owner_id = rec["user_id"]
+    try:
+        profile = (
+            supabase.table("profiles")
+            .select("emails, name, company")
+            .eq("id", owner_id)
+            .single()
+            .execute()
+        ).data or {}
+    except Exception:
+        profile = {}
+
+    emails: list[str] = list(profile.get("emails") or [])
+    owner_email = current_user["email"] if owner_id == current_user["id"] else None
+    if owner_email and owner_email not in emails:
+        emails = [owner_email] + emails
+
+    supabase.table("analyses").update(
+        {"status": "pending", "result": None, "completed_at": None}
+    ).eq("id", analysis_id).execute()
+
+    background_tasks.add_task(
+        _rerun_and_save,
+        analysis_id,
+        list(rec.get("photo_urls") or []),
+        rec.get("title") or "Без названия",
+        rec.get("notes") or "",
+        {
+            "id":      owner_id,
+            "email":   owner_email or (emails[0] if emails else ""),
+            "emails":  emails,
+            "name":    profile.get("name", ""),
+            "company": profile.get("company", ""),
+        },
+        _cube_block(body.cube),
+        webhook_url,
+    )
+
+    return {"id": analysis_id, "status": "pending", "mode": "prod" if body.is_prod else "test"}
 
 
 @router.delete("/{analysis_id}")
