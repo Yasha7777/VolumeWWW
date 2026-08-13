@@ -3,8 +3,8 @@
    ------------------------------------------------------------
    Самодостаточный, темо-агностичный: цвета берёт из токенов
    (--bg-card / --border / --green / --text / --muted), поэтому
-   корректен в light / dark / gtc без отдельных переопределений.
-   Импортить в main.jsx ПОСЛЕ styles.css и swag.css.
+   корректен в light / dark без отдельных переопределений.
+   Импортить в main.jsx ПОСЛЕ styles.css и theme-dark.css.
    ============================================================ */
 
 :root {
@@ -79,7 +79,6 @@
   transition: padding-right .18s var(--ease);
 }
 .rp-handle:hover { padding-right: 14px; }
-[data-theme="gtc"] .rp-handle { color: #eceef2; }
 
 /* ---------- затемнение (только мобильная шторка) ---------- */
 .rp-backdrop {

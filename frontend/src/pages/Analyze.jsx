@@ -6,7 +6,6 @@ import PlyViewer from '../components/PlyViewer'
 import ViewerErrorBoundary from '../components/ViewerErrorBoundary'
 import ReportPanel from '../components/ReportPanel'   // ← выдвижное окно отчёта
 import { parseWebhookResult } from '../components/RaschetDownloadButton' // ← общий парсер (объём DUSt3R, масса = V×ρ)
-import { useTheme } from '../theme/ThemeProvider'   // ← только ради свага-лейбла кнопки
 import { enqueue, flushItem } from '../queue/queue'  // ← офлайн-очередь (PWA)
 import Reveal from '../components/Reveal'  // ← лёгкое scroll/stagger-проявление
 import CubesHero from '../components/CubesHero'  // ← реальная 3D-модель кубов (GLB)
@@ -58,8 +57,6 @@ function compressImage(file) {
 }
 
 export default function Analyze() {
-  const { isGtc } = useTheme()   // ← живёт под <ThemeProvider> из main.jsx
-
   const [photos, setPhotos]     = useState([])
   const [title, setTitle]       = useState('')
   const [notes, setNotes]       = useState('')
@@ -617,7 +614,7 @@ export default function Analyze() {
           <div className="actions" style={{ marginTop:'24px' }}>
             <button className="btn btn-primary" onClick={runAnalysis} disabled={busy}>
               {busy
-                ? <><div className="spinner" /> {isGtc ? 'ВЫЗЫВАЕМ…' : 'Анализируем...'}</>
+                ? <><div className="spinner" /> Анализируем...</>
                 : (online ? 'Запустить анализ' : 'Отправить (в очередь)')}
             </button>
             <button className="btn btn-secondary" onClick={addToQueue} disabled={busy} title="Сохранить и отправить в фоне">

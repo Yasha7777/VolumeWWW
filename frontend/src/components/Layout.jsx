@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import ThemeToggle from './swag/ThemeToggle'   // ← сегментный переключатель тем
+import ThemeToggle from './ThemeToggle'        // ← сегментный переключатель тем
 import ScrollProgress from './ScrollProgress'  // ← золотая полоса прогресса чтения
 
 /* ============================================================
@@ -96,7 +96,7 @@ export default function Layout({ children }) {
             <div className="user-name">{profile?.name || user?.email}</div>
             {profile?.company && <div className="user-co">{profile.company}</div>}
           </div>
-          {/* переключатель тем: светлая / тёмная / готическая (gtc) */}
+          {/* переключатель тем: светлая / тёмная */}
           <ThemeToggle />
           <button className="icon-btn" title="Выйти" onClick={handleSignOut}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

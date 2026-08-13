@@ -1,28 +1,26 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
 /* ============================================================
-   ThemeProvider — три темы: 'light' | 'dark' | 'gtc'
+   ThemeProvider — две темы: 'light' | 'dark'
    ------------------------------------------------------------
-   • light — кремовый дизайн (оверрайдов нет).
-   • dark  — тёмная версия того же дизайна (swag.css).
-   • gtc   — готическая «свага» (фон, вуаль, металл-заголовки).
+   • light — кремовый дизайн (оверрайдов нет, styles.css).
+   • dark  — тёмная версия того же дизайна (theme-dark.css).
 
-   Переход В gtc сопровождается полноэкранным «разломом» (flipping).
-   Свет↔тьма переключаются плавно, без разлома.
-   data-theme на <html>; выбор хранится в localStorage. Интро-вуаль —
-   при загрузке, только если активна gtc и не включён reduced-motion.
+   Переключение плавное, без переходных эффектов.
+   data-theme на <html>; выбор хранится в localStorage.
 
-   Имена файлов исторически swag.* / components/swag/ — значение
-   темы теперь 'gtc'.
+   Готическая тема 'gtc' («свага») удалена полностью — сохранённый
+   у пользователя выбор мигрирует в 'dark' (см. MIGRATE).
    ============================================================ */
 
 const ThemeCtx = createContext(null);
 export const useTheme = () => useContext(ThemeCtx);
 
 const STORAGE_KEY   = 'kh-theme';
-const DEFAULT_THEME = 'light';                 // ← поменяй на 'light' для нейтрального логина
-const VALID   = ['light', 'dark', 'gtc'];
-const MIGRATE = { normal: 'light', swag: 'gtc' };  // старые значения из прошлых версий
+const DEFAULT_THEME = 'light';
+const VALID   = ['light', 'dark'];
+// старые значения из прошлых версий: 'normal' → light, 'swag'/'gtc' → dark
+const MIGRATE = { normal: 'light', swag: 'dark', gtc: 'dark' };
 
 const prefersReduced =
   typeof window !== 'undefined' &&
@@ -40,59 +38,28 @@ const readInitial = () => {
 
 export function ThemeProvider({ children }) {
   const [mode, setModeState] = useState(readInitial);
-  const [flipping, setFlipping] = useState(false);
-  const [intro, setIntro] = useState(() => mode === 'gtc' && !prefersReduced);
 
-  // зеркала для синхронного чтения в setTheme()
+  // зеркало для синхронного чтения в setTheme()
   const modeRef = useRef(mode);
-  const flipRef = useRef(false);
-  const timers = useRef([]);
   useEffect(() => { modeRef.current = mode; }, [mode]);
 
-  // отражаем тему на <html> + сохраняем выбор
+  // отражаем тему на <html> + сохраняем выбор (в т.ч. результат миграции)
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', mode);
     try { localStorage.setItem(STORAGE_KEY, mode); } catch (_) {}
   }, [mode]);
 
-  // авто-закрытие интро-вуали (один раз за загрузку)
-  useEffect(() => {
-    if (!intro) return;
-    const t = setTimeout(() => setIntro(false), 3400);
-    return () => clearTimeout(t);
-  }, [intro]);
-
-  // чистим хвостовые таймеры разлома при размонтировании
-  useEffect(() => () => timers.current.forEach(clearTimeout), []);
-
-  const skipIntro = useCallback(() => setIntro(false), []);
-
   const setTheme = useCallback((target) => {
-    if (!VALID.includes(target) || flipRef.current || target === modeRef.current) return;
-
-    // драматичный разлом — только на ВХОД в gtc
-    const dramatic = target === 'gtc' && !prefersReduced;
-    if (dramatic) {
-      flipRef.current = true;
-      setFlipping(true);
-      const t1 = setTimeout(() => { modeRef.current = target; setModeState(target); }, 470);
-      const t2 = setTimeout(() => { flipRef.current = false; setFlipping(false); }, 960);
-      timers.current.push(t1, t2);
-    } else {
-      modeRef.current = target;
-      setModeState(target);   // свет↔тьма (и выход из gtc) — плавно
-    }
+    if (!VALID.includes(target) || target === modeRef.current) return;
+    modeRef.current = target;
+    setModeState(target);
   }, []);
 
   const value = {
     mode,
     isLight: mode === 'light',
     isDark:  mode === 'dark',
-    isGtc:   mode === 'gtc',
-    flipping,
     setTheme,
-    intro,
-    skipIntro,
     reducedMotion: prefersReduced,
   };
 

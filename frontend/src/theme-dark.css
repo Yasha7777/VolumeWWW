@@ -1,0 +1,115 @@
+/* ============================================================
+   theme-dark.css — тёмная тема + переключатель тем
+   ------------------------------------------------------------
+   Подключается ОДИН раз глобально (import './theme-dark.css'
+   в main.jsx, ПОСЛЕ styles.css). Включается атрибутом
+   data-theme="dark" на <html> — его ставит ThemeProvider.
+   Без атрибута (data-theme="light") ничего отсюда не применяется:
+   остаётся кремовый дизайн из styles.css.
+
+   Принцип: под [data-theme="dark"] переопределяем CSS-переменные
+   из :root (этого хватает, чтобы карточки/поля/рамки потемнели
+   «сами»), а затем точечно перекрашиваем «зашитые» светлые
+   поверхности.
+
+   (Готическая тема «gtc» удалена — вместе с её ассетами
+   /public/swag/*, атмосферой, интро-вуалью и разломом.)
+   ============================================================ */
+
+/* ============================================================
+   1. ТЁМНАЯ ТЕМА (data-theme="dark")
+   ------------------------------------------------------------
+   НЕ инверсия: тот же дизайн (те же скругления/тени/шрифты),
+   только тёмная палитра. Бренд-зелёный и золото остаются
+   акцентами, чуть подняты для контраста.
+   ============================================================ */
+[data-theme="dark"] {
+  --bg:          #15161A;
+  --bg-card:     #1E1F24;
+  --green:       #2F5A1E;   /* кнопки/активное — поднятый лесной */
+  --green-hover: #3A6E26;
+  --gold:        #D49A3C;   /* золото — поднято для тёмного фона */
+  --text:        #E9E8E2;
+  --muted:       #9C988D;
+  --light:       #6B6E75;
+  --border:      #2C2D33;
+  --dash:        #3A3C43;
+  --shadow:      0 2px 24px rgba(0,0,0,0.45);
+}
+[data-theme="dark"] body { background: var(--bg); color: var(--text); }
+
+/* перекрашиваем «зашитые» светлые поверхности из styles.css */
+[data-theme="dark"] header { background: rgba(21,22,26,.92); border-bottom-color: var(--border); }
+[data-theme="dark"] .badge { background: rgba(255,255,255,.05); }
+[data-theme="dark"] .dz { background: rgba(255,255,255,.02); }
+[data-theme="dark"] .btn-secondary { background: var(--bg-card); }
+[data-theme="dark"] .btn-secondary:hover { background: #26282e; }
+[data-theme="dark"] .icon-btn:hover { background: var(--bg-card); color: var(--text); }
+[data-theme="dark"] .status.error,
+[data-theme="dark"] .auth-err   { background: rgba(70,20,22,.4);  color: #e7a9a3; border-color: rgba(192,57,43,.4); }
+[data-theme="dark"] .status.success { background: rgba(18,40,28,.5);  color: #9fd9b6; border-color: rgba(46,160,90,.35); }
+[data-theme="dark"] .status.info    { background: rgba(20,28,46,.5);  color: #a9c0e7; border-color: rgba(70,110,180,.35); }
+/* флора на тёмном фоне: инвертируем (тёмные линии → светлые),
+   прижимаем opacity — иначе белые линии громче, чем тёмные на креме */
+[data-theme="dark"] .kh-flora {
+  filter: invert(1);
+  opacity: 0.32;
+}
+
+/* ============================================================
+   2. ПЕРЕКЛЮЧАТЕЛЬ ТЕМ В ШАПКЕ — сегментный, 2 позиции
+   ------------------------------------------------------------
+   Тема-агностичен: трек/иконки берут var(--border)/var(--muted),
+   активный «бегунок» — var(--green). Поэтому корректно смотрится
+   и в светлой, и в тёмной теме без отдельных вариантов.
+   ============================================================ */
+.theme-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--border);
+  flex: none;
+}
+.theme-switch__thumb {
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 30px; height: 28px;
+  border-radius: 999px;
+  background: var(--green);
+  transition: transform .28s var(--ease, cubic-bezier(.4,0,.2,1)), background-color .2s;
+  pointer-events: none;
+}
+.theme-switch__opt {
+  position: relative;
+  z-index: 1;
+  width: 30px; height: 28px;
+  display: grid; place-items: center;
+  border: none; background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color .2s, transform .12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.theme-switch__opt:hover { color: var(--text); }
+.theme-switch__opt.is-active { color: #fff; }
+.theme-switch__opt:active { transform: scale(.9); }
+.theme-switch__opt svg { width: 16px; height: 16px; display: block; }
+
+/* Примечание про prefers-reduced-motion: глобальный блок в styles.css
+   уже гасит ВСЕ animation/transition (`*{animation-duration:.01ms!important}`),
+   поэтому отдельный guard здесь не нужен. */
+
+/* ============================================================
+   3. НИЖНЯЯ НАВИГАЦИЯ (mobile tab bar) — тёмный вариант
+   ------------------------------------------------------------
+   База (светлая) — в styles.css. Акцент-«бегунок» использует
+   var(--gold), который уже переопределён в теме, поэтому
+   красить чёрточку отдельно не нужно — только фон/рамку.
+   ============================================================ */
+[data-theme="dark"] .tabbar {
+  background: rgba(21, 22, 26, 0.92);
+  border-top-color: var(--border);
+}

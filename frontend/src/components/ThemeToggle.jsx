@@ -1,8 +1,8 @@
-import { useTheme } from '../../theme/ThemeProvider'
+import { useTheme } from '../theme/ThemeProvider'
 
 /* ============================================================
    ThemeToggle — сегментный переключатель тем в шапке сайта.
-   3 позиции: Светлая (☀) · Тёмная (🌙) · Готическая «gtc» (текст).
+   2 позиции: Светлая (☀) · Тёмная (🌙).
    Скользящий «бегунок» едет к активной позиции.
    ============================================================ */
 
@@ -20,9 +20,8 @@ const MoonIcon = () => (
 )
 
 const OPTS = [
-  { key: 'light', label: 'Светлая тема',          Icon: SunIcon },
-  { key: 'dark',  label: 'Тёмная тема',            Icon: MoonIcon },
-  { key: 'gtc',   label: 'Готическая тема (gtc)',  text: 'gtc' },
+  { key: 'light', label: 'Светлая тема', Icon: SunIcon },
+  { key: 'dark',  label: 'Тёмная тема',  Icon: MoonIcon },
 ]
 
 export default function ThemeToggle() {
@@ -42,7 +41,7 @@ export default function ThemeToggle() {
           aria-label={o.label}
           aria-pressed={mode === o.key}
         >
-          {o.text ? <span className="ts-gtc">{o.text}</span> : <o.Icon />}
+          <o.Icon />
         </button>
       ))}
     </div>

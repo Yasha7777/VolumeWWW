@@ -4,7 +4,7 @@ import { initQueue } from './queue/queue'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles.css'
-import './swag.css'                              // ← тема свага (ПОСЛЕ styles.css)
+import './theme-dark.css'                        // ← тёмная тема + переключатель (ПОСЛЕ styles.css)
 import './report-panel.css'                      // ← стили выдвижного окна отчёта
 import { ThemeProvider } from './theme/ThemeProvider'
 import App from './App.jsx'

@@ -265,7 +265,7 @@ nav { display: flex; gap: 4px; justify-self: center; }
 
 /* ─── STEPPER · СОСТОЯНИЯ ШАГОВ ──────────────────────────── */
 /* Текущий шаг выводится из состояния анализа (загрузка → анализ → результат).
-   Всё на токенах, поэтому корректно работает в light/dark/gtc. */
+   Всё на токенах, поэтому корректно работает в light/dark. */
 .step    { transition: color .25s var(--ease); }
 .step-n  { transition: background .25s var(--ease), border-color .25s var(--ease), color .25s var(--ease), box-shadow .25s var(--ease); }
 .step-n svg { display: block; }
@@ -528,7 +528,7 @@ footer { border-top: 1px solid var(--border); padding: 20px 32px; display: flex;
 /* По умолчанию (десктоп) нижняя навигация и её распорка скрыты.
    Само наполнение и показ — в мобильном @media ниже. Цвет «бегунка»
    берёт var(--gold), который переопределён в каждой теме, поэтому
-   таб-бар автоматически верен в light / dark / gtc. */
+   таб-бар автоматически верен в light / dark. */
 .tabbar { display: none; }
 .tabbar-spacer { display: none; }
 
@@ -1444,7 +1444,7 @@ body.kh-bulk-open .content { padding-bottom: 120px; }
    RESULT SUMMARY (.rs-*) — структурированная сводка результата
    на странице Анализа. Заменяет сырой текстовый дамп пайплайна
    (эмодзи-строки из n8n). Всё на токенах → корректна в light /
-   dark / gtc без переопределений.
+   dark без переопределений.
    ============================================================ */
 
 .rs { padding: 16px 18px 14px; }
@@ -1573,7 +1573,7 @@ body.kh-bulk-open .content { padding-bottom: 120px; }
    .kh-userfilter — выбор пользователя и фильтр его замеров
    Панель руководителя/админа: «кто» (пользователь) → «что» (его анализы).
    Ставится над .kh-tabs / .kh-toolbar на странице Истории.
-   Всё на токенах → корректно в light / dark / gtc.
+   Всё на токенах → корректно в light / dark.
 
    Разметка (ориентир):
    <div class="kh-userfilter">

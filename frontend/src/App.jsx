@@ -6,11 +6,6 @@ import Layout from './components/Layout'
 // ── Login грузим статически: это входная точка и LCP-страница,
 //    она должна отрисоваться из начального бандла без лишнего запроса ──
 import Login from './pages/Login'
-// ── готическая тема: фон, вуаль, разлом (глобально, только в режиме gtc) ──────
-import { useTheme } from './theme/ThemeProvider'
-import SwagAtmosphere from './components/swag/SwagAtmosphere'
-import IntroVeil from './components/swag/IntroVeil'
-import Fracture from './components/swag/Fracture'
 
 /* ── code splitting: каждая страница — отдельный чанк.
    Analyze утянет за собой PDF/3D-обёртки (сами движки — ещё глубже,
@@ -37,21 +32,11 @@ const PageLoader = () => (
 )
 
 function App() {
-  // flipping = идёт разлом при входе в gtc → трясём страницу (.az-flip)
-  const { flipping } = useTheme()
-
   return (
     <AuthProvider>
       <BrowserRouter>
-        {/* фон, вуаль и разлом рендерятся порталом в body и сами решают,
-            показываться ли (gtc / flipping). Переключатель тем — в шапке (Layout). */}
-        <SwagAtmosphere />
-        <IntroVeil />
-        <Fracture />
-
-        {/* .app-shell поднимает контент над готической атмосферой (swag.css);
-            .az-flip — тряска во время разлома. */}
-        <div className={`app-shell${flipping ? ' az-flip' : ''}`}>
+        {/* .app-shell — общая обёртка всех роутов. Переключатель тем — в шапке (Layout). */}
+        <div className="app-shell">
           <Suspense fallback={<PageLoader />}>
             <Routes>
               {/* Публичные */}

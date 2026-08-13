@@ -63,7 +63,7 @@ nginx (port 80)
 - `components/raschet/` — PDF report generation via `@react-pdf/renderer`; `RaschetDocument.jsx` is the layout, `raschetData.js` holds formulas/constants
 - `components/ReportPanel.jsx` — renders AI analysis result; `report-panel.css` styles it
 - `sw.js` — service worker (vite-plugin-pwa); handles `kb-flush` message to trigger queue flush
-- Theme system: `theme/ThemeProvider.jsx` + gothic "swag" theme (SwagAtmosphere, IntroVeil, Fracture components)
+- Theme system: `theme/ThemeProvider.jsx` (две темы: `light` | `dark`) + `theme-dark.css` (тёмная палитра) + `components/ThemeToggle.jsx` (переключатель в шапке). Готическая тема `gtc`/«swag» удалена 2026-08-13 вместе с `swag.css`, `components/swag/*` и `public/swag/*`; сохранённые в localStorage значения `gtc`/`swag` мигрируют в `dark`. Не возвращай третью тему.
 - Code-split per page via `lazy()`; Login is statically imported (LCP page)
 
 **Supabase** (`supabase/`):
