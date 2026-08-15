@@ -10,51 +10,12 @@ import { enqueue, flushItem } from '../queue/queue'  // ← офлайн-оче�
 import Reveal from '../components/Reveal'  // ← лёгкое scroll/stagger-проявление
 import CubesHero from '../components/CubesHero'  // ← реальная 3D-модель кубов (GLB)
 import CubeSettings, { CUBE_DEFAULT } from '../components/CubeSettings'  // ← настраиваемый калибровочный куб
+import { prepareImage } from '../prepareImage'  // ← оригинал на сервер + превью для UI
 
 const MAX_PHOTOS = 100
-const MAX_DIM    = 1600
-const QUALITY    = 0.85
 const POLL_MS    = 5000
 
 const STEPS = ['Загрузить фото', '3D-реконструкция', 'Объём и вес']
-
-// ─── Сжатие изображения через Canvas ─────────────────────────────────────────
-function compressImage(file) {
-  return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/') && !file.name.match(/\.(heic|heif)$/i)) {
-      reject(new Error(`Не изображение: ${file.name}`))
-      return
-    }
-    const url = URL.createObjectURL(file)
-    const img = new Image()
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-      let { width, height } = img
-      if (width > MAX_DIM || height > MAX_DIM) {
-        if (width >= height) { height = Math.round(height * MAX_DIM / width); width = MAX_DIM }
-        else                 { width = Math.round(width * MAX_DIM / height); height = MAX_DIM }
-      }
-      const canvas = document.createElement('canvas')
-      canvas.width = width; canvas.height = height
-      canvas.getContext('2d').drawImage(img, 0, 0, width, height)
-      canvas.toBlob(blob => {
-        if (!blob) { reject(new Error('Canvas toBlob failed')); return }
-        const sizeKb = Math.round(blob.size / 1024)
-        const dataUrl = canvas.toDataURL('image/jpeg', QUALITY)
-        resolve({ blob, dataUrl, sizeKb, name: file.name })
-      }, 'image/jpeg', QUALITY)
-    }
-    img.onerror = () => {
-      URL.revokeObjectURL(url)
-      if (file.name.match(/\.(heic|heif)$/i)) {
-        reject(new Error('HEIC не поддерживается браузером. Конвертируйте в JPG/PNG.'))
-      } else {
-        reject(new Error(`Не удалось загрузить: ${file.name}`))
-      }
-    }
-    img.src = url
-  })
-}
 
 export default function Analyze() {
   const [photos, setPhotos]     = useState([])
@@ -125,7 +86,7 @@ export default function Analyze() {
     setCompProg(0)
     const added = []
     for (let i = 0; i < total; i++) {
-      setCompMsg(`Сжимаем ${i + 1} из ${total}: ${files[i].name}`)
+      setCompMsg(`Готовим ${i + 1} из ${total}: ${files[i].name}`)
       setCompProg(Math.round((i / total) * 100))
       try {
         let exifData = null
@@ -144,7 +105,7 @@ export default function Analyze() {
           }
         } catch (_) {}
 
-        const photo = await compressImage(files[i])
+        const photo = await prepareImage(files[i])
         photo.exifData = exifData
         added.push(photo)
       } catch (err) {
@@ -534,7 +495,14 @@ export default function Analyze() {
           {photos.length > 0 && (
             <div className="thumbs">
               {photos.map((p, i) => (
-                <div key={i} className="thumb">
+                <div
+                  key={i}
+                  className="thumb"
+                  /* видно, что уходит именно оригинал: разрешение и вес файла */
+                  title={`${p.name}\n${p.width}×${p.height}, ${
+                    p.sizeKb > 1024 ? `${(p.sizeKb / 1024).toFixed(1)} МБ` : `${p.sizeKb} КБ`
+                  }${p.original ? '' : ' (конвертирован из HEIC)'}`}
+                >
                   <img src={p.dataUrl} alt="" />
                   <span className="thumb-n">{i + 1}</span>
                   {p.exifData?.latitude && (

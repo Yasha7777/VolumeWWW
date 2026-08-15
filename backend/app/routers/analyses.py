@@ -94,12 +94,18 @@ async def _call_n8n_and_save(
     user_info: dict,
     cube: dict,                  # параметры калибровочного куба {squares_per_side, square_size_m}
     webhook_url: str,
+    photo_urls: Optional[list] = None,   # публичные ссылки на ОРИГИНАЛЫ в Storage
 ):
     payload = {
         "title":      title,
         "notes":      notes,
         "exif":       exif_list,
         "photos_b64": photo_b64_list,
+        # Те же фото ссылками на оригиналы в бакете. Дублирует photos_b64, но
+        # без base64-налога (+33% к весу) — с переходом на оригиналы (2-5 МБ
+        # вместо 0.7 МБ) пачка из 50 кадров даёт ~250 МБ JSON. Когда воркфлоу
+        # переключится на скачивание по ссылкам, photos_b64 можно убрать.
+        "photo_urls": photo_urls or [],
         "user":       user_info,
         "cube":       cube,
         "meta": {
@@ -109,6 +115,15 @@ async def _call_n8n_and_save(
             "timestamp":   datetime.now(timezone.utc).isoformat(),
         },
     }
+
+    # Размер тела к n8n — первое, что упрётся в потолок (N8N_PAYLOAD_SIZE_MAX)
+    # или в память контейнера. Логируем, чтобы это было видно в логах, а не
+    # только по факту 413/OOM.
+    payload_mb = sum(len(s) for s in photo_b64_list) / (1024 * 1024)
+    log_size = logger.warning if payload_mb > 100 else logger.info
+    log_size(
+        "n8n payload для %s: %d фото, ~%.1f МБ base64", analysis_id, len(photo_b64_list), payload_mb
+    )
 
     now = lambda: datetime.now(timezone.utc).isoformat()
 
@@ -210,6 +225,7 @@ async def _rerun_and_save(
 
     photo_ids: list[str] = []
     photo_b64_list: list[str] = []
+    ordered_urls: list[str] = []
     for row in ordered:
         content = await asyncio.to_thread(_download_photo, row)
         if content is None:
@@ -217,6 +233,7 @@ async def _rerun_and_save(
         # массив id держим ПАРАЛЛЕЛЬНЫМ фотографиям (None, если строки
         # colmap_photos нет) — иначе meta.photo_count в payload соврёт
         photo_ids.append(row.get("id"))
+        ordered_urls.append(row.get("public_url"))
         b64 = base64.b64encode(content).decode("utf-8")
         photo_b64_list.append(f"data:image/jpeg;base64,{b64}")
 
@@ -240,6 +257,7 @@ async def _rerun_and_save(
         user_info,
         cube,
         webhook_url,
+        ordered_urls,
     )
 
 
@@ -354,8 +372,14 @@ async def create_analysis(
 
     # ── 2. Загружаем фото в Storage bucket "colmap" ───────────────────────────
     #     На каждое фото делаем ДВА файла:
-    #       {analysis_id}/{uuid}.jpg        — оригинал (для лайтбокса, PDF)
+    #       {analysis_id}/{uuid}.jpg        — ОРИГИНАЛ как прислал клиент
     #       {analysis_id}/{uuid}_thumb.jpg  — 400px JPEG (для карточек истории)
+    #     Оригинал заливается БАЙТ В БАЙТ: никакого Pillow-пересохранения по
+    #     дороге. По colmap_photos.public_url расчётный сервер тянет кадр и
+    #     читает из него EXIF (фокусное расстояние) — любое пересохранение
+    #     убивает EXIF, и масштаб сцены разъезжается. Уменьшенная копия живёт
+    #     ОТДЕЛЬНЫМ объектом в thumb_storage_path/thumb_url и оригинал не
+    #     подменяет.
     #     thumbnail_urls в analyses — параллельный массив к photo_urls, тот же
     #     порядок. Если по какой-то причине миниатюра не сделалась (битый файл),
     #     подставляем оригинал — фронт не сломается.
@@ -476,6 +500,7 @@ async def create_analysis(
         },
         cube_block,
         webhook_url,
+        photo_urls,
     )
 
     return {"id": analysis_id, "status": "pending"}

@@ -55,7 +55,8 @@ nginx (port 80)
 - `api.js` — all fetch calls to `/api/*`
 - `supabase.js` — Supabase anon client (auth only, frontend doesn't call DB directly)
 - `context/AuthContext.jsx` — auth state, session management
-- `pages/Analyze.jsx` — main page: photo upload, client-side resize to 1600px/JPEG 85%, polling every 5s
+- `pages/Analyze.jsx` — main page: photo upload, polling every 5s
+- `prepareImage.js` — подготовка файла к отправке. **ИНВАРИАНТ: на сервер уходит ОРИГИНАЛ, байт в байт** (сам `File`, без пережатия/ресайза/пересохранения через canvas). Расчётный сервер берёт фокусное расстояние из EXIF; прежний ресайз до 1600 px + `canvas.toBlob` (3024×4032 → 1200×1600) срезал EXIF целиком → фокус разъезжался втрое (391..1238 px по кадрам одной съёмки) и калибровочный куб занимал 5-7 px вместо 20+. Canvas остался ТОЛЬКО для превью 1024 px (сетка миниатюр + фото в PDF); на сервер превью не уходит — там своя миниатюра отдельным объектом (`colmap_photos.thumb_url`). HEIC/HEIF пайплайн не читает → конвертируются в JPEG, но в ПОЛНОМ разрешении. Не возвращай сюда сжатие «чтобы было легче»: вес пачки решается загрузкой (nginx `client_max_body_size 2g` + `proxy_request_buffering off`), а не порчей исходника.
 - `pages/History.jsx` — analysis history with auto-refresh
 - `queue/queue.js` + `queue/db.js` — offline-first upload queue backed by IndexedDB; uses `BroadcastChannel` for cross-tab sync and Background Sync API (Chromium) for service-worker flush; `client_id` = future analysis UUID for idempotency
 - `components/PlyViewer.jsx` / `PlyViewerImpl.jsx` — lazy-loaded Three.js PLY mesh viewer (react-three-fiber/drei)
@@ -73,8 +74,8 @@ nginx (port 80)
 
 ## Data Flow
 
-1. User uploads photos → browser compresses to 1600px / JPEG 85%
-2. `POST /api/analyses/` → FastAPI uploads each photo to Supabase Storage, creates `analyses` record with `status="pending"`
+1. User uploads photos → браузер отдаёт ОРИГИНАЛЫ без изменений (см. `prepareImage.js`); уменьшается только локальное превью
+2. `POST /api/analyses/` → FastAPI uploads each photo to Supabase Storage (оригинал байт в байт + отдельная 400px-миниатюра), creates `analyses` record with `status="pending"`
 3. FastAPI spawns background task: calls n8n webhook (up to 1h)
 4. Client polls `GET /api/analyses/{id}` every 5s, shows countdown timer
 5. n8n responds → backend sets `status="completed"` with results
@@ -90,6 +91,8 @@ Frontend build args / `frontend/.env.local`: `VITE_SUPABASE_URL`, `VITE_SUPABASE
 
 - Background tasks die with the uvicorn process — pending analyses hang on restart (Redis + Celery would fix this)
 - Supabase Storage free tier: 1GB limit
+- `_call_n8n_and_save` шлёт фото в n8n как base64 (`photos_b64`) — на оригиналах это ~250 МБ JSON на пачку из 50 кадров и столько же в RAM бэкенда. Нужен поднятый `N8N_PAYLOAD_SIZE_MAX` или переход воркфлоу на `photo_urls` (поле уже есть в payload)
+- Загрузка пачки — один большой POST: обрыв мобильной сети роняет весь замер целиком (нужна resumable/поштучная загрузка). Хуже того, при обрыве ПОСЛЕ создания строки `analyses` (пока идёт заливка в Storage) ретрай очереди попадёт в идемпотентность по `client_id` и получит уже созданную строку с пустым `photo_urls` → замер навсегда зависнет в `pending`
 
 ## Frontend Stack & Design
 
