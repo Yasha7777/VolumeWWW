@@ -1,0 +1,412 @@
+/* ============================================================
+   diagnostics.css — блок диагностических изображений замера
+   (components/Diagnostics.jsx). Импортируется самим компонентом,
+   поэтому уезжает в чанк вместе со страницами Analyze/History.
+
+   ГЛАВНОЕ ПРАВИЛО ОФОРМЛЕНИЯ: картинки — не декор.
+   • object-fit: ТОЛЬКО contain. В нижние ~96 px PNG вшиты подписи
+     и цветовая шкала — любой cover/кроп их срежет.
+   • Фон кадров #1A1A1E. На кремовой карточке это чёрный
+     прямоугольник, поэтому под них кладём такую же тёмную плашку
+     с рамкой, а не белую.
+   • image-rendering: pixelated — только на увеличении в лайтбоксе:
+     сглаживание размазывает пурпурную ячейку затяжки в фон.
+   ============================================================ */
+
+.kd {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+/* ---------- шапка ---------- */
+.kd__hd {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.kd__eyebrow {
+  font: var(--label-weight) var(--label-size) / 1 var(--sans);
+  letter-spacing: var(--label-spacing);
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.kd__lede {
+  font: 400 13px/1.5 var(--sans);
+  color: var(--muted);
+  max-width: 62ch;
+}
+
+/* ---------- сегментные переключатели (ракурс / слой) ---------- */
+.kd__seg {
+  display: inline-flex;
+  flex: none;
+  padding: 3px;
+  gap: 2px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+}
+.kd__seg-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 7px 14px;
+  border-radius: var(--r-pill);
+  font: 500 12px/1 var(--sans);
+  color: var(--muted);
+  transition: background 0.18s var(--ease), color 0.18s var(--ease);
+}
+.kd__seg-btn:hover { color: var(--text); }
+.kd__seg-btn.is-on {
+  background: var(--bg-card);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---------- кадр ---------- */
+.kd__stage {
+  position: relative;
+  aspect-ratio: 4 / 3;              /* ровно 960×720 — кадр не искажается */
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: #1A1A1E;              /* фон самих PNG — стыка не видно */
+  user-select: none;
+  cursor: zoom-in;
+}
+/* В режиме шторки перетаскиваем границу; pan-y оставляет странице
+   вертикальный скролл пальцем, забирая только горизонталь. */
+.kd__stage.is-curtain { cursor: ew-resize; touch-action: pan-y; }
+
+.kd__layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;              /* НИКОГДА не cover — срежет подписи */
+  pointer-events: none;
+  display: block;
+}
+/* Верхний слой — карта высот, подрезана по границе шторки.
+   --kd-x = 100% → только карта, 0% → только облако. */
+.kd__layer--heat {
+  clip-path: inset(0 calc(100% - var(--kd-x, 50%)) 0 0);
+  transition: clip-path 0.28s var(--ease);
+}
+.kd__stage.is-dragging .kd__layer--heat { transition: none; }
+
+/* линия стыка + ручка */
+.kd__seam {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--kd-x, 50%);
+  width: 2px;
+  margin-left: -1px;
+  background: rgba(255,255,255,0.85);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.35);
+  pointer-events: none;
+}
+.kd__stage.is-dragging .kd__seam { background: #fff; }
+
+.kd__handle {
+  position: absolute;
+  top: 50%;
+  left: var(--kd-x, 50%);
+  transform: translate(-50%, -50%);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.9);
+  background: rgba(26,26,30,0.72);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  font: 500 15px/1 var(--sans);
+  display: grid;
+  place-items: center;
+  cursor: ew-resize;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.45);
+}
+.kd__handle:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+/* подписи сторон — только СВЕРХУ: низ кадра занят вшитой легендой */
+.kd__tag {
+  position: absolute;
+  top: 10px;
+  padding: 5px 10px;
+  border-radius: var(--r-pill);
+  background: rgba(26,26,30,0.72);
+  backdrop-filter: blur(4px);
+  color: rgba(255,255,255,0.92);
+  font: 500 11px/1 var(--sans);
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.kd__tag--l { left: 10px; }
+.kd__tag--r { right: 10px; }
+
+/* описание наложения для скринридера (сами слои декоративные) */
+.kd__sr {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- строка под кадром ---------- */
+.kd__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.kd__note {
+  font: 400 12px/1.5 var(--sans);
+  color: var(--muted);
+  flex: 1 1 220px;
+}
+.kd__full {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  font: 500 12px/1 var(--sans);
+  cursor: pointer;
+  transition: border-color 0.18s var(--ease), background 0.18s var(--ease);
+}
+.kd__full:hover { border-color: var(--green); background: var(--bg); }
+
+/* ---------- легенда ---------- */
+.kd-legend {
+  margin-top: 14px;
+  padding: 14px 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  display: grid;
+  gap: 8px;
+}
+.kd-legend__row {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: start;
+  gap: 10px;
+  font: 400 12px/1.45 var(--sans);
+  color: var(--muted);
+}
+.kd-legend__row b { font-weight: 600; color: var(--text); }
+.kd-sw {
+  display: block;
+  width: 22px;
+  height: 12px;
+  margin-top: 2px;
+  border-radius: 3px;
+  border: 1px solid rgba(0,0,0,0.18);
+}
+/* палитра высоты: синий → циан → зелёный → жёлтый → красный */
+.kd-sw--ramp {
+  background: linear-gradient(90deg, #2B4CFF 0%, #00D0FF 27%, #28D17C 52%, #FFD400 76%, #F02D2D 100%);
+}
+
+/* ============================================================
+   Компактное превью в карточке истории
+   ============================================================ */
+.kd-thumb {
+  position: relative;
+  flex: none;
+  width: 62px;
+  height: 46px;
+  padding: 0;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: #1A1A1E;
+  overflow: hidden;
+  cursor: zoom-in;
+  transition: transform 0.18s var(--ease), border-color 0.18s var(--ease);
+}
+.kd-thumb:hover { transform: scale(1.05); border-color: var(--gold); }
+.kd-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;              /* не cover: кроп режет вшитые подписи */
+  display: block;
+}
+.kd-thumb__cap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 2px 0 3px;
+  background: rgba(26,26,30,0.78);
+  color: rgba(255,255,255,0.88);
+  font: 500 8px/1 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+/* ============================================================
+   Полный просмотр (портал в body)
+   ============================================================ */
+.kd-lb {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: #101014;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  animation: fadeIn 0.18s var(--ease) both;
+}
+
+.kd-lb__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.09);
+}
+.kd-lb__tabs { display: flex; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; }
+.kd-lb__tab {
+  padding: 8px 13px;
+  border-radius: var(--r-pill);
+  border: 1px solid rgba(255,255,255,0.14);
+  background: transparent;
+  color: rgba(255,255,255,0.66);
+  font: 500 12px/1 var(--sans);
+  cursor: pointer;
+  transition: color 0.18s var(--ease), border-color 0.18s var(--ease), background 0.18s var(--ease);
+}
+.kd-lb__tab:hover { color: #fff; border-color: rgba(255,255,255,0.34); }
+.kd-lb__tab.is-on {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.34);
+  color: #fff;
+}
+
+.kd-lb__zoom {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--r-pill);
+  border: 1px solid rgba(255,255,255,0.14);
+}
+.kd-lb__zbtn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: rgba(255,255,255,0.66);
+  font: 500 12px/1 var(--sans);
+  cursor: pointer;
+}
+.kd-lb__zbtn:hover { color: #fff; }
+.kd-lb__zbtn.is-on { background: rgba(255,255,255,0.14); color: #fff; }
+
+.kd-lb__close {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: transparent;
+  color: #fff;
+  font: 300 24px/1 var(--sans);
+  cursor: pointer;
+}
+.kd-lb__close:hover { background: rgba(255,255,255,0.1); }
+
+.kd-lb__stage {
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: #1A1A1E;
+}
+/* при увеличении кадр больше окна — панорама прокруткой и перетаскиванием */
+.kd-lb__stage.is-zoomed {
+  overflow: auto;
+  overscroll-behavior: contain;
+  cursor: grab;
+  place-items: start;               /* иначе grid-центрирование режет верх/лево */
+  justify-content: safe center;
+  align-content: safe center;
+}
+.kd-lb__stage.is-zoomed:active { cursor: grabbing; }
+
+/* «Вписать» НЕ растягивает кадр выше 1:1: растянутый браузером PNG — это то же
+   сглаживание, из-за которого пропадают одиночные ячейки. На большом экране
+   «вписать» просто совпадает с 1:1. */
+.kd-lb__img {
+  max-width: min(100%, 960px);
+  max-height: min(100%, 720px);
+  object-fit: contain;              /* вшитая легенда в нижних 96 px не режется */
+  display: block;
+}
+/* ТОЛЬКО на увеличении: сглаживание размывает одиночную ячейку
+   затяжки/обрыва в фон, и картинка начинает врать. */
+.kd-lb__stage.is-zoomed .kd-lb__img {
+  max-width: none;
+  max-height: none;
+  image-rendering: pixelated;
+}
+
+.kd-lb__cap {
+  padding: 12px 16px;
+  text-align: center;
+  font: 500 13px/1.4 var(--sans);
+  color: rgba(255,255,255,0.9);
+  border-top: 1px solid rgba(255,255,255,0.09);
+}
+.kd-lb__hint { font-weight: 400; color: rgba(255,255,255,0.5); }
+
+.kd-lb__nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(16,16,20,0.72);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  font: 300 26px/1 var(--sans);
+  cursor: pointer;
+}
+.kd-lb__nav:hover { background: rgba(255,255,255,0.14); }
+.kd-lb__nav--l { left: 16px; }
+.kd-lb__nav--r { right: 16px; }
+
+/* ---------- мобильные ---------- */
+@media (max-width: 640px) {
+  .kd__hd { flex-direction: column; align-items: stretch; }
+  .kd__seg { align-self: flex-start; }
+  .kd__full { width: 100%; justify-content: center; }
+  .kd-lb__bar { padding: 10px 12px; gap: 8px; }
+  .kd-lb__tab { padding: 7px 10px; font-size: 11px; }
+  .kd-lb__nav { width: 40px; height: 40px; }
+  .kd-lb__cap { font-size: 12px; padding: 10px 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kd__layer--heat { transition: none; }
+  .kd-lb { animation: none; }
+}

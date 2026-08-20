@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { api } from '../api';
 import PlyViewer from '../components/PlyViewer';
 import ViewerErrorBoundary from '../components/ViewerErrorBoundary';
+import { DiagnosticsBlock, DiagThumb, pickDiagnostics } from '../components/Diagnostics'; // ← карты высот + облака точек
 import { subscribe, listQueue, retryItem, removeItem } from '../queue/queue'; // ← офлайн-очередь (PWA)
 import Reveal from '../components/Reveal';
 import { MeasureCardSkeleton } from '../components/Skeleton';
@@ -569,6 +570,9 @@ function ExpandedContent({ item, onPhoto }) {
   const up = extractUp(item.result);
   const upGlb = extractUpGlb(item.result);
   const has3d = glb || ply;
+  // Колонки heatmap_*_url / cloud_*_url. У старых замеров NULL → null → блока
+  // нет вовсе (без скелетонов и пустых рамок). Возможен и частичный набор.
+  const diag = pickDiagnostics(item);
 
   const handleDownloadAll = async (e) => {
     e.stopPropagation();
@@ -639,6 +643,9 @@ function ExpandedContent({ item, onPhoto }) {
           </div>
         </>
       )}
+
+      {/* Диагностика — рядом с 3D: та же геометрия, но с разметкой достроек */}
+      <DiagnosticsBlock diag={diag} />
     </div>
   );
 }
@@ -658,6 +665,9 @@ function MeasureCard({
   // Лайтбокс и разворот всё равно используют photos (полный размер).
   const thumbs = item.thumbnail_urls || [];
   const thumbAt = (i) => thumbs[i] || photos[i];
+  // Диагностика замера — НЕ путать с thumbnail_urls: те превью исходных фото,
+  // а это карта высот/облако точек из пайплайна (отдельные колонки).
+  const diag = pickDiagnostics(item);
 
   const volume = item.status === 'error' ? null : getVolume(item);
   const weight = item.status === 'error' ? null : getWeight(item);
@@ -769,6 +779,10 @@ function MeasureCard({
         </div>
 
         <div className="kh-card__aside" onClick={(e) => e.stopPropagation()}>
+          {/* Карта высот — компактно; клик открывает полный просмотр 1:1,
+              где только и видны пометки размером в одну ячейку. */}
+          <DiagThumb diag={diag} />
+
           {photos.length > 0 && (
             <div className="kh-thumbs">
               {photos.slice(0, 3).map((url, i) => (

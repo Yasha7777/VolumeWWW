@@ -4,6 +4,7 @@ import Timer from '../components/Timer'
 import exifr from 'exifr'
 import PlyViewer from '../components/PlyViewer'
 import ViewerErrorBoundary from '../components/ViewerErrorBoundary'
+import { DiagnosticsBlock, pickDiagnostics } from '../components/Diagnostics'  // ← карты высот + облака точек
 import ReportPanel from '../components/ReportPanel'   // ← выдвижное окно отчёта
 import { parseWebhookResult } from '../components/RaschetDownloadButton' // ← общий парсер (объём DUSt3R, масса = V×ρ)
 import { enqueue, flushItem } from '../queue/queue'  // ← офлайн-очередь (PWA)
@@ -33,6 +34,9 @@ export default function Analyze() {
   const [glbUrl, setGlbUrl]     = useState(null)  // ← отдельный state для GLB
   const [upVec, setUpVec]       = useState(null)  // ← ось «вверх» из пайплайна (PLY-кадр)
   const [upGlbVec, setUpGlbVec] = useState(null)  // ← ось «вверх» для GLB-меша (свой кадр)
+  // Диагностика: карта высот + облако точек, сверху и сбоку. У старых замеров
+  // колонок нет → null → блока просто нет.
+  const [diag, setDiag]         = useState(null)
 
   const [busy, setBusy]         = useState(false)
   const [isProd, setIsProd]     = useState(false)  // по умолчанию TEST
@@ -242,6 +246,9 @@ export default function Analyze() {
           setResult(textResult)
           setGlbUrl(finalGlbUrl)
           setPlyUrl(finalPlyUrl)
+          // Прямые колонки heatmap_*_url / cloud_*_url — GET /analyses/{id}
+          // делает select("*"), так что приезжают сами.
+          setDiag(pickDiagnostics(data))
           setUpVec(finalUp)
           setUpGlbVec(finalUpGlb)
           setShowRaw(false)     // новый анализ — технические данные снова свёрнуты
@@ -296,6 +303,7 @@ export default function Analyze() {
     setPlyUrl(null)
     setUpVec(null)
     setUpGlbVec(null)
+    setDiag(null)
     setShowRaw(false)
 
     const payload = photos.map(p => ({ blob: p.blob, name: p.name, exif: p.exifData ?? null }))
@@ -369,6 +377,7 @@ export default function Analyze() {
     setPlyUrl(null)
     setUpVec(null)
     setUpGlbVec(null)
+    setDiag(null)
     setAId(null)
     setCompProg(0)
     setReportOpen(false)
@@ -603,7 +612,7 @@ export default function Analyze() {
           )}
 
           {/* РЕЗУЛЬТАТ */}
-          {(result || has3d) && (
+          {(result || has3d || diag) && (
             <div className="result-card">
               <div className="result-hd">
                 <span className="result-hd-title">Результат · {isProd ? 'PROD' : 'TEST'}</span>
@@ -678,6 +687,8 @@ export default function Analyze() {
                   <ViewerErrorBoundary>
                     <PlyViewer plyUrl={plyUrl} glbUrl={glbUrl} up={upVec} upGlb={upGlbVec} />
                   </ViewerErrorBoundary>
+                  {/* рядом с 3D — та же геометрия, но с разметкой достроек */}
+                  <DiagnosticsBlock diag={diag} />
                 </div>
               )}
 
@@ -685,6 +696,14 @@ export default function Analyze() {
               {result && !has3d && (
                 <div style={{ padding:'0 18px 16px', fontSize:'12px', color:'var(--muted)' }}>
                   3D-модель для этого анализа недоступна.
+                </div>
+              )}
+
+              {/* Диагностика без 3D — блок всё равно нужен: он единственный
+                  показывает, ИЗ ЧЕГО посчитан объём и где модель достраивали. */}
+              {diag && !has3d && (
+                <div style={{ padding:'0 18px 18px' }}>
+                  <DiagnosticsBlock diag={diag} />
                 </div>
               )}
             </div>

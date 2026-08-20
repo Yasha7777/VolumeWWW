@@ -523,7 +523,12 @@ def list_analyses(
         supabase.table("analyses")
         .select(
             "id, user_id, title, notes, photo_urls, thumbnail_urls, "
-            "status, created_at, completed_at, result"
+            "status, created_at, completed_at, result, "
+            # Диагностика замера (карта высот / облако точек, сверху и сбоку).
+            # Список колонок здесь ЯВНЫЙ — новые поля не приезжают сами, как в
+            # GET /{analysis_id} с select("*"). Забудешь дописать — в истории
+            # будет пусто, и это выглядит как «пайплайн не отдал картинки».
+            "heatmap_top_url, heatmap_side_url, cloud_top_url, cloud_side_url"
         )
         .order("created_at", desc=True)
         .limit(50)
