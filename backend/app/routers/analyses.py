@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import math
 import uuid
 import logging
@@ -33,17 +34,19 @@ COLMAP_BUCKET = "colmap"
 
 # ─── ОТБОР КАДРОВ ДЛЯ ЗРИТЕЛЬНОЙ МОДЕЛИ ──────────────────────────────────────
 #
-# n8n БОЛЬШЕ НЕ ПОЛУЧАЕТ ФОТО БАЙТАМИ. В вебхук уходят analysis_id, id/ссылки
-# кадров и EXIF; оригиналы воркфлоу берёт из БД/Storage сам. Раньше пачка из
-# 50 оригиналов давала ~250 МБ base64 в теле запроса и столько же в RAM бэка,
-# и n8n на этом ложился.
+# В n8n УХОДЯТ БАЙТЫ ТОЛЬКО ДВУХ ЛУЧШИХ КАДРОВ (photos_b64, data-URL, как и
+# раньше) — их ждёт нода «b64 → items». Вся пачка байтами больше не едет:
+# 50 оригиналов давали ~250 МБ base64 в теле запроса и столько же в RAM бэка,
+# и n8n на этом ложился. Остальные кадры представлены id/ссылкой/EXIF —
+# оригиналы воркфлоу при необходимости берёт из БД/Storage сам.
 #
-# Отбор «какие кадры показать зрительной модели» тоже считается ЗДЕСЬ, а не в
+# Отбор «какие кадры показать зрительной модели» считается ЗДЕСЬ, а не в
 # Code-ноде воркфлоу: EXIF уже приехал с фронта (exifr парсит ОРИГИНАЛ до любой
 # конвертации, см. prepareImage.js), так что решение принимается там, где данные
-# появились. Формула перенесена из ноды один в один: ISO (чем ниже, тем лучше)
-# и BrightnessValue (оптимум 3-7 EV), по половине веса каждому. Нет EXIF →
-# нейтральные 0.5: кадр не выигрывает и не проигрывает.
+# появились — и до того, как байты попали бы в запрос. Формула перенесена из
+# ноды один в один: ISO (чем ниже, тем лучше) и BrightnessValue (оптимум
+# 3-7 EV), по половине веса каждому. Нет EXIF → нейтральные 0.5: кадр не
+# выигрывает и не проигрывает.
 BEST_PHOTOS_FOR_LLM = 2   # сколько кадров уходит в зрительную модель (LLaVA)
 ISO_WORST = 3200          # ISO, на котором оценка по шуму падает до нуля
 
@@ -202,15 +205,38 @@ def _photo_block(
     }
 
 
-def _pick_best_photos(photos: list[dict], limit: int = BEST_PHOTOS_FOR_LLM) -> list[dict]:
-    """Топ-N кадров по quality_score, возвращённых в порядке съёмки.
+def _best_photo_indexes(exifs: list, limit: int = BEST_PHOTOS_FOR_LLM) -> list[int]:
+    """Позиции лучших кадров по EXIF, в порядке съёмки.
 
-    Сортировка стабильная и с явным тай-брейком по index: при равных оценках
-    (а без EXIF они равны у всех) выбор детерминирован — первые кадры пачки,
-    а не «как повезёт».
+    ЕДИНСТВЕННОЕ место, где решается «какие кадры увидит зрительная модель».
+    Считается по одному только EXIF, поэтому вызывается ДО загрузки байтов —
+    в память под base64 попадают ровно эти кадры, а не вся пачка.
+    Тай-брейк по позиции: при равных оценках (пачка без EXIF) выбор
+    детерминирован — первые кадры, а не «как повезёт».
     """
-    best = sorted(photos, key=lambda p: (-p["quality_score"], p["index"]))[:limit]
-    return sorted(best, key=lambda p: p["index"])
+    ranked = sorted(
+        range(len(exifs)),
+        key=lambda i: (-_photo_quality_score(exifs[i]), i),
+    )
+    return sorted(ranked[:limit])
+
+
+def _pick_best_photos(photos: list[dict], limit: int = BEST_PHOTOS_FOR_LLM) -> list[dict]:
+    """Те же лучшие кадры, но блоками — поверх `_best_photo_indexes`."""
+    keep = _best_photo_indexes([p["exif"] for p in photos], limit)
+    return [photos[i] for i in keep]
+
+
+def _b64_data_url(content: bytes, mime: str) -> str:
+    """`data:image/jpeg;base64,...` — формат, который ждёт нода «b64 → items»."""
+    return f"data:{mime};base64,{base64.b64encode(content).decode('utf-8')}"
+
+
+def _exif_at(exif_list: list, index: int):
+    """EXIF кадра из присланного фронтом массива, очищённый под jsonb."""
+    raw = exif_list[index] if index < len(exif_list) else None
+    clean = _sanitize_exif(raw)
+    return clean if isinstance(clean, dict) else None
 
 
 def _is_superadmin(user_id: str) -> bool:
@@ -239,15 +265,32 @@ async def _call_n8n_and_save(
     cube: dict,                  # параметры калибровочного куба {squares_per_side, square_size_m}
     webhook_url: str,
 ):
-    """Дёргает вебхук n8n ЛЁГКИМ payload и кладёт ответ в analyses.
+    """Дёргает вебхук n8n и кладёт ответ в analyses.
 
-    Контракт с воркфлоу (менялся 2026-08-23): пикселей в теле запроса НЕТ.
-    Уходят analysis_id, id строк colmap_photos, публичные ссылки на оригиналы
-    и EXIF — оригиналы n8n тянет из БД/Storage сам. Плюс best_photos: топ-2
-    кадра по EXIF, уже отобранные здесь, чтобы воркфлоу не декодировал всю
-    пачку ради зрительной модели.
+    Контракт с воркфлоу (менялся 2026-08-23): `photos_b64` на месте и формат
+    прежний (data-URL), но в нём ТОЛЬКО 2 ЛУЧШИХ КАДРА, а не вся пачка —
+    нода «b64 → items» мапит массив один-в-один и получает ровно два item'а.
+    Остальные кадры представлены метаданными: id строки colmap_photos, ссылка
+    на оригинал в бакете и EXIF; байты по ним воркфлоу при необходимости
+    забирает сам.
+
+    `exif` остаётся массивом по ВСЕЙ пачке (нода «EXIF → parse» нумерует его
+    как photo_index) — сопоставить его с photos_b64 можно через
+    meta.best_photo_indexes или best_photos[k].index.
     """
     best = _pick_best_photos(photos)
+
+    # Байты — только у отобранных кадров. Порядок photos_b64 = порядок
+    # best_photos (порядок съёмки), это и есть контракт с «b64 → items».
+    photos_b64 = [p["b64"] for p in best if p.get("b64")]
+    if len(photos_b64) != len(best):
+        logger.warning(
+            "n8n payload для %s: base64 собран для %d из %d лучших кадров",
+            analysis_id, len(photos_b64), len(best),
+        )
+
+    # В метаданных байтов быть не должно — иначе те же 2 кадра уедут дважды.
+    strip_b64 = lambda p: {k: v for k, v in p.items() if k != "b64"}
 
     payload = {
         "title": title,
@@ -256,30 +299,37 @@ async def _call_n8n_and_save(
         # body.photo_urls[i], продолжают работать без переписывания.
         "exif":       [p["exif"] for p in photos],
         "photo_urls": [p["url"] for p in photos],
+        # Два лучших кадра байтами, data-URL — как и ждёт «b64 → items».
+        "photos_b64": photos_b64,
         # Всё про кадры одним списком: id строки colmap_photos, ссылка на
-        # ОРИГИНАЛ в бакете, EXIF и оценка качества.
-        "photos": photos,
-        # Кадры для зрительной модели (LLaVA). Отбор — на сайте, где EXIF и
-        # появился; n8n от полной пачки перегружался.
-        "best_photos": best,
+        # ОРИГИНАЛ в бакете, EXIF и оценка качества. Без байтов.
+        "photos": [strip_b64(p) for p in photos],
+        # Те же два кадра, что в photos_b64, но с index/id/EXIF/оценкой —
+        # чтобы воркфлоу знал, ЧТО именно он показывает модели.
+        "best_photos": [strip_b64(p) for p in best],
         "user": user_info,
         "cube": cube,
         "meta": {
-            "analysis_id":    analysis_id,
-            "photo_ids":      [p["id"] for p in photos],
-            "photo_count":    len(photos),
-            "best_photo_ids": [p["id"] for p in best],
-            "timestamp":      datetime.now(timezone.utc).isoformat(),
+            "analysis_id":         analysis_id,
+            "photo_ids":           [p["id"] for p in photos],
+            "photo_count":         len(photos),
+            "best_photo_ids":      [p["id"] for p in best],
+            # Позиции лучших в общей пачке = индексы в exif[]/photo_urls[].
+            "best_photo_indexes":  [p["index"] for p in best],
+            "timestamp":           datetime.now(timezone.utc).isoformat(),
         },
     }
 
-    # Раньше здесь мерили ДЕСЯТКИ И СОТНИ МЕГАБАЙТ base64. Меряем и теперь —
-    # чтобы разбухший EXIF (у некоторых камер он щедрый) не подкрался тихо.
-    payload_kb = len(json.dumps(payload, ensure_ascii=False).encode("utf-8")) / 1024
-    log_size = logger.warning if payload_kb > 4096 else logger.info
+    # Раньше здесь мерили ДЕСЯТКИ И СОТНИ МЕГАБАЙТ: base64 всей пачки. Теперь
+    # это два кадра, но потолок n8n (N8N_PAYLOAD_SIZE_MAX) всё равно рядом —
+    # два 20-мегабайтных оригинала дают ~53 МБ. Меряем, чтобы упор в потолок
+    # было видно в логах, а не только по факту 413.
+    b64_mb = sum(len(s) for s in photos_b64) / (1024 * 1024)
+    payload_mb = len(json.dumps(payload, ensure_ascii=False).encode("utf-8")) / (1024 * 1024)
+    log_size = logger.warning if payload_mb > 32 else logger.info
     log_size(
-        "n8n payload для %s: %d фото (%d в LLM), %.1f КБ, без байтов фото",
-        analysis_id, len(photos), len(best), payload_kb,
+        "n8n payload для %s: %d фото, из них %d байтами (~%.1f МБ base64), всего ~%.1f МБ",
+        analysis_id, len(photos), len(photos_b64), b64_mb, payload_mb,
     )
 
     now = lambda: datetime.now(timezone.utc).isoformat()
@@ -324,13 +374,33 @@ async def _call_n8n_and_save(
 
 # ─── RERUN (повторный прогон уже загруженного замера) ────────────────────────
 #
-# Фото повторно НЕ загружаются и БОЛЬШЕ НЕ СКАЧИВАЮТСЯ: они лежат в Storage, а
-# в n8n теперь уходят только id/ссылки/EXIF. Раньше здесь качались все
-# оригиналы замера, чтобы перегнать их в base64 — то есть трафик Storage → бэк
-# → n8n на каждый повтор. Теперь достаточно строк colmap_photos.
-# EXIF берётся оттуда же (колонка exif, migration_photo_exif.sql) — у замеров,
+# Фото повторно НЕ загружаются — они уже лежат в Storage. Скачиваются РОВНО ДВА
+# лучших кадра (раньше — вся пачка, чтобы перегнать её в base64): остальным в
+# payload хватает id/ссылки/EXIF.
+# EXIF берём из colmap_photos.exif (migration_photo_exif.sql) — у замеров,
 # загруженных до этой миграции, он пуст, и все кадры получают нейтральные 0.5.
 # Куб в БД не хранится: тот, что прислал клиент, иначе стандартный.
+
+def _download_photo(row: dict) -> Optional[bytes]:
+    """Байты оригинала фото: сначала из Storage, потом по публичной ссылке."""
+    path = row.get("storage_path")
+    if path:
+        try:
+            return supabase.storage.from_(COLMAP_BUCKET).download(path)
+        except Exception:
+            logger.warning("Не удалось скачать из Storage: %s", path)
+
+    url = row.get("public_url")
+    if url:
+        try:
+            resp = httpx.get(url, timeout=60, follow_redirects=True)
+            resp.raise_for_status()
+            return resp.content
+        except Exception:
+            logger.warning("Не удалось скачать по ссылке: %s", url)
+
+    return None
+
 
 async def _insert_photo_row(row: dict, exif) -> dict:
     """Вставляет строку colmap_photos вместе с EXIF кадра.
@@ -366,7 +436,9 @@ def _fetch_photo_rows(analysis_id: str) -> list[dict]:
     """Строки colmap_photos замера. Без колонки exif (старая БД) — без неё."""
     global _photos_exif_column
 
-    cols = "id, public_url, thumb_url, filename"
+    # storage_path нужен, чтобы забрать байты двух лучших кадров напрямую из
+    # бакета, не гоняя их через публичный HTTP.
+    cols = "id, storage_path, public_url, thumb_url, filename"
     if _photos_exif_column:
         try:
             return (
@@ -442,6 +514,15 @@ async def _rerun_and_save(
             }
         ).eq("id", analysis_id).execute()
         return
+
+    # Байты качаем ТОЛЬКО для двух лучших — их ждёт нода «b64 → items».
+    # Не скачалось (битый путь, дырка в Storage) — не валим повтор: у n8n
+    # остаются ссылки на оригиналы, а в лог уйдёт warning из _download_photo.
+    for photo in _pick_best_photos(photos):
+        row = ordered[photo["index"]]
+        content = await asyncio.to_thread(_download_photo, row)
+        if content is not None:
+            photo["b64"] = await asyncio.to_thread(_b64_data_url, content, "image/jpeg")
 
     await _call_n8n_and_save(
         analysis_id,
@@ -590,6 +671,13 @@ async def create_analysis(
     photo_urls: list[str] = []
     thumbnail_urls: list[str] = []
 
+    # Лучшие кадры выбираем ДО цикла: EXIF для этого достаточно, а знать их
+    # заранее нужно, чтобы держать в памяти base64 ровно двух фото. Копить
+    # байты всей пачки нельзя — 50 оригиналов это ~150 МБ в RAM на КАЖДЫЙ
+    # параллельный запрос, ровно та беда, из-за которой ложился n8n.
+    photo_exifs = [_exif_at(exif_list, i) for i in range(len(files))]
+    best_indexes = set(_best_photo_indexes(photo_exifs))
+
     for i, file in enumerate(files):
         if not (file.content_type or "").startswith("image/"):
             raise HTTPException(400, f"Не изображение: {file.filename}")
@@ -641,9 +729,7 @@ async def create_analysis(
 
         # EXIF этого кадра: массив с фронта параллелен files (см. queue.js).
         # Короче списка / мусор внутри — просто нет EXIF, кадр не теряем.
-        photo_exif = _sanitize_exif(exif_list[i]) if i < len(exif_list) else None
-        if not isinstance(photo_exif, dict):
-            photo_exif = None
+        photo_exif = photo_exifs[i]
 
         # Строка в colmap_photos: оба пути + EXIF
         row = await _insert_photo_row(
@@ -660,9 +746,15 @@ async def create_analysis(
 
         photo_urls.append(public_url)
         thumbnail_urls.append(thumb_url)
-        photos.append(
-            _photo_block(i, row["id"], public_url, thumb_url, safe_filename, photo_exif)
-        )
+
+        block = _photo_block(i, row["id"], public_url, thumb_url, safe_filename, photo_exif)
+        if i in best_indexes:
+            # Один из двух кадров для зрительной модели — только его байты и
+            # уедут в n8n (photos_b64). Оригинал, байт в байт, как загружен.
+            block["b64"] = await asyncio.to_thread(
+                _b64_data_url, content, file.content_type or "image/jpeg"
+            )
+        photos.append(block)
 
     # ── 3. Обновляем analyses.photo_urls + thumbnail_urls ───────────────────
     supabase.table("analyses").update(
