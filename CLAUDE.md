@@ -48,6 +48,7 @@ nginx (port 80)
 - `auth.py` — JWT verification via Supabase JWT secret
 - `supabase_client.py` — service-role Supabase client
 - `routers/analyses.py` — upload photos → Supabase Storage → create DB record → background task calls n8n webhook (1h timeout) → polling endpoint. **Внимание:** `GET /analyses/{id}` делает `select("*")` (новые колонки приезжают сами), а `list_analyses` (`GET /analyses`) — ЯВНЫЙ список колонок. Добавил колонку в БД и забыл дописать её сюда → в истории поле пустое, и это выглядит как «пайплайн ничего не отдал».
+  **КОНТРАКТ С n8n (изменён 2026-08-23): в вебхук НЕ уходят байты фото.** Payload лёгкий (десятки КБ): `meta.analysis_id`, `photos[]` (`{index, id, url, thumb_url, filename, exif, quality_score}` — `id` это строка `colmap_photos`, `url` — публичная ссылка на ОРИГИНАЛ), `best_photos[]`, плюс параллельные массивы `exif[]`/`photo_urls[]` для старых нод. Оригиналы воркфлоу тянет из БД/Storage сам. `best_photos` — 2 лучших кадра, отобранных ЗДЕСЬ по EXIF (`_photo_quality_score`: ISO + BrightnessValue, поровну; нет EXIF → 0.5, тай-брейк по порядку съёмки): раньше это считала Code-нода n8n, и от полной пачки base64 (~250 МБ на 50 кадров) он ложился. Не возвращай `photos_b64` — рабочая замена ноды лежит в `n8n/select-best-photos.js`. EXIF пишется в `colmap_photos.exif` (`supabase/migration_photo_exif.sql`), поэтому переживает rerun; бэкенд работает и без этой колонки (пишет фото без EXIF + warning в лог).
 - `routers/profile.py` — user profile CRUD
 - `imaging.py` — Pillow-based image processing / thumbnail generation
 
@@ -77,7 +78,7 @@ nginx (port 80)
 
 1. User uploads photos → браузер отдаёт ОРИГИНАЛЫ без изменений (см. `prepareImage.js`); уменьшается только локальное превью
 2. `POST /api/analyses/` → FastAPI uploads each photo to Supabase Storage (оригинал байт в байт + отдельная 400px-миниатюра), creates `analyses` record with `status="pending"`
-3. FastAPI spawns background task: calls n8n webhook (up to 1h)
+3. FastAPI spawns background task: calls n8n webhook (up to 1h) — payload ЛЁГКИЙ: id замера, id/ссылки/EXIF кадров и 2 лучших кадра для зрительной модели; сами фото n8n берёт из Storage по ссылкам
 4. Client polls `GET /api/analyses/{id}` every 5s, shows countdown timer
 5. n8n responds → backend sets `status="completed"` with results
 6. Next poll shows result
@@ -92,7 +93,7 @@ Frontend build args / `frontend/.env.local`: `VITE_SUPABASE_URL`, `VITE_SUPABASE
 
 - Background tasks die with the uvicorn process — pending analyses hang on restart (Redis + Celery would fix this)
 - Supabase Storage free tier: 1GB limit
-- `_call_n8n_and_save` шлёт фото в n8n как base64 (`photos_b64`) — на оригиналах это ~250 МБ JSON на пачку из 50 кадров и столько же в RAM бэкенда. Нужен поднятый `N8N_PAYLOAD_SIZE_MAX` или переход воркфлоу на `photo_urls` (поле уже есть в payload)
+- Воркфлоу n8n должен уметь качать кадры по ссылке из payload: байтов фото в вебхуке больше нет (см. контракт ниже). Пока нода не обновлена — зрительная модель не получит изображений
 - Загрузка пачки — один большой POST: обрыв мобильной сети роняет весь замер целиком (нужна resumable/поштучная загрузка). Хуже того, при обрыве ПОСЛЕ создания строки `analyses` (пока идёт заливка в Storage) ретрай очереди попадёт в идемпотентность по `client_id` и получит уже созданную строку с пустым `photo_urls` → замер навсегда зависнет в `pending`
 
 ## Frontend Stack & Design
@@ -159,7 +160,7 @@ thread и тормозя весь остальной UI (форму загруз
 - Идемпотентность отправки — по `client_id` (== будущий id анализа); на бэке держится PK `analyses.id` + `supabase/migration_client_id.sql` (колонка + уникальный индекс).
 
 Примечание: `supabase/schema.sql` отстаёт от рабочей БД (нет `client_id`, `thumbnail_urls`,
-таблицы `colmap_photos`, бакет назван `analysis-photos`, хотя код пишет в `colmap`). Реальная
+таблицы `colmap_photos` с её `exif`, бакет назван `analysis-photos`, хотя код пишет в `colmap`). Реальная
 схема мигрирована на сервере вручную; сверяйся с кодом бэкенда, а не только со schema.sql.
 
 ## Workflow Rule

@@ -1,10 +1,10 @@
 import asyncio
+import math
 import uuid
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 import json
-import base64
 
 import httpx
 from fastapi import (
@@ -30,6 +30,39 @@ router = APIRouter(prefix="/analyses", tags=["analyses"])
 MAX_FILES = 100
 MAX_FILE_BYTES = 20 * 1024 * 1024  # 20 МБ
 COLMAP_BUCKET = "colmap"
+
+# ─── ОТБОР КАДРОВ ДЛЯ ЗРИТЕЛЬНОЙ МОДЕЛИ ──────────────────────────────────────
+#
+# n8n БОЛЬШЕ НЕ ПОЛУЧАЕТ ФОТО БАЙТАМИ. В вебхук уходят analysis_id, id/ссылки
+# кадров и EXIF; оригиналы воркфлоу берёт из БД/Storage сам. Раньше пачка из
+# 50 оригиналов давала ~250 МБ base64 в теле запроса и столько же в RAM бэка,
+# и n8n на этом ложился.
+#
+# Отбор «какие кадры показать зрительной модели» тоже считается ЗДЕСЬ, а не в
+# Code-ноде воркфлоу: EXIF уже приехал с фронта (exifr парсит ОРИГИНАЛ до любой
+# конвертации, см. prepareImage.js), так что решение принимается там, где данные
+# появились. Формула перенесена из ноды один в один: ISO (чем ниже, тем лучше)
+# и BrightnessValue (оптимум 3-7 EV), по половине веса каждому. Нет EXIF →
+# нейтральные 0.5: кадр не выигрывает и не проигрывает.
+BEST_PHOTOS_FOR_LLM = 2   # сколько кадров уходит в зрительную модель (LLaVA)
+ISO_WORST = 3200          # ISO, на котором оценка по шуму падает до нуля
+
+# exifr отдаёт теги как в стандарте (ISO / BrightnessValue), но часть камер
+# пишет их под синонимами — перебираем все известные написания.
+ISO_KEYS = ("ISO", "iso", "ISOSpeedRatings", "PhotographicSensitivity", "ISOSpeed")
+BRIGHTNESS_KEYS = ("BrightnessValue", "brightness", "Brightness")
+
+# Санитайзер EXIF перед укладкой в jsonb: длинные теги (UserComment, MakerNote)
+# в базе — мусор, а нулевой байт внутри строки Postgres в jsonb просто не примет.
+EXIF_MAX_STR = 512
+EXIF_MAX_LIST = 64
+EXIF_MAX_DEPTH = 6
+
+# colmap_photos.exif добавляется миграцией supabase/migration_photo_exif.sql.
+# Бэкенд может приехать на сервер РАНЬШЕ миграции — тогда insert с этой
+# колонкой отобьётся и уронит весь замер. Флаг гасится на первой такой ошибке
+# (и только на ней — см. _insert_photo_row), дальше пишем/читаем без EXIF.
+_photos_exif_column = True
 
 # Параметры калибровочного куба по умолчанию (стандарт: 4×4 клетки, клетка 17.5 мм).
 # Используются, если фронт не прислал/прислал невалидный блок cube.
@@ -67,6 +100,119 @@ def _cube_block(cube_raw) -> dict:
     return {"squares_per_side": squares, "square_size_m": size_m}
 
 
+def _sanitize_exif(value, _depth: int = 0):
+    """EXIF из браузера → безопасный для jsonb объект.
+
+    Приезжает он уже как JSON (exifr на фронте), поэтому чинить нужно немного:
+    вырезать нулевые байты (Postgres их в jsonb не примет), обрезать простыни
+    вроде UserComment/MakerNote и не дать патологической вложенности уехать
+    в рекурсию. Числа-нечисла (NaN/Infinity) гасим — json.dumps их пропустит,
+    а Postgres на них отобьётся.
+    """
+    if _depth > EXIF_MAX_DEPTH:
+        return None
+    if value is None or isinstance(value, bool) or isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, str):
+        return value.replace("\x00", "")[:EXIF_MAX_STR]
+    if isinstance(value, list):
+        return [_sanitize_exif(v, _depth + 1) for v in value[:EXIF_MAX_LIST]]
+    if isinstance(value, dict):
+        return {
+            str(k).replace("\x00", "")[:64]: _sanitize_exif(v, _depth + 1)
+            for k, v in value.items()
+        }
+    return str(value).replace("\x00", "")[:EXIF_MAX_STR]
+
+
+def _exif_number(exif: dict, keys: tuple) -> Optional[float]:
+    """Первое осмысленное число под одним из синонимов тега."""
+    for key in keys:
+        raw = exif.get(key)
+        if isinstance(raw, list):                 # ISOSpeedRatings бывает списком
+            raw = raw[0] if raw else None
+        if isinstance(raw, bool) or raw is None:
+            continue
+        if isinstance(raw, (int, float)) and math.isfinite(raw):
+            return float(raw)
+        if isinstance(raw, str):
+            try:
+                return float(raw.strip())
+            except ValueError:
+                continue
+    return None
+
+
+def _photo_quality_score(exif) -> float:
+    """Оценка кадра 0..1 по EXIF: половина за ISO, половина за яркость.
+
+    Формула — из Code-ноды n8n, где отбор жил раньше. Одно отличие: там
+    «крайняя» яркость не срабатывала никогда (условие `b >= 1 || b <= 10`
+    истинно всегда), поэтому 0.2 был мёртвой веткой. Здесь она живая:
+    3-7 EV → 1.0, 1-10 EV → 0.6, всё остальное (пересвет/темнота) → 0.2.
+    """
+    if not isinstance(exif, dict):
+        return 0.5
+
+    iso = _exif_number(exif, ISO_KEYS)
+    brightness = _exif_number(exif, BRIGHTNESS_KEYS)
+    if iso is None and brightness is None:
+        return 0.5                                # EXIF есть, но не про качество
+
+    if iso is None:
+        iso_score = 0.5
+    else:
+        iso_score = min(1.0, max(0.0, 1.0 - iso / ISO_WORST))
+
+    if brightness is None:
+        brightness_score = 0.5
+    elif 3 <= brightness <= 7:
+        brightness_score = 1.0
+    elif 1 <= brightness <= 10:
+        brightness_score = 0.6
+    else:
+        brightness_score = 0.2
+
+    return round(iso_score * 0.5 + brightness_score * 0.5, 4)
+
+
+def _photo_block(
+    index: int,
+    photo_id,
+    url: str,
+    thumb_url: Optional[str],
+    filename: str,
+    exif,
+) -> dict:
+    """Один кадр для n8n: чем он является, где лежит и насколько хорош.
+
+    Байтов здесь нет намеренно — только id строки colmap_photos и публичная
+    ссылка на ОРИГИНАЛ в бакете. Воркфлоу забирает пиксели по ним сам.
+    """
+    return {
+        "index":         index,
+        "id":            photo_id,
+        "url":           url,
+        "thumb_url":     thumb_url,
+        "filename":      filename,
+        "exif":          exif,
+        "quality_score": _photo_quality_score(exif),
+    }
+
+
+def _pick_best_photos(photos: list[dict], limit: int = BEST_PHOTOS_FOR_LLM) -> list[dict]:
+    """Топ-N кадров по quality_score, возвращённых в порядке съёмки.
+
+    Сортировка стабильная и с явным тай-брейком по index: при равных оценках
+    (а без EXIF они равны у всех) выбор детерминирован — первые кадры пачки,
+    а не «как повезёт».
+    """
+    best = sorted(photos, key=lambda p: (-p["quality_score"], p["index"]))[:limit]
+    return sorted(best, key=lambda p: p["index"])
+
+
 def _is_superadmin(user_id: str) -> bool:
     try:
         res = (
@@ -86,43 +232,54 @@ def _is_superadmin(user_id: str) -> bool:
 
 async def _call_n8n_and_save(
     analysis_id: str,
-    photo_ids: list[str],        # ID строк из colmap_photos
+    photos: list[dict],          # блоки кадров в порядке загрузки (см. _photo_block)
     title: str,
     notes: str,
-    exif_list: list,
-    photo_b64_list: list,        # base64-строки фото для n8n
     user_info: dict,
     cube: dict,                  # параметры калибровочного куба {squares_per_side, square_size_m}
     webhook_url: str,
-    photo_urls: Optional[list] = None,   # публичные ссылки на ОРИГИНАЛЫ в Storage
 ):
+    """Дёргает вебхук n8n ЛЁГКИМ payload и кладёт ответ в analyses.
+
+    Контракт с воркфлоу (менялся 2026-08-23): пикселей в теле запроса НЕТ.
+    Уходят analysis_id, id строк colmap_photos, публичные ссылки на оригиналы
+    и EXIF — оригиналы n8n тянет из БД/Storage сам. Плюс best_photos: топ-2
+    кадра по EXIF, уже отобранные здесь, чтобы воркфлоу не декодировал всю
+    пачку ради зрительной модели.
+    """
+    best = _pick_best_photos(photos)
+
     payload = {
-        "title":      title,
-        "notes":      notes,
-        "exif":       exif_list,
-        "photos_b64": photo_b64_list,
-        # Те же фото ссылками на оригиналы в бакете. Дублирует photos_b64, но
-        # без base64-налога (+33% к весу) — с переходом на оригиналы (2-5 МБ
-        # вместо 0.7 МБ) пачка из 50 кадров даёт ~250 МБ JSON. Когда воркфлоу
-        # переключится на скачивание по ссылкам, photos_b64 можно убрать.
-        "photo_urls": photo_urls or [],
-        "user":       user_info,
-        "cube":       cube,
+        "title": title,
+        "notes": notes,
+        # Параллельные массивы «как раньше»: ноды, читающие body.exif[i] и
+        # body.photo_urls[i], продолжают работать без переписывания.
+        "exif":       [p["exif"] for p in photos],
+        "photo_urls": [p["url"] for p in photos],
+        # Всё про кадры одним списком: id строки colmap_photos, ссылка на
+        # ОРИГИНАЛ в бакете, EXIF и оценка качества.
+        "photos": photos,
+        # Кадры для зрительной модели (LLaVA). Отбор — на сайте, где EXIF и
+        # появился; n8n от полной пачки перегружался.
+        "best_photos": best,
+        "user": user_info,
+        "cube": cube,
         "meta": {
-            "analysis_id": analysis_id,
-            "photo_ids":   photo_ids,
-            "photo_count": len(photo_ids),
-            "timestamp":   datetime.now(timezone.utc).isoformat(),
+            "analysis_id":    analysis_id,
+            "photo_ids":      [p["id"] for p in photos],
+            "photo_count":    len(photos),
+            "best_photo_ids": [p["id"] for p in best],
+            "timestamp":      datetime.now(timezone.utc).isoformat(),
         },
     }
 
-    # Размер тела к n8n — первое, что упрётся в потолок (N8N_PAYLOAD_SIZE_MAX)
-    # или в память контейнера. Логируем, чтобы это было видно в логах, а не
-    # только по факту 413/OOM.
-    payload_mb = sum(len(s) for s in photo_b64_list) / (1024 * 1024)
-    log_size = logger.warning if payload_mb > 100 else logger.info
+    # Раньше здесь мерили ДЕСЯТКИ И СОТНИ МЕГАБАЙТ base64. Меряем и теперь —
+    # чтобы разбухший EXIF (у некоторых камер он щедрый) не подкрался тихо.
+    payload_kb = len(json.dumps(payload, ensure_ascii=False).encode("utf-8")) / 1024
+    log_size = logger.warning if payload_kb > 4096 else logger.info
     log_size(
-        "n8n payload для %s: %d фото, ~%.1f МБ base64", analysis_id, len(photo_b64_list), payload_mb
+        "n8n payload для %s: %d фото (%d в LLM), %.1f КБ, без байтов фото",
+        analysis_id, len(photos), len(best), payload_kb,
     )
 
     now = lambda: datetime.now(timezone.utc).isoformat()
@@ -167,30 +324,72 @@ async def _call_n8n_and_save(
 
 # ─── RERUN (повторный прогон уже загруженного замера) ────────────────────────
 #
-# Фото повторно НЕ загружаются — они уже лежат в Storage. Тянем их обратно
-# (по storage_path, фолбэк — public_url) и заново дёргаем n8n на выбранной
-# ссылке (TEST/PROD). EXIF и параметры куба в БД не хранятся: exif уходит
-# пустым, куб — тот, что прислал клиент, иначе стандартный.
+# Фото повторно НЕ загружаются и БОЛЬШЕ НЕ СКАЧИВАЮТСЯ: они лежат в Storage, а
+# в n8n теперь уходят только id/ссылки/EXIF. Раньше здесь качались все
+# оригиналы замера, чтобы перегнать их в base64 — то есть трафик Storage → бэк
+# → n8n на каждый повтор. Теперь достаточно строк colmap_photos.
+# EXIF берётся оттуда же (колонка exif, migration_photo_exif.sql) — у замеров,
+# загруженных до этой миграции, он пуст, и все кадры получают нейтральные 0.5.
+# Куб в БД не хранится: тот, что прислал клиент, иначе стандартный.
 
-def _download_photo(row: dict) -> Optional[bytes]:
-    """Байты оригинала фото: сначала из Storage, потом по публичной ссылке."""
-    path = row.get("storage_path")
-    if path:
+async def _insert_photo_row(row: dict, exif) -> dict:
+    """Вставляет строку colmap_photos вместе с EXIF кадра.
+
+    Колонка exif приезжает миграцией, а код может оказаться на сервере раньше
+    неё. Тогда PostgREST отобьёт вставку по имени колонки — ловим ИМЕННО этот
+    случай, один раз, и дальше пишем без EXIF: замер важнее метаданных. Любая
+    другая ошибка (сеть, RLS, битый payload) пусть падает честно, иначе
+    молчаливо потеряем EXIF на ровном месте.
+    """
+    global _photos_exif_column
+
+    if _photos_exif_column:
         try:
-            return supabase.storage.from_(COLMAP_BUCKET).download(path)
-        except Exception:
-            logger.warning("Не удалось скачать из Storage: %s", path)
+            res = await asyncio.to_thread(
+                supabase.table("colmap_photos").insert({**row, "exif": exif}).execute
+            )
+            return res.data[0]
+        except Exception as exc:
+            if "exif" not in str(exc).lower():
+                raise
+            _photos_exif_column = False
+            logger.warning(
+                "colmap_photos.exif недоступна — пишу фото без EXIF. "
+                "Накати supabase/migration_photo_exif.sql"
+            )
 
-    url = row.get("public_url")
-    if url:
+    res = await asyncio.to_thread(supabase.table("colmap_photos").insert(row).execute)
+    return res.data[0]
+
+
+def _fetch_photo_rows(analysis_id: str) -> list[dict]:
+    """Строки colmap_photos замера. Без колонки exif (старая БД) — без неё."""
+    global _photos_exif_column
+
+    cols = "id, public_url, thumb_url, filename"
+    if _photos_exif_column:
         try:
-            resp = httpx.get(url, timeout=60, follow_redirects=True)
-            resp.raise_for_status()
-            return resp.content
-        except Exception:
-            logger.warning("Не удалось скачать по ссылке: %s", url)
+            return (
+                supabase.table("colmap_photos")
+                .select(cols + ", exif")
+                .eq("analyze_id", analysis_id)
+                .execute()
+            ).data or []
+        except Exception as exc:
+            if "exif" not in str(exc).lower():
+                raise                     # сбой не про колонку — не глушим
+            _photos_exif_column = False
+            logger.warning(
+                "colmap_photos.exif недоступна — читаю фото без EXIF. "
+                "Накати supabase/migration_photo_exif.sql"
+            )
 
-    return None
+    return (
+        supabase.table("colmap_photos")
+        .select(cols)
+        .eq("analyze_id", analysis_id)
+        .execute()
+    ).data or []
 
 
 async def _rerun_and_save(
@@ -208,36 +407,33 @@ async def _rerun_and_save(
     # строки colmap_photos подтягиваем по public_url — id самих строк нужны
     # n8n в meta.photo_ids.
     try:
-        rows = (
-            supabase.table("colmap_photos")
-            .select("id, storage_path, public_url")
-            .eq("analyze_id", analysis_id)
-            .execute()
-        ).data or []
+        rows = await asyncio.to_thread(_fetch_photo_rows, analysis_id)
     except Exception:
-        logger.warning("colmap_photos недоступна для %s — качаем по ссылкам", analysis_id)
+        logger.warning("colmap_photos недоступна для %s — работаем по ссылкам", analysis_id)
         rows = []
 
     by_url = {r.get("public_url"): r for r in rows if r.get("public_url")}
-    ordered = [by_url.get(u) or {"id": None, "public_url": u} for u in photo_urls]
+    # Кадра нет в colmap_photos (старая запись) — не теряем его: id будет None,
+    # но ссылка на оригинал есть, и n8n заберёт пиксели по ней.
+    ordered = [by_url.get(u) or {"public_url": u} for u in photo_urls]
     if not ordered:                      # старая запись без photo_urls
         ordered = rows
 
-    photo_ids: list[str] = []
-    photo_b64_list: list[str] = []
-    ordered_urls: list[str] = []
-    for row in ordered:
-        content = await asyncio.to_thread(_download_photo, row)
-        if content is None:
-            continue
-        # массив id держим ПАРАЛЛЕЛЬНЫМ фотографиям (None, если строки
-        # colmap_photos нет) — иначе meta.photo_count в payload соврёт
-        photo_ids.append(row.get("id"))
-        ordered_urls.append(row.get("public_url"))
-        b64 = base64.b64encode(content).decode("utf-8")
-        photo_b64_list.append(f"data:image/jpeg;base64,{b64}")
+    ordered = [r for r in ordered if r.get("public_url")]
 
-    if not photo_b64_list:
+    photos = [
+        _photo_block(
+            i,
+            row.get("id"),
+            row["public_url"],
+            row.get("thumb_url"),
+            row.get("filename") or f"photo_{i + 1}.jpg",
+            row.get("exif"),
+        )
+        for i, row in enumerate(ordered)
+    ]
+
+    if not photos:
         supabase.table("analyses").update(
             {
                 "status": "error",
@@ -249,15 +445,12 @@ async def _rerun_and_save(
 
     await _call_n8n_and_save(
         analysis_id,
-        photo_ids,
+        photos,
         title,
         notes,
-        [None] * len(photo_b64_list),   # EXIF исходного замера не сохраняется
-        photo_b64_list,
         user_info,
         cube,
         webhook_url,
-        ordered_urls,
     )
 
 
@@ -289,9 +482,15 @@ async def create_analysis(
     if not webhook_url:
         raise HTTPException(500, "Конфигурация n8n URL не найдена")
 
+    # Массив EXIF, параллельный files (см. queue.js). Раньше он просто
+    # пересылался в n8n, теперь по нему считается качество кадра и он же едет
+    # в БД — поэтому проверяем, что это именно список: `null`/объект/строка от
+    # стороннего клиента не должны ронять загрузку на индексации.
     try:
         exif_list = json.loads(exif_data)
     except Exception:
+        exif_list = []
+    if not isinstance(exif_list, list):
         exif_list = []
 
     # ── Параметры калибровочного куба ────────────────────────────────────────
@@ -383,10 +582,13 @@ async def create_analysis(
     #     thumbnail_urls в analyses — параллельный массив к photo_urls, тот же
     #     порядок. Если по какой-то причине миниатюра не сделалась (битый файл),
     #     подставляем оригинал — фронт не сломается.
-    photo_ids: list[str] = []
+    #     EXIF каждого кадра кладём В БАЗУ, в colmap_photos.exif. Он приезжает с
+    #     фронта (exifr читает ОРИГИНАЛ до конвертации HEIC) и раньше жил ровно
+    #     один запрос — только в теле вебхука. Теперь он часть данных замера:
+    #     по нему считается качество кадра, и он же переживает rerun.
+    photos: list[dict] = []
     photo_urls: list[str] = []
     thumbnail_urls: list[str] = []
-    photo_b64_list: list[str] = []
 
     for i, file in enumerate(files):
         if not (file.content_type or "").startswith("image/"):
@@ -437,28 +639,30 @@ async def create_analysis(
             )
             thumb_url = supabase.storage.from_(COLMAP_BUCKET).get_public_url(thumb_storage_path)
 
-        # Строка в colmap_photos с обоими путями
-        res = await asyncio.to_thread(
-            supabase.table("colmap_photos").insert(
-                {
-                    "analyze_id":         analysis_id,
-                    "storage_path":       storage_path,
-                    "public_url":         public_url,
-                    "thumb_storage_path": thumb_storage_path,
-                    "thumb_url":          thumb_url,
-                    "filename":           safe_filename,
-                }
-            ).execute
+        # EXIF этого кадра: массив с фронта параллелен files (см. queue.js).
+        # Короче списка / мусор внутри — просто нет EXIF, кадр не теряем.
+        photo_exif = _sanitize_exif(exif_list[i]) if i < len(exif_list) else None
+        if not isinstance(photo_exif, dict):
+            photo_exif = None
+
+        # Строка в colmap_photos: оба пути + EXIF
+        row = await _insert_photo_row(
+            {
+                "analyze_id":         analysis_id,
+                "storage_path":       storage_path,
+                "public_url":         public_url,
+                "thumb_storage_path": thumb_storage_path,
+                "thumb_url":          thumb_url,
+                "filename":           safe_filename,
+            },
+            photo_exif,
         )
 
-        photo_row_id = res.data[0]["id"]
-        photo_ids.append(photo_row_id)
         photo_urls.append(public_url)
         thumbnail_urls.append(thumb_url)
-
-        b64 = base64.b64encode(content).decode("utf-8")
-        mime = file.content_type or "image/jpeg"
-        photo_b64_list.append(f"data:{mime};base64,{b64}")
+        photos.append(
+            _photo_block(i, row["id"], public_url, thumb_url, safe_filename, photo_exif)
+        )
 
     # ── 3. Обновляем analyses.photo_urls + thumbnail_urls ───────────────────
     supabase.table("analyses").update(
@@ -486,11 +690,9 @@ async def create_analysis(
     background_tasks.add_task(
         _call_n8n_and_save,
         analysis_id,
-        photo_ids,
+        photos,
         title or "Без названия",
         notes,
-        exif_list,
-        photo_b64_list,
         {
             "id":      current_user["id"],
             "email":   current_user["email"],
@@ -500,7 +702,6 @@ async def create_analysis(
         },
         cube_block,
         webhook_url,
-        photo_urls,
     )
 
     return {"id": analysis_id, "status": "pending"}
