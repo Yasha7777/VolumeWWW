@@ -47,7 +47,9 @@ export async function enqueue({ title, notes, isProd, photos, cube }) {
 }
 
 // ─── отправка одного элемента ────────────────────────────────────────────────
-export async function flushItem(id) {
+// onProgress — необязательный колбэк реального прогресса отправки байтов
+// (api.createAnalysis шлёт через XHR). Фоновые флаши его не передают.
+export async function flushItem(id, { onProgress } = {}) {
   if (inFlight.has(id)) return null    // этим таб-инстансом уже отправляется
   const item = await idb.get(id)
   if (!item || item.status === 'sending') return null
@@ -75,11 +77,13 @@ export async function flushItem(id) {
     fd.append('exif_data', JSON.stringify(item.photos.map(p => p.exif ?? null)))
     fd.append('cube', JSON.stringify(item.cube ?? null))   // параметры калибровочного куба
 
-    const res = await api.createAnalysis(fd)
+    const res = await api.createAnalysis(fd, { onProgress })
     await idb.delete(id); emit()       // ушло — дальше в Истории ведёт серверная строка
     return res?.id ?? item.id
   } catch (err) {
-    const offline = !navigator.onLine || err?.name === 'TypeError'
+    // isNetwork — наш NetworkError из api.js (обрыв/таймаут/XHR onerror).
+    // TypeError оставлен для голого fetch, если он где-то ещё всплывёт.
+    const offline = !navigator.onLine || err?.isNetwork || err?.name === 'TypeError'
     if (offline) {
       await update(id, { status: 'queued', lastError: 'Нет сети' })   // не жёсткий отказ
     } else {

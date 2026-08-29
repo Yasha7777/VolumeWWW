@@ -411,6 +411,23 @@ nav { display: flex; gap: 4px; justify-self: center; }
 .prog-wrap { margin-top: 12px; background: rgba(30,61,18,.08); border-radius: var(--r-pill); height: 4px; overflow: hidden; }
 .prog-bar  { height: 100%; background: var(--green); border-radius: var(--r-pill); transition: width 0.5s var(--ease); }
 
+/* Неопределённый режим — ТОЛЬКО для фазы, где длительность действительно
+   неизвестна (сервер раскладывает пачку в Storage). Бегунок честно говорит
+   «идёт работа, срок неизвестен» и не притворяется процентами.
+   На фазе реальной отправки байтов этот класс не используется. */
+.prog-bar.is-indeterminate {
+  width: 34%;
+  transition: none;
+  animation: progSlide 1.1s var(--ease) infinite;
+}
+@keyframes progSlide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(295%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .prog-bar.is-indeterminate { animation-duration: 2.4s; }
+}
+
 /* ─── TIMER ──────────────────────────────────────────────── */
 .timer-box {
   display: flex; flex-direction: column; align-items: center; gap: 6px;

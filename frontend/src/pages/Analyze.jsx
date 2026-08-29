@@ -18,6 +18,8 @@ const POLL_MS    = 5000
 
 const STEPS = ['Загрузить фото', '3D-реконструкция', 'Объём и вес']
 
+const fmtMb = (bytes) => `${(bytes / 1048576).toFixed(1)} МБ`
+
 export default function Analyze() {
   const [photos, setPhotos]     = useState([])
   const [title, setTitle]       = useState('')
@@ -25,6 +27,11 @@ export default function Analyze() {
   const [compressing, setComp]  = useState(false)
   const [compMsg, setCompMsg]   = useState('')
   const [compProg, setCompProg] = useState(0)
+  // Реальная отправка байтов на сервер: { phase:'upload'|'server', loaded, total, pct }.
+  // phase 'upload' — цифры настоящие (XHR upload.onprogress); 'server' —
+  // байты ушли, сервер раскладывает фото в Storage, длительность неизвестна,
+  // поэтому полоса переходит в неопределённый режим вместо выдуманных процентов.
+  const [upProg, setUpProg]     = useState(null)
   const [status, setStatus]     = useState(null)
   const [analysisId, setAId]    = useState(null)
   const [startTime, setStart]   = useState(null)
@@ -49,6 +56,11 @@ export default function Analyze() {
   const onCubeChange = useCallback(({ payload, valid }) => {
     setCube(payload); setCubeValid(valid)
   }, [])
+  // Стабильные ссылки — иначе memo на ReportPanel бесполезен: новая стрелка
+  // на каждый рендер Analyze (а он идёт на каждое нажатие в любом поле)
+  // считалась бы сменой пропса и тянула бы за собой пересборку отчёта.
+  const openReport  = useCallback(() => setReportOpen(true), [])
+  const closeReport = useCallback(() => setReportOpen(false), [])
   const pollRef                 = useRef(null)
   // Метаданные текущего опроса: id анализа, крайний срок и счётчик подряд
   // неудачных запросов. Держим в ref, чтобы интервал видел свежие значения
@@ -86,16 +98,21 @@ export default function Analyze() {
     if (!files.length) { setStatus({ type:'error', title:'Неверный формат', msg:'Выберите JPG, PNG или HEIC' }); return }
 
     const total = Math.min(files.length, MAX_PHOTOS)
+    const batch = files.slice(0, total)
+    // Прогресс считаем по БАЙТАМ и только по уже сделанному. По номеру кадра
+    // он врал: кадр 12 МБ и кадр 1 МБ давали одинаковый шаг, полоса дёргалась
+    // и уезжала вперёд работы. Здесь шаг = доля веса реально обработанного файла.
+    const totalBytes = batch.reduce((s, f) => s + (f.size || 0), 0) || 1
+    let doneBytes = 0
     setComp(true)
     setCompProg(0)
     const added = []
     for (let i = 0; i < total; i++) {
-      setCompMsg(`Готовим ${i + 1} из ${total}: ${files[i].name}`)
-      setCompProg(Math.round((i / total) * 100))
+      setCompMsg(`Готовим ${i + 1} из ${total}: ${batch[i].name}`)
       try {
         let exifData = null
         try {
-          exifData = await exifr.parse(files[i], {
+          exifData = await exifr.parse(batch[i], {
             gps:  true,
             tiff: true,
             exif: true,
@@ -109,12 +126,14 @@ export default function Analyze() {
           }
         } catch (_) {}
 
-        const photo = await prepareImage(files[i])
+        const photo = await prepareImage(batch[i])
         photo.exifData = exifData
         added.push(photo)
       } catch (err) {
         setStatus({ type:'error', title:'Ошибка файла', msg: err.message })
       }
+      doneBytes += batch[i].size || 0
+      setCompProg(Math.round((doneBytes / totalBytes) * 100))
     }
     setCompProg(100)
     setComp(false)
@@ -319,12 +338,33 @@ export default function Analyze() {
     }
 
     try {
-      const serverId = await flushItem(id)     // POST сейчас
+      setUpProg({ phase: 'upload', loaded: 0, total: 1, pct: 0 })
+      const serverId = await flushItem(id, { onProgress: setUpProg })   // POST сейчас
+      setUpProg(null)                           // байты ушли, дальше считает пайплайн
+
+      // flushItem НЕ бросает, когда офлайн: он просто оставляет элемент в
+      // очереди и возвращает null. Раньше этот null уходил в startPolling(null)
+      // — опрос молча ничего не делал, а страница навсегда застревала в busy
+      // со спиннером и бегущим таймером. Ровно то, что видно на мобильной сети
+      // при обрыве. Нет id — значит не отправили, и вести себя надо как в catch.
+      if (!serverId) {
+        setBusy(false)
+        setStart(null)
+        setStatus({
+          type: 'info',
+          title: online ? 'Добавлено в очередь' : 'Нет сети — добавлено в очередь',
+          msg: 'Замер сохранён и отправится автоматически. Статус — в Истории.',
+        })
+        setPhotos([])
+        return
+      }
+
       setAId(serverId)
       setStart(Date.now())
       startPolling(serverId)                    // ждём готовности на странице
     } catch (err) {
       // Сеть пропала — замер уже в очереди и уйдёт сам. Не крутим спиннер.
+      setUpProg(null)
       setBusy(false)
       setStart(null)
       setStatus({
@@ -355,7 +395,12 @@ export default function Analyze() {
         setStatus({ type:'error', title:'Ошибка', msg: err.message })
         return
       }
-      flushItem(id).catch(() => {})   // пробуем отправить фоном, но не ждём
+      // Отправляем фоном, но прогресс всё равно показываем: пачка оригиналов
+      // на мобильной сети уходит минутами, и «тишина» выглядит как зависание.
+      setUpProg({ phase: 'upload', loaded: 0, total: 1, pct: 0 })
+      flushItem(id, { onProgress: setUpProg })
+        .catch(() => {})
+        .finally(() => setUpProg(null))
 
       setStatus({ type:'success', title:'В очереди', msg:'Замер добавлен — отправим автоматически при связи.' })
       setPhotos([])
@@ -380,6 +425,7 @@ export default function Analyze() {
     setDiag(null)
     setAId(null)
     setCompProg(0)
+    setUpProg(null)
     setReportOpen(false)
     setShowRaw(false)
   }
@@ -492,12 +538,39 @@ export default function Analyze() {
             )}
           </div>
 
-          {/* ПРОГРЕСС СЖАТИЯ */}
+          {/* ПОДГОТОВКА ФАЙЛОВ (локально, до отправки) */}
           {compressing && (
             <div className="status info" style={{ display:'block' }}>
-              <strong>Обработка фотографий</strong>
+              <strong>Подготовка фотографий · {compProg}%</strong>
               {compMsg}
               <div className="prog-wrap"><div className="prog-bar" style={{ width:`${compProg}%` }} /></div>
+            </div>
+          )}
+
+          {/* ОТПРАВКА НА СЕРВЕР — цифры настоящие, из XHR upload.onprogress.
+              Пока байты идут, показываем процент и мегабайты; когда ушли все,
+              переключаемся в неопределённый режим: сколько сервер будет
+              раскладывать пачку в Storage, браузеру неизвестно, и рисовать
+              там «проценты» значило бы снова врать. */}
+          {upProg && (
+            <div className="status info" style={{ display:'block' }}>
+              {upProg.phase === 'upload' ? (
+                <>
+                  <strong>Отправка на сервер · {upProg.pct}%</strong>
+                  {upProg.total > 1 ? `${fmtMb(upProg.loaded)} из ${fmtMb(upProg.total)}` : 'Начинаем передачу…'}
+                  <div className="prog-wrap">
+                    <div className="prog-bar" style={{ width:`${upProg.pct}%` }} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <strong>Фото отправлены</strong>
+                  Сервер сохраняет пачку — это занимает до минуты.
+                  <div className="prog-wrap">
+                    <div className="prog-bar is-indeterminate" />
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -591,7 +664,9 @@ export default function Analyze() {
           <div className="actions" style={{ marginTop:'24px' }}>
             <button className="btn btn-primary" onClick={runAnalysis} disabled={busy}>
               {busy
-                ? <><div className="spinner" /> Анализируем...</>
+                ? (upProg?.phase === 'upload'
+                    ? <><div className="spinner" /> Отправка {upProg.pct}%</>
+                    : <><div className="spinner" /> Анализируем...</>)
                 : (online ? 'Запустить анализ' : 'Отправить (в очередь)')}
             </button>
             <button className="btn btn-secondary" onClick={addToQueue} disabled={busy} title="Сохранить и отправить в фоне">
@@ -716,8 +791,8 @@ export default function Analyze() {
       {result && (
         <ReportPanel
           open={reportOpen}
-          onOpen={() => setReportOpen(true)}
-          onClose={() => setReportOpen(false)}
+          onOpen={openReport}
+          onClose={closeReport}
           result={result}
           photos={photos}
           title={title}

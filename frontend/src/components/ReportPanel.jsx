@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, memo, Suspense, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { buildDocData, makeDocNo } from './raschet/raschetData'
 
@@ -27,6 +27,26 @@ const PdfDownload = lazy(() => import('./raschet/PdfDownload'))
 
 const MQ = '(max-width: 768px)'
 
+/* Пауза, после которой ввод в поле формы доезжает до документа.
+   Меньше — возвращается мигание на каждый символ, больше — отчёт
+   заметно отстаёт от того, что человек только что напечатал. */
+const TYPING_IDLE_MS = 600
+
+/* Значение, «догоняющее» исходное только после паузы в изменениях.
+   Ключ к проблеме мигания: каждое нажатие в «Названии объекта» меняло
+   title → data → document → @react-pdf перерисовывал PDF и перезагружал
+   iframe. То есть моргал не отчёт, а полная пересборка документа на
+   КАЖДЫЙ символ. Теперь пересборка одна — когда человек допечатал. */
+function useIdleValue(value, ms = TYPING_IDLE_MS) {
+  const [settled, setSettled] = useState(value)
+  useEffect(() => {
+    if (Object.is(settled, value)) return
+    const t = setTimeout(() => setSettled(value), ms)
+    return () => clearTimeout(t)
+  }, [value, ms, settled])
+  return settled
+}
+
 const ChevronRight = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -43,7 +63,7 @@ const PreviewLoader = () => (
   </div>
 )
 
-export default function ReportPanel({ open, onClose, onOpen, result, photos = [], title = '' }) {
+function ReportPanel({ open, onClose, onOpen, result, photos = [], title = '' }) {
   const [mobile, setMobile] = useState(
     typeof window !== 'undefined' ? window.matchMedia(MQ).matches : false
   )
@@ -55,11 +75,18 @@ export default function ReportPanel({ open, onClose, onOpen, result, photos = []
     return () => { mq.removeEventListener ? mq.removeEventListener('change', on) : mq.removeListener(on) }
   }, [])
 
+  // Всё, из чего собирается документ, берём в «устоявшемся» виде: пока
+  // человек печатает, ссылка на data не меняется → PDF не пересобирается
+  // и панель не моргает. Название доезжает через TYPING_IDLE_MS.
+  const idleTitle  = useIdleValue(title)
+  const idleResult = useIdleValue(result)
+  const idlePhotos = useIdleValue(photos)
+
   // номер документа — один на анализ (стабилен, пока не сменился result)
-  const docNo = useMemo(() => makeDocNo(), [result])
+  const docNo = useMemo(() => makeDocNo(), [idleResult])
   const data = useMemo(
-    () => buildDocData({ result, photos, title, docNo }),
-    [result, photos, title, docNo]
+    () => buildDocData({ result: idleResult, photos: idlePhotos, title: idleTitle, docNo }),
+    [idleResult, idlePhotos, idleTitle, docNo]
   )
   const fileName = `Raschet_${String(docNo).replace(/[^\w-]+/g, '-')}.pdf`
   const r = data.rows[0] || {}
@@ -179,3 +206,8 @@ export default function ReportPanel({ open, onClose, onOpen, result, photos = []
 
   return createPortal(panel, document.body)
 }
+
+/* memo: Analyze перерисовывается на КАЖДОЕ нажатие в любом поле формы
+   (title, notes, параметры куба). Без memo вместе с ней перерисовывалась
+   и панель отчёта — лишняя работа под открытым PDF-предпросмотром. */
+export default memo(ReportPanel)
