@@ -14,8 +14,8 @@
    ============================================================ */
 
 .kd {
-  margin-top: 20px;
-  padding-top: 20px;
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-5);
   border-top: 1px solid var(--border);
 }
 
@@ -24,19 +24,19 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--sp-4);
   flex-wrap: wrap;
-  margin-bottom: 14px;
+  margin-bottom: var(--sp-3-5);
 }
 .kd__eyebrow {
   font: var(--label-weight) var(--label-size) / 1 var(--sans);
   letter-spacing: var(--label-spacing);
   text-transform: uppercase;
   color: var(--muted);
-  margin-bottom: 6px;
+  margin-bottom: var(--sp-1-5);
 }
 .kd__lede {
-  font: 400 13px/1.5 var(--sans);
+  font: 400 var(--fs-sm)/1.5 var(--sans);
   color: var(--muted);
   max-width: 62ch;
 }
@@ -55,9 +55,9 @@
   border: none;
   background: transparent;
   cursor: pointer;
-  padding: 7px 14px;
+  padding: var(--sp-1-5) var(--sp-3-5);
   border-radius: var(--r-pill);
-  font: 500 12px/1 var(--sans);
+  font: 500 var(--fs-xs)/1 var(--sans);
   color: var(--muted);
   transition: background 0.18s var(--ease), color 0.18s var(--ease);
 }
@@ -127,7 +127,7 @@
   background: rgba(26,26,30,0.72);
   backdrop-filter: blur(4px);
   color: #fff;
-  font: 500 15px/1 var(--sans);
+  font: 500 var(--fs-lg)/1 var(--sans);
   display: grid;
   place-items: center;
   cursor: ew-resize;
@@ -139,12 +139,12 @@
 .kd__tag {
   position: absolute;
   top: 10px;
-  padding: 5px 10px;
+  padding: var(--sp-1) var(--sp-2-5);
   border-radius: var(--r-pill);
   background: rgba(26,26,30,0.72);
   backdrop-filter: blur(4px);
   color: rgba(255,255,255,0.92);
-  font: 500 11px/1 var(--sans);
+  font: 500 var(--fs-2xs)/1 var(--sans);
   letter-spacing: 0.02em;
   pointer-events: none;
   white-space: nowrap;
@@ -166,12 +166,12 @@
 .kd__bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--sp-3);
   flex-wrap: wrap;
-  margin-top: 12px;
+  margin-top: var(--sp-3);
 }
 .kd__note {
-  font: 400 12px/1.5 var(--sans);
+  font: 400 var(--fs-xs)/1.5 var(--sans);
   color: var(--muted);
   flex: 1 1 220px;
 }
@@ -179,13 +179,13 @@
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 9px 14px;
+  gap: var(--sp-1-5);
+  padding: var(--sp-2) var(--sp-3-5);
   border-radius: var(--r-sm);
   border: 1px solid var(--border);
   background: var(--bg-card);
   color: var(--text);
-  font: 500 12px/1 var(--sans);
+  font: 500 var(--fs-xs)/1 var(--sans);
   cursor: pointer;
   transition: border-color 0.18s var(--ease), background 0.18s var(--ease);
 }
@@ -193,20 +193,20 @@
 
 /* ---------- легенда ---------- */
 .kd-legend {
-  margin-top: 14px;
-  padding: 14px 16px;
+  margin-top: var(--sp-3-5);
+  padding: var(--sp-3-5) var(--sp-4);
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
   display: grid;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .kd-legend__row {
   display: grid;
   grid-template-columns: 24px 1fr;
   align-items: start;
-  gap: 10px;
-  font: 400 12px/1.45 var(--sans);
+  gap: var(--sp-2-5);
+  font: 400 var(--fs-xs)/1.45 var(--sans);
   color: var(--muted);
 }
 .kd-legend__row b { font-weight: 600; color: var(--text); }
@@ -254,7 +254,7 @@
   padding: 2px 0 3px;
   background: rgba(26,26,30,0.78);
   color: rgba(255,255,255,0.88);
-  font: 500 8px/1 var(--sans);
+  font: 500 var(--fs-3xs)/1 var(--sans);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   text-align: center;
@@ -276,19 +276,19 @@
 .kd-lb__bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--sp-3);
   flex-wrap: wrap;
-  padding: 12px 16px;
+  padding: var(--sp-3) var(--sp-4);
   border-bottom: 1px solid rgba(255,255,255,0.09);
 }
-.kd-lb__tabs { display: flex; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; }
+.kd-lb__tabs { display: flex; gap: var(--sp-1-5); flex-wrap: wrap; flex: 1 1 auto; }
 .kd-lb__tab {
-  padding: 8px 13px;
+  padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-pill);
   border: 1px solid rgba(255,255,255,0.14);
   background: transparent;
   color: rgba(255,255,255,0.66);
-  font: 500 12px/1 var(--sans);
+  font: 500 var(--fs-xs)/1 var(--sans);
   cursor: pointer;
   transition: color 0.18s var(--ease), border-color 0.18s var(--ease), background 0.18s var(--ease);
 }
@@ -308,12 +308,12 @@
   border: 1px solid rgba(255,255,255,0.14);
 }
 .kd-lb__zbtn {
-  padding: 6px 12px;
+  padding: var(--sp-1-5) var(--sp-3);
   border: none;
   border-radius: var(--r-pill);
   background: transparent;
   color: rgba(255,255,255,0.66);
-  font: 500 12px/1 var(--sans);
+  font: 500 var(--fs-xs)/1 var(--sans);
   cursor: pointer;
 }
 .kd-lb__zbtn:hover { color: #fff; }
@@ -327,7 +327,7 @@
   border: 1px solid rgba(255,255,255,0.14);
   background: transparent;
   color: #fff;
-  font: 300 24px/1 var(--sans);
+  font: 300 var(--fs-3xl)/1 var(--sans);
   cursor: pointer;
 }
 .kd-lb__close:hover { background: rgba(255,255,255,0.1); }
@@ -337,7 +337,7 @@
   overflow: hidden;
   display: grid;
   place-items: center;
-  padding: 16px;
+  padding: var(--sp-4);
   background: #1A1A1E;
 }
 /* при увеличении кадр больше окна — панорама прокруткой и перетаскиванием */
@@ -369,9 +369,9 @@
 }
 
 .kd-lb__cap {
-  padding: 12px 16px;
+  padding: var(--sp-3) var(--sp-4);
   text-align: center;
-  font: 500 13px/1.4 var(--sans);
+  font: 500 var(--fs-sm)/1.4 var(--sans);
   color: rgba(255,255,255,0.9);
   border-top: 1px solid rgba(255,255,255,0.09);
 }
@@ -388,7 +388,7 @@
   background: rgba(16,16,20,0.72);
   backdrop-filter: blur(4px);
   color: #fff;
-  font: 300 26px/1 var(--sans);
+  font: 300 var(--fs-4xl)/1 var(--sans);
   cursor: pointer;
 }
 .kd-lb__nav:hover { background: rgba(255,255,255,0.14); }
@@ -400,10 +400,10 @@
   .kd__hd { flex-direction: column; align-items: stretch; }
   .kd__seg { align-self: flex-start; }
   .kd__full { width: 100%; justify-content: center; }
-  .kd-lb__bar { padding: 10px 12px; gap: 8px; }
-  .kd-lb__tab { padding: 7px 10px; font-size: 11px; }
+  .kd-lb__bar { padding: var(--sp-2-5) var(--sp-3); gap: var(--sp-2); }
+  .kd-lb__tab { padding: var(--sp-1-5) var(--sp-2-5); font-size: var(--fs-2xs); }
   .kd-lb__nav { width: 40px; height: 40px; }
-  .kd-lb__cap { font-size: 12px; padding: 10px 12px; }
+  .kd-lb__cap { font-size: var(--fs-xs); padding: var(--sp-2-5) var(--sp-3); }
 }
 
 @media (prefers-reduced-motion: reduce) {

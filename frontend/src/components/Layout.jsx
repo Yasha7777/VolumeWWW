@@ -45,11 +45,25 @@ const NAV = [
   },
 ]
 
+const EMAIL = 'yakov.kachalin@mail.ru'
+
 export default function Layout({ children }) {
   const { user, signOut } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const [profile, setProfile] = useState(null)
+  // Подтверждение копирования — в самой кнопке, а не alert():
+  // модалка ради «скопировал email» перебивает фокус и на мобиле
+  // требует ещё одного тапа, чтобы её закрыть.
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    if (!copied) return
+    const t = setTimeout(() => setCopied(false), 2000)
+    return () => clearTimeout(t)
+  }, [copied])
+  const copyEmail = async () => {
+    try { await navigator.clipboard.writeText(EMAIL); setCopied(true) } catch (_) {}
+  }
 
   useEffect(() => {
     if (user) api.getProfile().then(setProfile).catch(() => {})
@@ -111,26 +125,24 @@ export default function Layout({ children }) {
 
       <main>{children}</main>
 
-      <footer style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '24px', fontSize: 13, color: 'var(--muted)' }}>
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'center' }}>
+      <footer className="app-foot">
+        <div className="app-foot__row">
           <span>© 2026 Карелия Строй — AI сервис</span>
           <span>Петрозаводск · Карелия</span>
         </div>
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
-          <Link to="/privacy" style={{ color: 'inherit', textDecoration: 'underline' }}>
+        <div className="app-foot__row">
+          <Link to="/privacy" className="app-foot__link">
             Политика конфиденциальности
           </Link>
-          <span>·</span>
-          <span
-            onClick={() => {
-              navigator.clipboard.writeText('yakov.kachalin@mail.ru');
-              alert('Email скопирован: yakov.kachalin@mail.ru');
-            }}
+          <span aria-hidden="true">·</span>
+          <button
+            type="button"
+            className={`app-foot__link${copied ? ' app-foot__copied' : ''}`}
+            onClick={copyEmail}
             title="Нажмите, чтобы скопировать"
-            style={{ color: 'inherit', textDecoration: 'underline', cursor: 'pointer' }}
           >
-            yakov.kachalin@mail.ru
-          </span>
+            {copied ? 'Email скопирован' : EMAIL}
+          </button>
         </div>
       </footer>
 

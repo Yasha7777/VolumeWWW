@@ -632,8 +632,11 @@ export default function Analyze() {
           </div>
 
           {/* ПЕРЕКЛЮЧАТЕЛЬ TEST/PROD — нужен, пока продукт не вышел в прод */}
-          <div className="field" style={{ marginTop:'4px' }}>
-            <label style={{ fontSize:'12px', color:'var(--muted)', textTransform:'uppercase', letterSpacing:'0.5px' }}>Режим анализа</label>
+          <div className="field" style={{ marginTop:'var(--sp-1)' }}>
+            {/* без инлайн-стиля: .field label уже несёт единый спек подписи
+                (--label-size / --label-weight / --label-spacing). Раньше здесь
+                стояли свои 12px / .5px — тот же смысл, другой вид. */}
+            <label>Режим анализа</label>
             <div className="mode-toggle">
               <button
                 type="button"
@@ -656,12 +659,12 @@ export default function Analyze() {
 
           {/* Баннер офлайна — подсказываем, что можно снять и поставить в очередь */}
           {!online && (
-            <div className="status info" style={{ display:'block', marginTop:'16px' }}>
+            <div className="status info" style={{ display:'block', marginTop:'var(--sp-4)' }}>
               <strong>Нет сети.</strong> Снимите замер и добавьте в очередь — отправим сами, когда связь вернётся.
             </div>
           )}
 
-          <div className="actions" style={{ marginTop:'24px' }}>
+          <div className="actions" style={{ marginTop:'var(--sp-6)' }}>
             <button className="btn btn-primary" onClick={runAnalysis} disabled={busy}>
               {busy
                 ? (upProg?.phase === 'upload'
@@ -692,7 +695,7 @@ export default function Analyze() {
               <div className="result-hd">
                 <span className="result-hd-title">Результат · {isProd ? 'PROD' : 'TEST'}</span>
                 {result && (
-                  <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                  <div style={{ display:'flex', gap:'var(--sp-2)', alignItems:'center' }}>
                     <button className="copy-btn" onClick={copyResult}>Копировать</button>
                     <button className="copy-btn" onClick={() => setReportOpen(true)}>Открыть отчёт</button>
                   </div>
@@ -753,8 +756,8 @@ export default function Analyze() {
 
               {/* 3D-модель — показывается по наличию модели, а не по тексту */}
               {has3d && (
-                <div style={{ padding:'0 18px 18px' }}>
-                  <div className="divider" style={{ marginTop: result ? '4px' : '16px' }}>
+                <div style={{ padding:'0 var(--sp-4) var(--sp-4)' }}>
+                  <div className="divider" style={{ marginTop: result ? 'var(--sp-1)' : 'var(--sp-4)' }}>
                     <div className="div-line" />
                     <span className="div-txt">Визуализация объёма</span>
                     <div className="div-line" />
@@ -769,7 +772,7 @@ export default function Analyze() {
 
               {/* Текст есть, а модели нет — мягкая подсказка вместо красного блока */}
               {result && !has3d && (
-                <div style={{ padding:'0 18px 16px', fontSize:'12px', color:'var(--muted)' }}>
+                <div style={{ padding:'0 var(--sp-4) var(--sp-4)', fontSize:'var(--fs-xs)', color:'var(--muted)' }}>
                   3D-модель для этого анализа недоступна.
                 </div>
               )}
@@ -777,7 +780,7 @@ export default function Analyze() {
               {/* Диагностика без 3D — блок всё равно нужен: он единственный
                   показывает, ИЗ ЧЕГО посчитан объём и где модель достраивали. */}
               {diag && !has3d && (
-                <div style={{ padding:'0 18px 18px' }}>
+                <div style={{ padding:'0 var(--sp-4) var(--sp-4)' }}>
                   <DiagnosticsBlock diag={diag} />
                 </div>
               )}
