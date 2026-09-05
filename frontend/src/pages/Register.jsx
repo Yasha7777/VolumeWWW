@@ -157,7 +157,7 @@ export default function Register() {
                 width: 18, height: 18, minWidth: 18, minHeight: 18,
                 margin: '3px 0 0 0', padding: 0, 
                 cursor: loading ? 'default' : 'pointer',
-                accentColor: '#243816'
+                accentColor: 'var(--green)'
               }}
             />
             <label htmlFor="consent" style={{ 
@@ -165,7 +165,9 @@ export default function Register() {
               cursor: loading ? 'default' : 'pointer', fontWeight: 'normal', textTransform: 'none' 
             }}>
               Я даю согласие на обработку моих персональных данных в соответствии с{' '}
-              <Link to="/privacy" target="_blank" style={{ color: '#243816', textDecoration: 'underline', fontWeight: '500' }}>
+              {/* было '#243816' хардкодом — тёмно-зелёное на тёмном фоне
+                  в dark-теме читалось как чёрное на чёрном */}
+              <Link to="/privacy" target="_blank" style={{ color: 'var(--text)', textDecoration: 'underline', fontWeight: '500' }}>
                 Политикой конфиденциальности
               </Link>
             </label>

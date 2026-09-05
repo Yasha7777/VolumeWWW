@@ -17,7 +17,7 @@
   --kb-lake-top: #a6b6ae;
   --kb-lake-bot: #bcc4b2;
   --kb-ripple:   #ffffff;
-  --kb-ring-track: rgba(30, 61, 18, .10);
+  --kb-ring-track: color-mix(in srgb, var(--green-ink) 10%, transparent);
   --kb-gold-light: #e6cf8a;
 
   max-width: 1180px;
@@ -123,7 +123,7 @@
 .kb-loc {
   display: inline-flex; align-items: center; gap: var(--sp-1-5);
   margin-top: var(--sp-4); padding: var(--sp-1-5) var(--sp-4);
-  background: rgba(30, 61, 18, .07); color: var(--green);
+  background: color-mix(in srgb, var(--green-ink) 7.000000000000001%, transparent); color: var(--green-ink);
   border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: 500;
 }
 
@@ -136,7 +136,7 @@
 .kb-stat:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
 .kb-stat-label { display: block; font-size: var(--fs-2xs); font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .kb-stat-value { display: block; margin-top: var(--sp-2); font-size: var(--fs-4xl); font-weight: 600; line-height: 1; color: var(--text); }
-.kb-stat-ok { color: #1A6B3C; }
+.kb-stat-ok { color: var(--ok); }
 
 /* ================= ПРАВАЯ ФОРМА ================= */
 .kb-form-card {
@@ -147,7 +147,7 @@
 }
 
 .kb-petro { position: absolute; right: -10px; bottom: -14px; width: 180px; height: 180px; color: var(--text); opacity: .035; pointer-events: none; }
-.kb-sprig { position: absolute; top: 22px; right: 24px; width: 30px; height: 48px; color: var(--green); opacity: .26; pointer-events: none; }
+.kb-sprig { position: absolute; top: 22px; right: 24px; width: 30px; height: 48px; color: var(--green-ink); opacity: .26; pointer-events: none; }
 
 /* шапка — аккуратная плашка с золотым акцентом (как у .result-card);
    заголовок и кольцо центрируются по вертикали */
@@ -167,7 +167,7 @@
 }
 .kb-completeness { position: relative; flex-shrink: 0; width: 44px; height: 44px; }
 .kb-ring-fg { transition: stroke-dashoffset .6s var(--ease); }
-.kb-completeness-pct { position: absolute; inset: 0; display: grid; place-items: center; font-size: var(--fs-2xs); font-weight: 600; color: var(--green); }
+.kb-completeness-pct { position: absolute; inset: 0; display: grid; place-items: center; font-size: var(--fs-2xs); font-weight: 600; color: var(--green-ink); }
 
 .kb-fields { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-5); margin-bottom: var(--sp-6); }
 .kb-field { display: flex; flex-direction: column; }
@@ -184,7 +184,7 @@
 .kb-field input::placeholder,
 .kb-email-row input::placeholder { color: var(--muted); }
 .kb-field input:focus,
-.kb-email-row input:focus { border-color: var(--green); box-shadow: var(--control-focus); }
+.kb-email-row input:focus { border-color: var(--green-ink); box-shadow: var(--control-focus); }
 
 .kb-email-row { display: flex; gap: var(--sp-2-5); margin-bottom: var(--sp-2-5); animation: fadeIn .22s var(--ease); }
 .kb-email-row input { flex: 1; }
@@ -195,7 +195,7 @@
   color: var(--muted); font-size: var(--fs-sm); cursor: pointer;
   transition: color .18s var(--ease), border-color .18s var(--ease), background .18s var(--ease);
 }
-.kb-icon-btn:hover { color: var(--red); border-color: #F1CFCF; background: var(--red-bg); }
+.kb-icon-btn:hover { color: var(--red); border-color: var(--err-border); background: var(--red-bg); }
 
 .kb-add-email {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2); width: 100%;
@@ -204,7 +204,7 @@
   font-family: var(--sans); font-size: var(--fs-md); font-weight: 500; cursor: pointer;
   transition: border-color .18s var(--ease), color .18s var(--ease), background .18s var(--ease);
 }
-.kb-add-email:hover { border-color: var(--green); color: var(--green); background: rgba(30,61,18,.04); }
+.kb-add-email:hover { border-color: var(--green-ink); color: var(--green-ink); background: color-mix(in srgb, var(--green-ink) 4%, transparent); }
 .kb-add-plus { font-size: var(--fs-xl); line-height: 1; }
 .kb-hint { margin: var(--sp-3) 0 0; font-size: var(--fs-xs); color: var(--muted); }
 

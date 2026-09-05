@@ -1,15 +1,22 @@
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Onest:wght@300;400;500;600;700&display=swap');
 
 /* ════════════════════════════════════════════════════════════════════════
-   ЛЕНДИНГ · мир основного сайта (кремовый/лес/охра), поднятый до премиума:
-   • ХИРО = эталонный тёплый кадр стройплощадки (landing/hero.webp) как полноширинная
-     лента, растворяющаяся в изумруд-золото-крем градиент; локальный скрим (нав+текст),
-     grid-полосы, типографика на container-queries (не переполняется по вертикали);
-   • усиленное liquid-glass по всей странице (карточки, нав, кино-панель),
-     под стеклом — дрейфующие цветные орбы, чтобы стекло «работало»;
-   • секция «Движок» держит scroll-привязанную 3D-сцену (MaterialShowcase),
-     она просвечивает сквозь стеклянную панель.
-   Cormorant (дисплей) + Onest (текст/UI). Всё под .kb-landing.
+   ЛЕНДИНГ · ТЁМНЫЙ мир (уголь / лес / золото), Cormorant + Onest, всё под
+   .kb-landing.
+
+   ВНИМАНИЕ ПРИ ПРАВКАХ. Страница живёт на #0E140A. Это не «кремовый сайт
+   с тёмным героем» — шапка файла раньше так и утверждала, и на этом можно
+   было потерять день: миграция в тёмный мир делалась в три этапа, из них
+   долго был сделан только первый (палитра + видео-хиро, 2026-08-06), а
+   стекло, карточки и швы оставались от кремовой версии. Итог был буквально
+   кремовый текст на белом стекле — 1.3:1.
+   Поэтому: НЕ вводи сюда светлые заливки (rgba(255,255,255,.3+)) и НЕ крась
+   текст в var(--green) — зелёный здесь только ЗАЛИВКА кнопки.
+
+   • ХИРО = fullscreen-видео, низ растворяется в фон четырьмя слоями;
+   • стекло .kb-l-glass — тёмное и еле заметное, работает за счёт орбов под ним;
+   • секция «Движок» держит lazy 3D-сцену (EngineCloudImpl), она просвечивает
+     сквозь стеклянную панель.
    ════════════════════════════════════════════════════════════════════════ */
 
 .kb-landing {
@@ -17,8 +24,12 @@
   --bg-2:      #121A0C;   /* секция «Движок» — чуть светлее, для ритма */
   --foot:      #0A0F07;   /* подвал */
   --card:      rgba(255,255,255,.05);
-  --green:     #1E3D12;   /* зелёный (кнопки) */
-  --green-h:   #274c1d;   /* hover: на тёмном осветляем, не темним */
+  /* ЗАЛИВКА кнопок. Была #1E3D12 из кремового мира: на фоне #0E140A это
+     1.55:1 — кнопка не читалась как форма, видна была только подпись.
+     Поднята до 3.08:1 (минимум для non-text UI по WCAG 1.4.11), кремовая
+     подпись на ней даёт 5.4:1. Тон остался лесным. */
+  --green:     #3A6E26;
+  --green-h:   #468030;   /* hover: на тёмном осветляем, не темним */
   --gold:      #e7b552;   /* золотой акцент */
   --gold-deep: #c98a24;   /* глубокая охра — вторичное золото */
   --text:      #F1EDE1;   /* основной текст (заголовки) */
@@ -43,31 +54,41 @@
 .kb-landing > section, .kb-landing > .kb-l-foot { position: relative; z-index: 1; }
 
 /* ─── УНИВЕРСАЛЬНОЕ СТЕКЛО (матовое / soft-glass 2026) ─────────────────────────
-   Полупрозрачная матовая заливка (низкая) + сильный blur/saturate → фростит то, что
-   под ним (орбы, кадр, сцена). Держится за счёт тонкой светлой рамки, мягкой
-   внутренней подсветки и лёгкой тени. По диагонали редко проходит световой блик
-   (::after, kbGlint). isolation:isolate → блик сидит над фростом, но под контентом. */
+   ТЁМНОЕ. Это не вкусовщина, а следствие: страница живёт на #0E140A, а стекло
+   до этого оставалось от кремового мира — заливка rgba(255,255,255,.56→.30) и
+   белый кант. Поверх неё лежал кремовый var(--text) и тёмно-зелёный var(--green),
+   то есть контраст 1.3:1 — кремовые буквы на белом. Разъезжались ВСЕ стеклянные
+   блоки сразу: метрики бенто, «Конвейер», «Экспорт», панель Движка, три карточки
+   Процесса, кино-панель. (Этап 3 тёмной миграции от 2026-08-06, см. PROGRESS.)
+
+   Теперь плёнка светлая, но ЕЛЕ ЗАМЕТНАЯ (.09→.04): она подсвечивает тёмный фон,
+   а не заливает его. За счёт этого кремовый --text даёт на стекле ~13:1, а
+   --muted ~7:1 — то есть текстовые токены менять уже не нужно, они заработали
+   сами. Не поднимай альфу «чтобы стекло было виднее»: на .2+ карточка снова
+   сереет и текст теряет контраст. Если стекло кажется невыразительным — это
+   орбы под ним слишком слабые, крути их, а не заливку. */
 .kb-l-glass {
   position: relative; isolation: isolate; overflow: hidden;
-  background: linear-gradient(150deg, rgba(255,255,255,.56), rgba(255,255,255,.30));
-  -webkit-backdrop-filter: blur(22px) saturate(1.5);
-          backdrop-filter: blur(22px) saturate(1.5);
-  border: 1px solid rgba(255,255,255,.68);
+  background: linear-gradient(150deg, rgba(255,255,255,.09), rgba(255,255,255,.04));
+  -webkit-backdrop-filter: blur(22px) saturate(1.4);
+          backdrop-filter: blur(22px) saturate(1.4);
+  border: 1px solid rgba(255,255,255,.13);
   box-shadow:
-    0 24px 56px rgba(26,29,20,.14),
-    0 4px 14px rgba(26,29,20,.07),
-    0 1px 2px rgba(26,29,20,.05),
-    inset 0 1px 0 rgba(255,255,255,.9),
-    inset 0 0 44px rgba(255,255,255,.22);
+    0 24px 56px rgba(0,0,0,.42),
+    0 4px 14px rgba(0,0,0,.26),
+    0 1px 2px rgba(0,0,0,.20),
+    inset 0 1px 0 rgba(255,255,255,.16),
+    inset 0 0 44px rgba(255,255,255,.03);
   border-radius: 22px;
 }
-/* редкий диагональный блик — движение занимает ~первые 12% цикла, дальше покой */
+/* редкий диагональный блик — движение занимает ~первые 12% цикла, дальше покой.
+   На тёмном фоне белый .42 читался как вспышка фонарём: приглушён до .10. */
 .kb-l-glass::after {
   content: ''; position: absolute; inset: -1px; z-index: -1; pointer-events: none;
   border-radius: inherit;
   background: linear-gradient(114deg,
     transparent 24%, rgba(255,255,255,.0) 38%,
-    rgba(255,255,255,.42) 48%, rgba(255,255,255,.0) 60%, transparent 76%);
+    rgba(255,255,255,.10) 48%, rgba(255,255,255,.0) 60%, transparent 76%);
   transform: translateX(-130%);
   animation: kbGlint 11s ease-in-out infinite;
 }
@@ -83,8 +104,11 @@
 /* ─── ЦВЕТНЫЕ ОРБЫ ПОД СТЕКЛОМ ────────────────────────────────────────────── */
 .kb-l-orb { position: absolute; z-index: 0; border-radius: 50%; pointer-events: none; filter: blur(46px);
   animation: kbDrift 22s ease-in-out infinite; }
-.kb-l-orb--green { background: radial-gradient(circle, rgba(30,61,18,.15), transparent 66%); }
-.kb-l-orb--gold  { background: radial-gradient(circle, rgba(184,122,24,.17), transparent 66%); }
+/* На тёмном фоне прежние .15/.17 не читались вовсе — стеклу нечего было
+   преломлять, и оно выглядело серой плёнкой. Зелёный подняли меньше:
+   он уходит в фон, золото — источник тепла. */
+.kb-l-orb--green { background: radial-gradient(circle, rgba(74,132,44,.26), transparent 66%); }
+.kb-l-orb--gold  { background: radial-gradient(circle, rgba(231,181,82,.22), transparent 66%); }
 @keyframes kbDrift { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(3%,-4%) scale(1.08); } }
 @keyframes kbFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
 
@@ -114,10 +138,12 @@
   background-image: linear-gradient(100deg,
     #b07d1e 0%, #e7b552 26%, #fff3d2 42%, #e7b552 58%, #b07d1e 84%);
 }
-/* светлый (кремовый) фон → золото-в-золоте, без белого стопа → всегда читаемо */
+/* Раньше здесь был отдельный «приглушённый» градиент — он делался под КРЕМОВЫЙ
+   фон, которого на странице больше нет. На тёмном тусклая охра гасила заголовки
+   секций, поэтому теперь они на том же ярком градиенте, что герой и финал. */
 .kb-l-h2 em, .kb-l-cine__title em {
   background-image: linear-gradient(100deg,
-    var(--gold-deep) 0%, #cf9327 30%, #eabb59 46%, #cf9327 62%, var(--gold-deep) 88%);
+    #b07d1e 0%, #e7b552 26%, #fff3d2 42%, #e7b552 58%, #b07d1e 84%);
 }
 @keyframes kbShimmer {
   0%, 100% { background-position: 118% 50%; }
@@ -184,10 +210,13 @@
 .kb-l-btn--hero:hover { background: var(--green-h); transform: translateY(-1px); box-shadow: 0 16px 42px rgba(30,61,18,.32); }
 .kb-l-btn--hero svg { transition: transform .25s var(--ease); }
 .kb-l-btn--hero:hover svg { transform: translateX(4px); }
-.kb-l-btn--ghost { color: var(--text); border-color: var(--dash); background: rgba(255,255,255,.5); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
-.kb-l-btn--ghost:hover { border-color: var(--green); color: var(--green); }
+/* Базовое правило было миной: background rgba(255,255,255,.5) + color var(--text)
+   (кремовый) = невидимая кнопка. Не рвалось только потому, что ОБА живых места
+   (герой и финал) переопределяли её у себя. Теперь база сама тёмная. */
+.kb-l-btn--ghost { color: var(--text); border-color: var(--dash); background: rgba(255,255,255,.06); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.kb-l-btn--ghost:hover { border-color: rgba(255,255,255,.42); color: #fff; background: rgba(255,255,255,.12); }
 .kb-l-link { color: var(--muted); text-decoration: none; font-size: var(--fs-md); font-weight: 500; transition: color .2s var(--ease); }
-.kb-l-link:hover { color: var(--green); }
+.kb-l-link:hover { color: var(--gold); }
 .kb-landing a:focus-visible, .kb-landing button:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 4px; }
 
 /* ─── МАРКА ─────────────────────────────────────────────────────────────────── */
@@ -366,8 +395,10 @@
 #proc::before, .kb-l-cine::before, .kb-l-final::before {
   content: ''; position: absolute; left: -12%; right: -12%; top: -120px; height: 300px;
   z-index: 0; pointer-events: none; transform: rotate(-1.5deg); filter: blur(26px);
+  /* было rgba(255,251,242,.6) — на тёмном это широкий белёсый мазок, а не
+     мягкий шов. Тёплое золото на низкой альфе даёт тот же «луч», не пачкая фон. */
   background: linear-gradient(102deg,
-    rgba(255,255,255,0) 6%, rgba(255,251,242,.6) 40%, rgba(224,203,150,.18) 58%, rgba(255,255,255,0) 82%);
+    rgba(255,255,255,0) 6%, rgba(231,181,82,.13) 40%, rgba(231,181,82,.06) 58%, rgba(255,255,255,0) 82%);
   -webkit-mask-image: linear-gradient(180deg, transparent, #000 44%, transparent);
           mask-image: linear-gradient(180deg, transparent, #000 44%, transparent);
 }
@@ -392,7 +423,11 @@
 
 .kb-l-w { min-width: 0; padding: var(--sp-5) var(--sp-6); display: flex; flex-direction: column; border-radius: 22px; }
 .kb-l-w__label { font-size: var(--fs-xs); font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
-.kb-l-w__num { font-family: var(--serif); font-weight: 700; letter-spacing: -.02em; color: var(--green); line-height: 1; margin-top: auto; font-size: clamp(34px, 4vw, 52px); }
+/* Было color:var(--green) — тёмно-зелёный #1E3D12 на тёмной карточке.
+   Цифры — это ДАННЫЕ, поэтому кремовые и максимально контрастные (~13:1);
+   золото оставлено акцентам (заголовки, единицы, конвейер), иначе на экране
+   становится четыре одинаково громких золотых пятна. */
+.kb-l-w__num { font-family: var(--serif); font-weight: 700; letter-spacing: -.02em; color: var(--text); line-height: 1; margin-top: auto; font-size: clamp(34px, 4vw, 52px); }
 .kb-l-w__num .kb-l-unit { font-size: 0.42em; color: var(--muted); margin-left: var(--sp-1-5); font-family: var(--sans); font-weight: 500; }
 .kb-l-w__note { margin-top: var(--sp-2); font-size: var(--fs-xs); color: var(--muted); }
 
@@ -422,18 +457,20 @@
 .kb-l-mini { display: flex; align-items: center; gap: var(--sp-1-5); margin-top: auto; }
 .kb-l-mini__step { flex: 1; min-width: 0; text-align: center; }
 .kb-l-mini__bar { height: 6px; border-radius: 3px; background: var(--dash); position: relative; overflow: hidden; }
-.kb-l-mini__bar i { position: absolute; inset: 0; background: var(--green); transform-origin: left; transition: transform .9s var(--ease); }
+/* заливка дорожки: var(--green) тонул в тёмном треке → золото, оно же
+   и есть «прибор работает» */
+.kb-l-mini__bar i { position: absolute; inset: 0; background: var(--gold); transform-origin: left; transition: transform .9s var(--ease); }
 /* бегущий по дорожке блик = «конвейер работает»; каскад по шагам ниже даёт
    ощущение потока Снимки→Облако→Меш→Объём */
 .kb-l-mini__bar::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 34%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.38), transparent);
   transform: translateX(-100%); animation: kbFlow 2.8s ease-in-out infinite; }
 .kb-l-mini__step:nth-child(2) .kb-l-mini__bar::after { animation-delay: .3s; }
 .kb-l-mini__step:nth-child(3) .kb-l-mini__bar::after { animation-delay: .6s; }
 .kb-l-mini__step:nth-child(4) .kb-l-mini__bar::after { animation-delay: .9s; }
 .kb-l-mini__t { font-size: var(--fs-2xs); color: var(--muted); margin-top: var(--sp-1-5); display: block; }
 .kb-l-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: auto; }
-.kb-l-chips span { font-size: var(--fs-xs); font-weight: 500; color: var(--green); background: rgba(30,61,18,.07); border: 1px solid rgba(30,61,18,.12); padding: var(--sp-1) var(--sp-3); border-radius: 999px; }
+.kb-l-chips span { font-size: var(--fs-xs); font-weight: 500; color: var(--text); background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14); padding: var(--sp-1) var(--sp-3); border-radius: 999px; }
 
 /* ─── СЕКЦИЯ «ДВИЖОК» (стекло + сцена сквозь + флора) ──────────────────────── */
 .kb-l-engine { position: relative; overflow: hidden; scroll-margin-top: var(--nav-h);
@@ -457,27 +494,33 @@
 @keyframes kbHeroFadeIn { to { opacity: 1; } }
 /* прогресс-лоадер моделей */
 .kb-l3d-loader { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 4;
-  display: flex; align-items: center; gap: var(--sp-3); color: rgba(30,44,20,.7); font-size: var(--fs-xs); letter-spacing: .04em; }
-.kb-l3d-loader__bar { width: 160px; height: 3px; border-radius: 3px; background: rgba(30,44,20,.14); overflow: hidden; }
+  display: flex; align-items: center; gap: var(--sp-3); color: var(--muted); font-size: var(--fs-xs); letter-spacing: .04em; }
+/* было rgba(30,44,20,.7) на дорожке rgba(30,44,20,.14) — тёмное по тёмному,
+   то есть прогресс загрузки моделей не виден ровно тогда, когда нужен */
+.kb-l3d-loader__bar { width: 160px; height: 3px; border-radius: 3px; background: rgba(255,255,255,.14); overflow: hidden; }
 .kb-l3d-loader__bar i { display: block; height: 100%; background: var(--gold); transition: width .25s ease; }
 
 /* переключатель реальных реконструкций (грузятся по клику) */
 .kb-l-recon { margin-top: var(--sp-5); display: flex; align-items: center; gap: var(--sp-3-5); flex-wrap: wrap; }
 .kb-l-recon__cap { font-size: var(--fs-2xs); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+/* было rgba(255,255,255,.55) — белая пилюля, а цифры на ней var(--muted),
+   то есть кремовое на белом */
 .kb-l-recon__tabs { display: inline-flex; gap: var(--sp-1-5); padding: var(--sp-1); border: 1px solid var(--border);
-  border-radius: 999px; background: rgba(255,255,255,.55); backdrop-filter: blur(6px); }
+  border-radius: 999px; background: rgba(255,255,255,.06); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
 .kb-l-recon__tab { width: 40px; height: 30px; border: none; border-radius: 999px; cursor: pointer;
   font-family: var(--serif); font-style: italic; font-size: var(--fs-lg); letter-spacing: .02em;
   color: var(--muted); background: transparent; transition: color .2s var(--ease), background .2s var(--ease); }
-.kb-l-recon__tab:hover { color: var(--green); }
-.kb-l-recon__tab.is-on { color: #fff; background: var(--green);
-  box-shadow: 0 4px 14px -6px rgba(30,61,18,.6); }
+.kb-l-recon__tab:hover { color: var(--text); }
+.kb-l-recon__tab.is-on { color: #17200F; background: var(--gold);
+  box-shadow: 0 4px 14px -6px rgba(231,181,82,.55); }
 
 /* ─── ПРОЦЕСС ──────────────────────────────────────────────────────────────── */
 .kb-l-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--sp-4); }
 .kb-l-step { padding: var(--sp-6) var(--sp-6) var(--sp-7); display: flex; flex-direction: column; }
 .kb-l-step__k { font-family: var(--serif); font-style: italic; font-size: var(--fs-xl); color: var(--gold-deep); }
-.kb-l-step__glyph { width: 76px; height: 54px; margin: var(--sp-4) 0 auto; color: var(--green); }
+/* контурный лайн-арт: var(--green) на тёмном стекле не читался; охра
+   даёт 5.3:1 и перекликается с золотым «Шаг N» над ним */
+.kb-l-step__glyph { width: 76px; height: 54px; margin: var(--sp-4) 0 auto; color: var(--gold-deep); }
 .kb-l-step__t { font-family: var(--serif); font-weight: 600; font-size: var(--fs-3xl); color: var(--text); margin-top: var(--sp-4); }
 .kb-l-step__d { margin-top: var(--sp-2); font-size: var(--fs-md); line-height: 1.56; color: var(--muted); }
 
@@ -487,8 +530,11 @@
 /* ─── КИНО-МОМЕНТ (текст в стеклянной панели) ──────────────────────────────── */
 .kb-l-cine { position: relative; min-height: 84svh; overflow: hidden; display: grid; place-items: center; text-align: center; background: var(--bg); }
 .kb-l-cine__img { position: absolute; inset: -12%; z-index: 0; background: url('/landing/build-still.webp') center/cover no-repeat; will-change: transform; }
+/* Вуаль была КРЕМОВОЙ (rgba(244,240,232,…)): она высветляла кадр, а поверх
+   лежала белая стеклянная панель с кремовым заголовком — белое на белом.
+   Теперь вуаль затемняющая, кадр уходит в тон страницы. */
 .kb-l-cine__veil { position: absolute; inset: 0; z-index: 1;
-  background: radial-gradient(90% 82% at 50% 50%, rgba(244,240,232,.28), rgba(244,240,232,.6) 74%),
+  background: radial-gradient(90% 82% at 50% 50%, rgba(14,20,10,.40), rgba(14,20,10,.80) 74%),
     linear-gradient(180deg, var(--bg) 0%, transparent 18%, transparent 82%, var(--bg) 100%); }
 .kb-l-cine__panel { position: relative; z-index: 2; max-width: 720px; margin: 0 var(--sp-5); padding: clamp(30px, 5vw, 52px) clamp(24px, 5vw, 56px); }
 .kb-l-cine__title { font-family: var(--serif); font-weight: 700; font-size: clamp(34px, 5.5vw, 72px); line-height: 1.03; letter-spacing: -.02em; color: var(--text); }
@@ -516,7 +562,7 @@
 .kb-l-foot__top { max-width: var(--maxw); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-5); flex-wrap: wrap; padding-bottom: var(--sp-6); border-bottom: 1px solid var(--border); }
 .kb-l-foot__links { display: flex; align-items: center; gap: var(--sp-5); flex-wrap: wrap; }
 .kb-l-foot__links a, .kb-l-foot__links button { font-size: var(--fs-md); color: var(--muted); text-decoration: none; background: none; border: none; cursor: pointer; padding: 0; font-family: var(--sans); transition: color .2s var(--ease); }
-.kb-l-foot__links a:hover, .kb-l-foot__links button:hover { color: var(--gold-deep); }
+.kb-l-foot__links a:hover, .kb-l-foot__links button:hover { color: var(--gold); }
 .kb-l-foot__bottom { max-width: var(--maxw); margin: var(--sp-5) auto 0; display: flex; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; font-size: var(--fs-xs); color: var(--stone); }
 
 /* ═══════════════════════════════ АДАПТИВ ══════════════════════════════════ */
