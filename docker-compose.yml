@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
 
   backend:
@@ -12,11 +10,12 @@ services:
       - app
 
   frontend:
+    # build-args VITE_SUPABASE_* убраны: образ больше не собирает фронт, а
+    # раздаёт готовый dist/ из git (см. frontend/Dockerfile). Ключи бакаются
+    # на маке из frontend/.env.local. Оставленные здесь args Docker всё равно
+    # не смог бы применить и ругался бы «build-args were not consumed».
     build:
       context: ./frontend
-      args:
-        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
-        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
     restart: unless-stopped
     ports:
       - "80:80"

@@ -1,25 +1,26 @@
-# ── Stage 1: build ───────────────────────────────────────────
-FROM node:20-alpine AS builder
-
-WORKDIR /app
-
-COPY package.json package-lock.json* ./
-RUN npm ci
-
-COPY . .
-
-# Vite бакает env-переменные на этапе сборки
-ARG VITE_SUPABASE_URL
-ARG VITE_SUPABASE_ANON_KEY
-ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
-ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
-
-RUN npm run build
-
-# ── Stage 2: serve ───────────────────────────────────────────
+# ── Фронт: образ ТОЛЬКО РАЗДАЁТ готовую сборку ───────────────────────────────
+# Node и npm внутри контейнера больше НЕТ — намеренно. Раньше здесь стоял
+# двухстадийный билд (node:20-alpine → npm ci → npm run build → nginx), и
+# `npm ci` на сервере занимал 170-300 с: 360 пакетов, включая three.js и
+# @react-pdf. Плюс это противоречило принятой схеме деплоя — «разработка на
+# маке → git», npm на сервере не ставим.
+#
+# Теперь dist/ собирается НА МАКЕ и коммитится в git (он и раньше коммитился,
+# просто лежал мёртвым грузом: .dockerignore его исключал, и сервер собирал
+# всё заново). Собирает и проверяет его ./git_auto_commit.sh в корне репозитория
+# — там же стоит защита от коммита бандла с плейсхолдерами.
+#
+# ВАЖНО ПРО КЛЮЧИ. Vite бакает VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY в
+# бандл на этапе сборки. Раньше они приезжали build-аргументами из серверного
+# .env, теперь берутся из frontend/.env.local НА МАКЕ. Поменялся проект
+# Supabase → правь .env.local и пересобирай локально; серверный .env на фронт
+# больше не влияет (у бэкенда свои SUPABASE_* — их это не касается).
+#
+# ЕСЛИ НУЖНО ВЕРНУТЬ сборку на сервере — двухстадийный вариант лежит в истории
+# git до этого коммита, и не забудь вернуть `dist` в .dockerignore.
 FROM nginx:1.27-alpine
 
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY dist/ /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
