@@ -33,7 +33,7 @@ export const RECONSTRUCTIONS = [
 const REDUCE = typeof window !== 'undefined'
   && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 const MOBILE = typeof window !== 'undefined' && window.innerWidth < 700
-const BG = '#F4F0E8'            // кремовый фон лендинга — в него уходит туман
+const BG = '#0E140A'            // фон лендинга (тёмный) — в него уходит туман
 const TARGET_R = 3.0           // нормируем радиус облака → камера фиксирована
 
 // Одно облако: выравниваем «вверх», центрируем, нормируем масштаб, плавно

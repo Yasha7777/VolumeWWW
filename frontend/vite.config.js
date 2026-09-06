@@ -47,7 +47,31 @@ export default defineConfig({
       resolveDependencies: (url, deps) => deps.filter(d => !/vendor-(three|pdf)/.test(d)),
     },
     rollupOptions: { output: { manualChunks(id) {
+      // Хелпер предзагрузки Vite (__vitePreload) — ВИРТУАЛЬНЫЙ модуль, слова
+      // node_modules в его id нет, поэтому проверка обязана стоять ДО общего
+      // guard'а ниже. Без неё rollup клал хелпер в vendor-three, а он нужен
+      // entry для КАЖДОГО динамического импорта → entry статически тянул
+      // three на всех страницах. Кладём его к react: тот грузится всегда.
+      if (id.includes('preload-helper')) return 'vendor-react'
       if (!id.includes('node_modules')) return undefined
+      // `buffer` — общая зависимость polyfills.js и @react-pdf. Без явного
+      // правила rollup клал её в vendor-pdf, а polyfills.js — ПЕРВЫЙ импорт
+      // main.jsx, поэтому entry статически тянул 1.45 МБ pdf на каждой
+      // странице. Свой крошечный чанк разрывает эту связь.
+      if (/[\\/]node_modules[\\/](buffer|base64-js|ieee754)[\\/]/.test(id)) return 'vendor-polyfill'
+      // ─────────────────────────────────────────────────────────────────────
+      // React ВЫДЕЛЕН ЯВНО И ПЕРВЫМ — это не косметика, а починка бага.
+      // Раньше правила для react здесь не было, и rollup был волен положить
+      // его куда угодно. Он клал его в vendor-three (тот требует react первым),
+      // ВМЕСТЕ с vite-хелпером предзагрузки. В результате entry-чанк получал
+      // СТАТИЧЕСКИЙ `import {r,j,_} from "./vendor-three-*.js"`, и 1.12 МБ
+      // three грузились на КАЖДОЙ странице — включая публичный лендинг и
+      // форму входа, которым три-дэ не нужно вовсе (замерено в проде:
+      // vendor-three 1119 kB + vendor-pdf 1455 kB на лендинге).
+      // Приоритет строк здесь ЗНАЧИМ: react должен «застолбить» себя раньше,
+      // чем его засосёт первый принудительный чанк.
+      // ─────────────────────────────────────────────────────────────────────
+      if (/[\\/]node_modules[\\/](react-router-dom|react-router|react-dom|scheduler|react)[\\/]/.test(id)) return 'vendor-react'
       if (id.includes('@react-pdf')) return 'vendor-pdf'
       if (id.includes('@react-three') || id.includes('/three/') || id.includes('three-stdlib') || id.includes('three-mesh-bvh') || id.includes('troika')) return 'vendor-three'
       if (id.includes('@supabase')) return 'vendor-supabase'

@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import PrivateRoute from './components/PrivateRoute'
+import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
 // ── Login грузим статически: это входная точка и LCP-страница,
 //    она должна отрисоваться из начального бандла без лишнего запроса ──
@@ -31,8 +32,12 @@ const PageLoader = () => (
   </div>
 )
 
+// Корневой ErrorBoundary: ни один компонент не должен уметь погасить весь сайт
+// в белый экран. Ловит и падение рендера (сцена лендинга при лежащем storage),
+// и 404 ленивого чанка после деплоя в уже открытую вкладку.
 function App() {
   return (
+    <ErrorBoundary name="root">
     <AuthProvider>
       <BrowserRouter>
         {/* .app-shell — общая обёртка всех роутов. Переключатель тем — в шапке (Layout). */}
@@ -69,6 +74,7 @@ function App() {
         </div>
       </BrowserRouter>
     </AuthProvider>
+    </ErrorBoundary>
   )
 }
 

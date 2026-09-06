@@ -11,6 +11,7 @@ import {
   animate,
 } from 'motion/react'
 import { useAuth } from '../context/AuthContext'
+import ErrorBoundary from '../components/ErrorBoundary'
 import '../landing.css'
 
 /*
@@ -327,8 +328,16 @@ function Engine() {
       {/* Реальное облако точек DUSt3R (lazy) — просвечивает сквозь стекло. Монтируется
           по близости (см. show3d) → до подъезда ни байта three/PLY; грузится только
           выбранная реконструкция (index=recon). */}
+      {/* fallback={null} — сцена ДЕКОРАТИВНАЯ: если облако не пришло (лежит
+          storage, 502, битый PLY), секция просто остаётся без фона. Раньше
+          boundary здесь не было, и useLoader бросал исключение прямо в рендере
+          → падало ВСЁ дерево, публичный лендинг становился белым. */}
       <div className="kb-l-engine__scene" aria-hidden="true">
-        {show3d && <Suspense fallback={null}><EngineScene index={recon} /></Suspense>}
+        {show3d && (
+          <ErrorBoundary name="engine-scene" fallback={null}>
+            <Suspense fallback={null}><EngineScene index={recon} /></Suspense>
+          </ErrorBoundary>
+        )}
       </div>
       <img className="kb-l-engine__flora kb-l-engine__flora--l" src="/decor/flora-left.png" alt="" aria-hidden="true" />
       <img className="kb-l-engine__flora kb-l-engine__flora--r" src="/decor/flora-right.png" alt="" aria-hidden="true" />
