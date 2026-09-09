@@ -1,0 +1,430 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400;1,500&family=Onest:wght@400;500;600&display=swap');
+
+/* ════════════════════════════════════════════════════════════════════════
+   404 · «УТРАЧЕННЫЙ КАДР». Всё под .kb-404.
+
+   МИР. Тот же тёмный мир, что у лендинга (#0E140A, Cormorant + Onest,
+   золото #e7b552, лесной #3A6E26) — страница обязана читаться как часть
+   сайта, а не как чужая вставка. Предыдущая версия жила на своей палитре
+   (#1a1612) и своих шрифтах (Oswald + PT Serif) и выглядела приклеенной.
+
+   СЮЖЕТ (он же оправдание всей «плёночной» фактуры). Страница — это ОДИН
+   кадр 35-мм плёнки из архива: перфорация, краевой код, штамп «сов.
+   секретно». Полосы, зерно и дырки здесь не декор — под ними реальный
+   предмет. Убери сюжет — придётся убрать и фактуру.
+
+   КОНТРАСТ — главная правка. В прежней версии подписи были
+   rgba(200,168,74,.30) на #110f0a, то есть ~1.5:1: текст физически не
+   читался. Теперь вторичное тонируется ОТ фона (кремовый с альфой), а не
+   гасится в охру. Нижний предел альфы для текста — .55 (≈4.8:1). Не
+   опускай «чтобы было деликатнее»: деликатность здесь = размер и
+   трекинг, а не невидимость.
+
+   ДВИЖЕНИЕ (см. skill apple-design). Один авторский момент — приземление
+   штампа с перелётом (импульс есть → перелёт заслужен). Всё остальное
+   либо ОТВЕТ на курсор (наклон плёнки, блик — пружины, прерываемые в
+   любой момент), либо материализация при входе. Здесь НЕТ ни мерцания
+   цифры, ни пульса глаз: и то и другое — медленные петли ~0.2 Гц и
+   резкие скачки яркости, их запрещает раздел про reduced-motion.
+   ════════════════════════════════════════════════════════════════════════ */
+
+.kb-404 {
+  --bg:        #0E140A;
+  --film:      #17190F;   /* тело плёнки — тёплый уголь, светлее фона на 1 ступень */
+  --hole:      #080C05;   /* дырка перфорации = «сквозь плёнку виден стол» */
+  --green:     #3A6E26;
+  --green-h:   #468030;
+  --gold:      #e7b552;
+  --gold-deep: #c98a24;
+  --ink:       #E4695C;   /* красная штемпельная краска, 5.7:1 на фоне */
+  --text:      #F1EDE1;
+  --muted:     rgba(241,237,225,.74);
+  --faint:     rgba(241,237,225,.58);
+  --hair:      rgba(241,237,225,.14);
+  --serif:     'Cormorant Garamond', Georgia, serif;
+  --sans:      'Onest', system-ui, -apple-system, sans-serif;
+  --mono:      ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+  --ease:      cubic-bezier(0.16, 1, 0.3, 1);
+
+  position: relative;
+  min-height: 100dvh;
+  display: flex; flex-direction: column;
+  background: var(--bg); color: var(--text);
+  font-family: var(--sans);
+  /* clip по ОБЕИМ осям: орбы намеренно вылезают за края (bottom: -18vh),
+     и при overflow-x страница получала лишнюю вертикальную прокрутку в
+     пустоту. Прокрутке контента это не мешает — скроллит body. */
+  overflow: clip;
+  -webkit-font-smoothing: antialiased;
+}
+.kb-404 ::selection { background: var(--gold); color: #14180C; }
+
+/* ─── ФОН: два тёплых пятна под сценой + плёночное зерно ───────────────────
+   Зерно — тот же слой, что на лендинге (soft-light 5%): гасит бандинг на
+   длинных градиентах. Оба слоя не кликаются и не влияют на layout. */
+.kb-404__orb {
+  position: absolute; z-index: 0; border-radius: 50%;
+  pointer-events: none; filter: blur(64px);
+}
+.kb-404__orb--gold  { width: 46vw; height: 46vw; max-width: 620px; max-height: 620px;
+  top: -12vh; left: -6vw; background: radial-gradient(circle, rgba(231,181,82,.20), transparent 66%); }
+.kb-404__orb--green { width: 52vw; height: 52vw; max-width: 700px; max-height: 700px;
+  bottom: -18vh; right: -10vw; background: radial-gradient(circle, rgba(74,132,44,.22), transparent 66%); }
+
+.kb-404__grain {
+  position: fixed; inset: 0; z-index: 8; pointer-events: none;
+  opacity: .05; mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+/* Виньетка — не fixed-слой поверх всего (он ловил клики и темнил текст),
+   а мягкое затемнение углов ПОД контентом. */
+.kb-404__vign {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 34%, transparent 38%, rgba(0,0,0,.55) 100%);
+}
+
+/* ─── МАРКА (выход со страницы всегда виден, п. «wayfinding») ─────────────── */
+.kb-404__mark {
+  position: relative; z-index: 3;
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 18px clamp(20px, 5vw, 44px) 0;
+  color: var(--text); text-decoration: none; width: fit-content;
+}
+.kb-404__mark svg { width: 19px; height: 19px; color: var(--gold); flex: none; }
+.kb-404__mark-txt { display: flex; flex-direction: column; line-height: 1.25; }
+.kb-404__mark-txt b {
+  font-family: var(--serif); font-weight: 600; font-size: 18px; letter-spacing: -.01em;
+  transition: color .25s var(--ease);
+}
+.kb-404__mark-txt span { font-size: 11.5px; color: var(--faint); letter-spacing: .04em; }
+.kb-404__mark:hover .kb-404__mark-txt b { color: var(--gold); }
+
+/* ─── СЕТКА ────────────────────────────────────────────────────────────────
+   Плёнка слева, дело справа. Ширины неравные намеренно: кадр — предмет,
+   ради которого страница существует, он ведёт. */
+.kb-404__in {
+  position: relative; z-index: 3;
+  flex: 1;
+  width: 100%; max-width: 1180px; margin: 0 auto;
+  padding: clamp(18px, 3vh, 40px) clamp(20px, 5vw, 44px) clamp(30px, 5vh, 56px);
+  display: grid; gap: clamp(30px, 5vw, 58px);
+  /* minmax(0,…), а не 1fr, И min-width:0 на самом .kb-404__in.
+     Обе строчки лечат один и тот же баг: у грид-трека и у флекс-элемента
+     авто-минимум равен min-content, поэтому колонка отказывалась ужиматься
+     ниже своего содержимого — на 390px вёрстка раскладывалась на ~470px и
+     обрезалась по краю (родитель с overflow: clip). Не убирать. */
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center; align-items: center;
+}
+@media (min-width: 980px) {
+  /* Кадру отдана большая доля: он — предмет страницы. Правой колонке
+     остаётся ~470 px, это ещё внутри комфортной меры для 15 px текста. */
+  .kb-404__in { grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr); }
+}
+
+/* ═══ ЛЕВО: КАТУШКА ═══════════════════════════════════════════════════════ */
+.kb-404__reel { position: relative; min-width: 0; perspective: 1200px; }
+
+/* Полоска плёнки. transform-style: preserve-3d — чтобы штамп реально
+   висел НАД плёнкой (translateZ), а не притворялся тенью. */
+.kb-404__strip {
+  position: relative;
+  transform-style: preserve-3d;
+  will-change: transform;
+  background: linear-gradient(168deg, #1E2114 0%, var(--film) 46%, #10130A 100%);
+  border-radius: 4px;
+  padding: 0;
+  box-shadow:
+    0 34px 70px rgba(0,0,0,.55),
+    0 10px 24px rgba(0,0,0,.38),
+    0 1px 2px rgba(0,0,0,.4),
+    inset 0 1px 0 rgba(255,255,255,.07);
+}
+
+/* Перфорация. Один SVG-тайл с прямоугольником rx=2.5 — точная геометрия,
+   а не «нарисованное похоже»: 8 дырок на кадр, как на настоящей 35-мм. */
+.kb-404__perf {
+  height: 21px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='27' height='21'%3E%3Crect x='4.5' y='5' width='18' height='11' rx='2.5' fill='%23080C05'/%3E%3C/svg%3E");
+  background-repeat: repeat-x;
+  background-position: center;
+  background-size: 27px 21px;
+}
+
+/* ─── КАДР ───────────────────────────────────────────────────────────────── */
+.kb-404__frame {
+  position: relative;
+  aspect-ratio: 1194 / 794;
+  overflow: hidden;
+  background: #0B0F06;
+  border-top: 1px solid rgba(0,0,0,.55);
+  border-bottom: 1px solid rgba(0,0,0,.55);
+}
+/* Обёртка снимка. Она — и слой параллакса, и единственное место с
+   анимируемым filter. Держать filter именно здесь принципиально: любой
+   filter создаёт containing block и ГЛУШИТ backdrop-filter у потомков, а
+   плашка кадра как раз на backdrop-filter. Она лежит СОСЕДОМ этой
+   обёртки, а не внутри — тогда размытие снимка её не задевает. */
+.kb-404__photowrap {
+  position: absolute; inset: 0;
+  will-change: transform, filter;
+}
+.kb-404__photo {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  /* object-position по ЦЕНТРУ, а не center top: снизу в картинку вшито
+     слово «ЧЕРЕМША» — это панчлайн страницы, прежний кроп его срезал. */
+  object-position: center;
+  filter: saturate(.76) contrast(1.07) brightness(.93);
+  will-change: transform;
+}
+/* Тёплая градация: студийный кремовый фон снимка уводится в охру мира,
+   чтобы кадр не светил как чужая вставка. soft-light красит, не мутит. */
+.kb-404__grade--warm {
+  position: absolute; inset: 0; mix-blend-mode: soft-light; pointer-events: none;
+  background: radial-gradient(120% 96% at 50% 24%,
+    rgba(231,181,82,.34), rgba(201,138,36,.16) 52%, rgba(11,16,7,.55) 100%);
+}
+/* Затемнение краёв кадра. Низ держим мягким (.34): под ним белая
+   надпись «ЧЕРЕМША», её нельзя топить. */
+.kb-404__grade--dark {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(8,12,5,.42) 0%, transparent 26%, transparent 68%, rgba(8,12,5,.34) 100%),
+    radial-gradient(110% 82% at 50% 46%, transparent 46%, rgba(8,12,5,.42) 100%);
+}
+/* Блик по кадру идёт ЗА КУРСОРОМ (--gx/--gy пишет пружина из JSX).
+   Это ответ на действие, а не бесконечная петля: стоит курсору замереть —
+   замирает и блик. */
+.kb-404__glare {
+  position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen;
+  background: radial-gradient(46% 60% at var(--gx, 50%) var(--gy, 40%),
+    rgba(255,246,214,.17), rgba(255,246,214,.05) 42%, transparent 72%);
+}
+
+/* Плашка кадра — прозрачный материал ПОВЕРХ снимка (blur + подсветка
+   верхней грани). Живёт сверху: низ кадра занят надписью на самой
+   картинке. */
+.kb-404__plate {
+  position: absolute; top: 12px; left: 12px;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 12px 7px 10px;
+  border-radius: 8px;
+  background: rgba(12,17,7,.52);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+          backdrop-filter: blur(16px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,.16);
+  box-shadow: 0 6px 18px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.14);
+  font-size: 10.5px; font-weight: 600; letter-spacing: .17em; text-transform: uppercase;
+  color: #F6F1E4;
+}
+.kb-404__plate i {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--ink); box-shadow: 0 0 0 3px rgba(228,105,92,.18);
+}
+
+/* Краевой код — единственное законное место моноширинного: это буквально
+   служебная печать по краю плёнки, а не «костюм технаря». */
+.kb-404__edge {
+  /* Правая треть строки ПУСТА намеренно: туда приземляется штамп.
+     Раньше здесь стоял второй span — штамп ложился ровно на него и
+     перечёркивал текст. */
+  padding: 7px 42% 8px 12px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .14em;
+  color: rgba(231,181,82,.66); text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-top: 1px solid rgba(255,255,255,.05);
+}
+
+/* ─── ШТАМП: единственный авторский момент движения ────────────────────────
+   Висит над плёнкой в 3D (translateZ в JSX) и приземляется с перелётом. */
+.kb-404__stamp {
+  position: absolute; right: -6px; bottom: -18px; z-index: 4;
+  padding: 7px 14px 6px;
+  border: 2px solid rgba(228,105,92,.7);
+  border-radius: 3px;
+  color: var(--ink);
+  background: rgba(20,10,9,.34);
+  font-size: 10.5px; font-weight: 600; letter-spacing: .22em; text-transform: uppercase;
+  line-height: 1.5; text-align: center;
+  box-shadow: 0 10px 26px rgba(0,0,0,.42);
+  pointer-events: none;
+}
+.kb-404__stamp b { display: block; font-weight: 600; }
+.kb-404__stamp em { display: block; font-style: normal; font-size: 9px; letter-spacing: .18em; opacity: .82; }
+
+/* ═══ ПРАВО: ДЕЛО ═════════════════════════════════════════════════════════ */
+.kb-404__doc { position: relative; min-width: 0; }
+
+.kb-404__title { margin: 0 0 15px; }
+.kb-404__num {
+  display: block;
+  font-family: var(--serif); font-weight: 600;
+  /* Потолок дисплейного кегля — 6rem (96 px). Цифра здесь единственный
+     дисплейный элемент страницы, но выше потолка она начинает спорить с
+     кадром, а не вести композицию. */
+  font-size: clamp(62px, 8vw, 96px);
+  line-height: .8;
+  /* Трекинг отрицательный и размерный: на 168px глифы иначе рассыпаются.
+     Ниже -0.04em не опускаться. */
+  letter-spacing: -.035em;
+  color: var(--text);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.kb-404__said {
+  display: block; margin-top: 12px;
+  font-family: var(--serif); font-style: italic; font-weight: 500;
+  font-size: clamp(19px, 2.1vw, 25px);
+  line-height: 1.28; letter-spacing: -.008em;
+  color: rgba(241,237,225,.9);
+  text-wrap: balance;
+  max-width: 22ch;
+}
+
+.kb-404__lede {
+  margin: 0 0 18px;
+  font-size: 15px; line-height: 1.7; color: var(--muted);
+  max-width: 48ch;
+}
+.kb-404__lede b { color: var(--gold); font-weight: 500; }
+
+/* Справка. Не карточка-с-иконкой, а лист дела: волосяные линейки,
+   без номеров и буллетов-эмодзи. */
+.kb-404__ref {
+  margin: 0 0 18px;
+  border-top: 1px solid var(--hair);
+}
+.kb-404__ref ul { margin: 0; padding: 0; list-style: none; }
+.kb-404__ref-head {
+  margin: 0; padding: 12px 0 8px;
+  /* .15em, а не .2em: на 455-px колонке заголовок справки с прежним
+     трекингом срывался на вторую строку ради одного «· 1962». */
+  font-size: 10.5px; font-weight: 600; letter-spacing: .15em; text-transform: uppercase;
+  color: rgba(231,181,82,.82);
+}
+.kb-404__ref li {
+  display: grid; grid-template-columns: 14px 1fr; gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid rgba(241,237,225,.07);
+  font-size: 13px; line-height: 1.6; color: var(--muted);
+}
+.kb-404__ref li svg { width: 14px; height: 14px; margin-top: 3px; color: rgba(231,181,82,.55); }
+
+.kb-404__verse {
+  margin: 0 0 20px; padding: 14px 0 0;
+  border-top: 1px solid var(--hair);
+  font-family: var(--serif); font-style: italic; font-weight: 400;
+  font-size: 15px; line-height: 1.8; letter-spacing: .004em;
+  color: var(--muted);
+}
+
+/* ─── ДЕЙСТВИЯ ───────────────────────────────────────────────────────────── */
+.kb-404__acts { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 22px; }
+/* Обёртка под whileTap: нажатие масштабирует ЕЁ, а не ссылку, — сама
+   ссылка остаётся чистой целью для клика и фокуса. */
+.kb-404__act { display: inline-flex; }
+.kb-404__btn {
+  display: inline-flex; align-items: center; gap: 9px;
+  padding: 12px 21px; border-radius: 999px;
+  border: 1px solid transparent;
+  font-family: var(--sans); font-size: 14.5px; font-weight: 500;
+  text-decoration: none; cursor: pointer; white-space: nowrap;
+  transition: background .25s var(--ease), color .25s var(--ease),
+              border-color .25s var(--ease), box-shadow .25s var(--ease);
+}
+.kb-404__btn svg { width: 16px; height: 16px; }
+.kb-404__btn--solid {
+  background: var(--green); color: #F4F0E8;
+  box-shadow: 0 10px 26px rgba(20,42,12,.42), 0 2px 6px rgba(0,0,0,.3);
+}
+.kb-404__btn--solid:hover { background: var(--green-h); box-shadow: 0 14px 34px rgba(20,42,12,.5), 0 2px 6px rgba(0,0,0,.3); }
+.kb-404__btn--ghost {
+  color: var(--text); border-color: rgba(255,255,255,.18); background: rgba(255,255,255,.06);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.kb-404__btn--ghost:hover { border-color: rgba(255,255,255,.42); background: rgba(255,255,255,.12); }
+
+.kb-404 a:focus-visible, .kb-404 button:focus-visible {
+  outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 6px;
+}
+
+/* Реальный адрес, по которому пришли: ошибка обязана называть проблему.
+   Моноширинный здесь оправдан — это данные, а не украшение. */
+.kb-404__case {
+  margin: 0;
+  margin-top: 16px;
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.6;
+  color: var(--faint);
+  word-break: break-all;
+}
+.kb-404__case b { color: rgba(241,237,225,.5); font-weight: 400; }
+
+/* ─── БЕГУЩАЯ СТРОКА ─────────────────────────────────────────────────────── */
+.kb-404__ticker {
+  position: relative; z-index: 3;
+  overflow: hidden; white-space: nowrap;
+  padding: 11px 0;
+  border-top: 1px solid rgba(241,237,225,.09);
+  background: rgba(8,12,5,.5);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+}
+.kb-404__track {
+  display: flex; width: max-content;
+  animation: kb404Tick 46s linear infinite;
+  will-change: transform;
+}
+.kb-404__ticker:hover .kb-404__track { animation-play-state: paused; }
+.kb-404__track span {
+  padding-right: 26px;
+  font-size: 10.5px; font-weight: 500; letter-spacing: .28em; text-transform: uppercase;
+  color: rgba(241,237,225,.56);
+}
+@keyframes kb404Tick { to { transform: translate3d(-50%, 0, 0); } }
+
+/* ─── МОБИЛЬНОЕ ──────────────────────────────────────────────────────────── */
+@media (max-width: 979px) {
+  .kb-404__in { align-content: start; }
+  .kb-404__said { max-width: none; }
+}
+/* На узкой плёнке штамп занимает почти половину строки краевого кода, и
+   при базовом резерве 42% он ложился ровно на «KS-404 … 1962». Поэтому на
+   мобильном штамп мельче, висит дальше за краем, а резерв больше. */
+@media (max-width: 600px) {
+  .kb-404__stamp { right: -10px; bottom: -20px; padding: 6px 11px 5px; font-size: 9.5px; letter-spacing: .18em; }
+  .kb-404__stamp em { font-size: 8px; letter-spacing: .12em; }
+  .kb-404__edge { font-size: 9px; padding-right: 47%; }
+}
+@media (max-width: 420px) {
+  .kb-404__perf { height: 15px; background-size: 20px 15px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='15'%3E%3Crect x='3.5' y='3.5' width='13' height='8' rx='2' fill='%23080C05'/%3E%3C/svg%3E"); }
+  .kb-404__verse { font-size: 15px; }
+}
+
+/* ─── ДОСТУПНОСТЬ ────────────────────────────────────────────────────────────
+   Три независимых сигнала, каждый решает свою задачу (см. apple-design §14).
+   reduced-motion гасит бегущую строку и наклон (сам наклон снимается в JSX),
+   reduced-transparency делает стекло плотным, contrast — почти сплошным. */
+@media (prefers-reduced-motion: reduce) {
+  .kb-404__track { animation: none; }
+  .kb-404__ticker {
+    -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent);
+            mask-image: linear-gradient(90deg, #000 88%, transparent);
+  }
+  .kb-404 * { transition-duration: .01ms !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .kb-404__plate, .kb-404__btn--ghost {
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+    background: #131A0E;
+  }
+  .kb-404__grain { display: none; }
+}
+@media (prefers-contrast: more) {
+  .kb-404 { --muted: rgba(241,237,225,.92); --faint: rgba(241,237,225,.8); --hair: rgba(241,237,225,.32); }
+  .kb-404__plate { background: #0C1107; border-color: rgba(255,255,255,.5); }
+  .kb-404__btn--ghost { background: #131A0E; border-color: rgba(255,255,255,.55); }
+}

@@ -1,291 +1,286 @@
-import { useNavigate } from 'react-router-dom'
-import cheremsha from './cheremsha.png'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
+import {
+  motion,
+  useMotionValue,
+  useSpring,
+  useTransform,
+  useMotionTemplate,
+  useReducedMotion,
+} from 'motion/react'
+import { ArrowLeft, Ruler, House } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
+import cheremsha from './cheremsha.webp'
+import '../notfound.css'
+
+/*
+  ─────────────────────────────────────────────────────────────────────────
+  404 · «УТРАЧЕННЫЙ КАДР»
+
+  Страница — один кадр 35-мм плёнки из архива. Отсюда перфорация, краевой
+  код и штамп: фактура держится на предмете, а не на настроении. Текст —
+  прежняя «Черемша», её никто не трогал: это и есть содержание страницы.
+
+  Мир — тёмный мир лендинга (Cormorant + Onest, охра/лес), см. notfound.css.
+
+  ДВИЖЕНИЕ (skill apple-design):
+  • Пружины вместо длительностей. Параметры заданы через физику и
+    пересчитаны в «damping ratio / response» Apple — комментарии у констант.
+  • Наклон и блик — ОТВЕТ на курсор, 1:1, прерываемые: useSpring всегда
+    едет от текущего экранного значения, поэтому курсор можно развернуть
+    на полпути без скачка.
+  • Единственный «поставленный» момент — приземление штампа с перелётом
+    (damping ~0.8): импульс у жеста есть, значит перелёт заслужен. Всё
+    остальное критически задемпфировано (damping 1.0), без отскока.
+  • Никаких фоновых петель: у прежней версии моргала цифра (резкий скачок
+    яркости) и пульсировали глаза раз в 5 с (~0.2 Гц) — ровно то, что
+    раздел про reduced-motion велит не делать.
+  • prefers-reduced-motion → вход становится кроссфейдом, наклон/блик
+    отключаются целиком (не «слабее», а совсем).
+  ─────────────────────────────────────────────────────────────────────────
+*/
+
+/* Наклон плёнки за курсором: damping ratio ≈ 0.98, response ≈ 0.46 с.
+   Apple для «move/reposition» даёт 1.0 / 0.4 — то же самое. */
+const TILT = { stiffness: 190, damping: 27, mass: 1 }
+
+/* Материализация при входе: критически задемпфировано, response ≈ 0.55 с. */
+const ENTER = { type: 'spring', stiffness: 130, damping: 23, mass: 1 }
+
+/* Штамп: damping ratio ≈ 0.81, response ≈ 0.36 с — перелёт есть, но один. */
+const STAMP = { type: 'spring', stiffness: 300, damping: 28, mass: 1 }
+
+const MAX_TILT_Y = 7      /* градусы по вертикальной оси */
+const MAX_TILT_X = 5.5
+
+const FACTS = [
+  'Черемшу замуровывали в стены хрущёвок живьём — голова снаружи, мурлыкала по вечерам',
+  'Уши работали как антенна радио «Маяк». Тело — как приёмник',
+  'С 1965 по 1967 г. была генеральным секретарём ЦК КПСС. Указы подписывала пушистой лапой',
+  'В 1991-м каждую конфисковали, спрятали в шлакоблок, увезли под 4-й энергоблок ЧАЭС',
+  'Выжившие до сих пор мурчат на антресолях заброшенных хрущёвок',
+]
+
+const TICKER =
+  'В СССР СТРАНИЦ НЕ БЫЛО · ЧЕРЕМША ЗАМЕНЯЛА ВСЁ · СТЕКЛОВАТА · ГУТАЛИН · ' +
+  'НИИ ПЕРСПЕКТИВНОГО УТЕПЛЕНИЯ · ШЛАКОБЛОК · ПРИПЯТЬ · ТИХО НЕ СПЕША · ' +
+  'ЧЕРЕМША · БЕЗ СУЕТЫ · БЕЗ МОНТАЖА · БЕЗ ЭПАТАЖА · ЧЕРЕМША · '
+
+/* Метка пункта справки — та же геометрия, что у дырки перфорации слева.
+   Один мотив на две колонки; нарисована, а не набрана юникодом. */
+const Sprocket = () => (
+  <svg viewBox="0 0 14 14" fill="none" aria-hidden="true">
+    <rect x="0.75" y="4.25" width="12.5" height="5.5" rx="1.75"
+      stroke="currentColor" strokeWidth="1.25" />
+  </svg>
+)
 
 export default function NotFound() {
-  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const { user } = useAuth()
+  const reduce = useReducedMotion()
+  const reelRef = useRef(null)
+
+  /* Наклон включаем только для точного указателя: на тачскрине «следования
+     за курсором» не существует, а лишний слушатель и will-change — да. */
+  const [fine, setFine] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(pointer: fine)')
+    const sync = () => setFine(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
+
+  useEffect(() => {
+    const prev = document.title
+    document.title = '404 · страница утеряна — Карелия Строй'
+    return () => { document.title = prev }
+  }, [])
+
+  const live = fine && !reduce
+
+  /* Нормированная позиция курсора внутри катушки: −0.5…0.5 по каждой оси. */
+  const px = useMotionValue(0)
+  const py = useMotionValue(0)
+  const sx = useSpring(px, TILT)
+  const sy = useSpring(py, TILT)
+
+  /* Курсор справа → правый край едет НА зрителя (rotateY отрицательный).
+     Курсор снизу → нижний край на зрителя (в CSS ось Y смотрит вниз,
+     поэтому здесь знак положительный). */
+  const rotateY = useTransform(sx, [-0.5, 0.5], [MAX_TILT_Y, -MAX_TILT_Y])
+  const rotateX = useTransform(sy, [-0.5, 0.5], [-MAX_TILT_X, MAX_TILT_X])
+
+  /* Снимок сдвигается против наклона — внутри кадра появляется глубина. */
+  const photoX = useTransform(sx, [-0.5, 0.5], [11, -11])
+  const photoY = useTransform(sy, [-0.5, 0.5], [8, -8])
+
+  /* Блик стоит там, где курсор: направление света совпадает с рукой. */
+  const glarePctX = useTransform(sx, [-0.5, 0.5], [14, 86])
+  const glarePctY = useTransform(sy, [-0.5, 0.5], [16, 84])
+  const glareX = useMotionTemplate`${glarePctX}%`
+  const glareY = useMotionTemplate`${glarePctY}%`
+
+  const track = (e) => {
+    if (!live) return
+    const r = reelRef.current?.getBoundingClientRect()
+    if (!r) return
+    px.set((e.clientX - r.left) / r.width - 0.5)
+    py.set((e.clientY - r.top) / r.height - 0.5)
+  }
+  const release = () => { px.set(0); py.set(0) }
+
+  const enter = reduce
+    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.25, ease: 'easeOut' } }
+    : { initial: { opacity: 0, y: 26, scale: 0.965 }, animate: { opacity: 1, y: 0, scale: 1 }, transition: ENTER }
+
+  /* Ступенчатый вход правой колонки: один и тот же шаг, без «своей» кривой
+     у каждого блока. */
+  const step = (i) => (reduce
+    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.25, delay: 0.04 * i } }
+    : { initial: { opacity: 0, y: 14 }, animate: { opacity: 1, y: 0 }, transition: { ...ENTER, delay: 0.06 + 0.05 * i } })
 
   return (
-    <div style={s.page}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@700&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap');
+    <div className="kb-404">
+      <div className="kb-404__orb kb-404__orb--gold" aria-hidden="true" />
+      <div className="kb-404__orb kb-404__orb--green" aria-hidden="true" />
+      <div className="kb-404__vign" aria-hidden="true" />
+      <div className="kb-404__grain" aria-hidden="true" />
 
-        @keyframes breathe {
-          0%,100% { transform: translate(-50%,-50%) scale(1); }
-          50%      { transform: translate(-50%,-52%) scale(1.025); }
-        }
-        @keyframes flicker {
-          0%,91%,93%,100% { opacity: 1; }
-          92% { opacity: 0.3; }
-        }
-        @keyframes eyes {
-          0%,85%,100% { opacity: 0; }
-          87%,97%     { opacity: 1; }
-        }
-        @keyframes tick {
-          from { transform: translateX(100vw); }
-          to   { transform: translateX(-200%); }
-        }
-        .cheremsha-creature {
-          position: absolute;
-          left: 50%; top: 48%;
-          transform: translate(-50%, -50%);
-          width: 68%;
-          animation: breathe 4s ease-in-out infinite;
-          filter: sepia(0.4) contrast(1.05);
-        }
-        .eye-glow {
-          position: absolute;
-          top: 27%; left: 43%;
-          width: 14%; height: 6%;
-          background: radial-gradient(ellipse, rgba(255,180,60,0.55), transparent 70%);
-          border-radius: 50%;
-          animation: eyes 5s ease-in-out infinite;
-        }
-        .error-num {
-          font-family: 'Oswald', sans-serif;
-          font-size: 80px;
-          font-weight: 700;
-          color: #c8a84a;
-          line-height: 1;
-          animation: flicker 7s infinite;
-          text-shadow: 0 0 30px rgba(200,168,74,0.2);
-        }
-        .ticker {
-          display: inline-block;
-          font-family: 'Oswald', sans-serif;
-          font-size: 9px;
-          letter-spacing: 2.5px;
-          color: rgba(200,168,74,0.22);
-          text-transform: uppercase;
-          animation: tick 28s linear infinite;
-          white-space: nowrap;
-        }
-        .btn-home {
-          display: block;
-          width: 100%;
-          background: transparent;
-          border: 1px solid rgba(200,168,74,0.3);
-          color: #c8a84a;
-          font-family: 'Oswald', sans-serif;
-          font-size: 13px;
-          letter-spacing: 3px;
-          text-transform: uppercase;
-          padding: 12px;
-          cursor: pointer;
-          border-radius: 2px;
-          transition: all 0.2s;
-          margin-bottom: 1rem;
-        }
-        .btn-home:hover {
-          background: rgba(200,168,74,0.07);
-          border-color: rgba(200,168,74,0.5);
-        }
-        .fact-item::before { content: '—  '; color: rgba(200,168,74,0.3); }
-      `}</style>
+      <Link to="/" className="kb-404__mark">
+        <House strokeWidth={1.75} aria-hidden="true" />
+        <span className="kb-404__mark-txt">
+          <b>Карелия Строй</b>
+          <span>AI · объём и масса</span>
+        </span>
+      </Link>
 
-      {/* Плёночные полосы */}
-      <div style={s.scan} />
-      <div style={s.vign} />
+      <main className="kb-404__in">
 
-      {/* Перфорация */}
-      <div style={s.holes}>
-        {[...Array(6)].map((_, i) => <div key={i} style={s.hole} />)}
-      </div>
+        {/* ═══ КАТУШКА ═══════════════════════════════════════════════════ */}
+        <div
+          className="kb-404__reel"
+          ref={reelRef}
+          onPointerMove={track}
+          onPointerLeave={release}
+        >
+          <motion.div className="kb-404__strip" {...enter} style={live ? { rotateX, rotateY } : undefined}>
+            <div className="kb-404__perf" aria-hidden="true" />
 
-      <div style={s.wrap}>
+            <div className="kb-404__frame">
+              <motion.div
+                className="kb-404__photowrap"
+                style={live ? { x: photoX, y: photoY, scale: 1.05 } : { scale: 1.05 }}
+                initial={reduce ? false : { filter: 'blur(16px)' }}
+                animate={reduce ? undefined : { filter: 'blur(0px)' }}
+                transition={{ ...ENTER, delay: 0.05 }}
+              >
+                <img className="kb-404__photo" src={cheremsha} width="1194" height="794"
+                  alt="Архивный снимок черемши: пушистое существо с кошачьей мордой и заячьими ушами" />
+              </motion.div>
 
-        {/* ── ФОТО ЧЕРЕМШИ ── */}
-        <div style={s.photoBox}>
-          <img
-            src={cheremsha}
-            alt="Черемша"
-            style={{
-              position: 'absolute',
-              inset: 0,
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              objectPosition: 'center top',
-              filter: 'sepia(0.2) contrast(1.05)',
-            }}
-          />
-          <div className="eye-glow" />
+              <div className="kb-404__grade--warm" aria-hidden="true" />
+              <div className="kb-404__grade--dark" aria-hidden="true" />
+              {live && (
+                <motion.div className="kb-404__glare" aria-hidden="true"
+                  style={{ '--gx': glareX, '--gy': glareY }} />
+              )}
+
+              <div className="kb-404__plate">
+                <i aria-hidden="true" />
+                Кадр 404 · негатив утрачен
+              </div>
+            </div>
+
+            <div className="kb-404__perf" aria-hidden="true" />
+
+            <div className="kb-404__edge">KS-404 · 24A · ЭКСП. 1962</div>
+
+            {/* Штамп висит НАД плёнкой (translateZ), поэтому при наклоне
+                отходит от неё — это и читается как «приложен сверху». */}
+            <motion.div
+              className="kb-404__stamp"
+              style={{ z: 34 }}
+              /* Наклон −7° остаётся и в reduced-motion: это не движение, а
+                 форма предмета — прямой штамп перестаёт читаться как штамп.
+                 Гасится именно ДВИЖЕНИЕ (налёт с перелётом), а не поворот. */
+              initial={reduce ? { opacity: 0, rotate: -7 } : { opacity: 0, scale: 1.9, rotate: -24 }}
+              animate={reduce ? { opacity: 1, rotate: -7 } : { opacity: 1, scale: 1, rotate: -7 }}
+              transition={reduce ? { duration: 0.25, delay: 0.3 } : { ...STAMP, delay: 0.55 }}
+            >
+              <b>Сов. секретно</b>
+              <em>фонд №404 · хранить вечно</em>
+            </motion.div>
+          </motion.div>
         </div>
 
-        {/* ── ТЕКСТ ── */}
-        <div style={s.textBlock}>
+        {/* ═══ ДЕЛО ══════════════════════════════════════════════════════ */}
+        <div className="kb-404__doc">
 
-          <div style={s.errorRow}>
-            <div className="error-num">404</div>
-            <div style={s.errorLabel}>
-              Страница утеряна<br/>при невыясненных обстоятельствах
-            </div>
-          </div>
+          <motion.h1 className="kb-404__title" {...step(0)}>
+            <span className="kb-404__num">404</span>
+            <span className="kb-404__said">Страница утеряна при невыясненных обстоятельствах</span>
+          </motion.h1>
 
-          <div style={s.narrator}>
-            В советском союзе страниц не было.<br/>
-            Была только <strong style={{color:'#d4b96a'}}>Черемша</strong>.<br/>
-            Тихо. Не спеша. Без лишней суеты.<br/>
-            Страница, которую вы ищете,{' '}
-            <strong style={{color:'#d4b96a'}}>замурована в шлакоблок</strong>{' '}
-            и вывезена в Припять.
-          </div>
+          <motion.p className="kb-404__lede" {...step(1)}>
+            В советском союзе страниц не было. Была только <b>Черемша</b>.
+            Тихо. Не спеша. Без лишней суеты. Страница, которую вы ищете,{' '}
+            <b>замурована в шлакоблок</b> и вывезена в Припять.
+          </motion.p>
 
-          <div style={s.factsBox}>
-            <div style={s.factsHead}>Справка · НИИ «Институт перспективного утепления» · 1962</div>
-            {[
-              'Черемшу замуровывали в стены хрущёвок живьём — голова снаружи, мурлыкала по вечерам',
-              'Уши работали как антенна радио «Маяк». Тело — как приёмник',
-              'С 1965 по 1967 г. была генеральным секретарём ЦК КПСС. Указы подписывала пушистой лапой',
-              'В 1991-м каждую конфисковали, спрятали в шлакоблок, увезли под 4-й энергоблок ЧАЭС',
-              'Выжившие до сих пор мурчат на антресолях заброшенных хрущёвок',
-            ].map((f, i) => (
-              <div key={i} className="fact-item" style={s.fact}>{f}</div>
-            ))}
-          </div>
+          {/* Выход стоит СРАЗУ после объяснения, до баек. На 404 главное
+              действие не имеет права уезжать под сгиб — а справка со стихом
+              вместе дают ~330 px и как раз туда его и утаскивали. */}
+          <motion.div className="kb-404__acts" {...step(2)}>
+            {/* whileTap у motion срабатывает по pointer-DOWN, а не по клику:
+                отклик появляется в момент нажатия, как и требует п.1 скилла. */}
+            <motion.div className="kb-404__act"
+              whileTap={reduce ? undefined : { scale: 0.97 }} transition={{ duration: 0.1 }}>
+              <Link to="/" className="kb-404__btn kb-404__btn--solid">
+                <ArrowLeft strokeWidth={2} aria-hidden="true" />
+                Вернуться. Тихо. Не спеша.
+              </Link>
+            </motion.div>
+            <motion.div className="kb-404__act"
+              whileTap={reduce ? undefined : { scale: 0.97 }} transition={{ duration: 0.1 }}>
+              <Link to={user ? '/app' : '/login'} className="kb-404__btn kb-404__btn--ghost">
+                <Ruler strokeWidth={2} aria-hidden="true" />
+                {user ? 'К замерам' : 'Войти'}
+              </Link>
+            </motion.div>
+          </motion.div>
 
-          <div style={s.rhyme}>
-            тихо, не спеша, не дыша —<br/>
-            ни шиша, ни коврижа —<br/>
-            без монтажа, без витража —<br/>
+          <motion.section className="kb-404__ref" {...step(3)}>
+            <h2 className="kb-404__ref-head">Справка · НИИ «Институт перспективного утепления» · 1962</h2>
+            <ul>
+              {FACTS.map((f) => (
+                <li key={f}><Sprocket />{f}</li>
+              ))}
+            </ul>
+          </motion.section>
+
+          <motion.p className="kb-404__verse" {...step(4)}>
+            тихо, не спеша, не дыша —<br />
+            ни шиша, ни коврижа —<br />
+            без монтажа, без витража —<br />
             эта страница была. Черемша.
-          </div>
+          </motion.p>
 
-          <button className="btn-home" onClick={() => navigate('/')}>
-            ← Вернуться. Тихо. Не спеша.
-          </button>
+          <motion.p className="kb-404__case" {...step(5)}>
+            <b>Дело №</b> {pathname}
+          </motion.p>
+        </div>
+      </main>
 
-          <div style={s.tickerWrap}>
-            <span className="ticker">
-              В СССР СТРАНИЦ НЕ БЫЛО · ЧЕРЕМША ЗАМЕНЯЛА ВСЁ · СТЕКЛОВАТА · ГУТАЛИН · НИИ ПЕРСПЕКТИВНОГО УТЕПЛЕНИЯ · ШЛАКОБЛОК · ПРИПЯТЬ · ТИХО НЕ СПЕША · ЧЕРЕМША · БЕЗ СУЕТЫ · БЕЗ МОНТАЖА · БЕЗ ЭПАТАЖА · ЧЕРЕМША ·
-            </span>
-          </div>
-
-          <div style={s.stamp}>
-            <span style={s.stampText}>Сов. секретно · фонд №404 · хранить вечно</span>
-          </div>
-
+      {/* Бегущая строка: дорожка продублирована ровно дважды и едет на −50% —
+          шов не виден, ключевых кадров ровно два. Останавливается по hover. */}
+      <div className="kb-404__ticker" aria-hidden="true">
+        <div className="kb-404__track">
+          <span>{TICKER}</span>
+          <span>{TICKER}</span>
         </div>
       </div>
     </div>
   )
-}
-
-// ── СТИЛИ ──────────────────────────────────────────────────────────────────
-const s = {
-  page: {
-    background: '#1a1612',
-    minHeight: '100vh',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '2rem 1rem',
-    position: 'relative',
-    overflow: 'hidden',
-    fontFamily: "'PT Serif', serif",
-  },
-  scan: {
-    position: 'fixed', inset: 0,
-    background: 'repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.09) 2px,rgba(0,0,0,0.09) 4px)',
-    pointerEvents: 'none', zIndex: 50,
-  },
-  vign: {
-    position: 'fixed', inset: 0,
-    background: 'radial-gradient(ellipse at 50% 40%,transparent 35%,rgba(0,0,0,0.75) 100%)',
-    pointerEvents: 'none', zIndex: 49,
-  },
-  holes: {
-    position: 'absolute', left: 8, top: 0, bottom: 0,
-    display: 'flex', flexDirection: 'column', justifyContent: 'space-around',
-    padding: '12px 0', zIndex: 10,
-  },
-  hole: {
-    width: 12, height: 12, borderRadius: '50%',
-    background: '#0e0a06', border: '1.5px solid #2a2010',
-  },
-  wrap: {
-    position: 'relative', zIndex: 5,
-    width: '100%', maxWidth: 520,
-  },
-  photoBox: {
-    width: '100%', paddingTop: '75%',
-    background: 'linear-gradient(170deg,#2e2416 0%,#1a120a 60%,#0e0a06 100%)',
-    borderRadius: 3, position: 'relative', overflow: 'hidden',
-    marginBottom: '1.5rem',
-  },
-  memeLabel: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    background: 'rgba(18,14,8,0.55)',
-    padding: '10px 0 12px',
-    textAlign: 'center',
-  },
-  memeLabelText: {
-    fontFamily: "'Oswald', sans-serif",
-    fontSize: 'clamp(32px,8vw,52px)',
-    fontWeight: 700,
-    color: '#fff',
-    letterSpacing: 6,
-    textTransform: 'uppercase',
-    WebkitTextStroke: '2px #000',
-    paintOrder: 'stroke fill',
-  },
-  textBlock: { padding: '0 0.25rem' },
-  errorRow: { display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: '0.6rem' },
-  errorLabel: {
-    fontFamily: "'Oswald', sans-serif",
-    fontSize: 13, letterSpacing: 3,
-    color: 'rgba(200,168,74,0.45)',
-    textTransform: 'uppercase',
-    paddingBottom: 4,
-    borderBottom: '1px solid rgba(200,168,74,0.15)',
-    lineHeight: 1.6,
-  },
-  narrator: {
-    fontSize: 15, lineHeight: 1.8,
-    color: '#b5a480', fontStyle: 'italic',
-    marginBottom: '1.1rem',
-    borderLeft: '2px solid rgba(200,168,74,0.2)',
-    paddingLeft: 12,
-  },
-  factsBox: {
-    background: '#110f0a',
-    border: '0.5px solid rgba(200,168,74,0.12)',
-    borderRadius: 3, padding: '0.9rem 1rem',
-    marginBottom: '1.1rem',
-  },
-  factsHead: {
-    fontFamily: "'Oswald', sans-serif",
-    fontSize: 9, letterSpacing: 3,
-    color: 'rgba(200,168,74,0.3)',
-    textTransform: 'uppercase',
-    marginBottom: '0.6rem',
-  },
-  fact: {
-    fontSize: 13, lineHeight: 1.7,
-    color: 'rgba(180,160,110,0.65)',
-    padding: '3px 0',
-    borderBottom: '0.5px solid rgba(255,255,255,0.04)',
-  },
-  rhyme: {
-    fontSize: 13, color: 'rgba(180,160,110,0.45)',
-    fontStyle: 'italic', lineHeight: 2,
-    marginBottom: '1.2rem',
-    textAlign: 'center', letterSpacing: '0.5px',
-  },
-  tickerWrap: {
-    overflow: 'hidden', whiteSpace: 'nowrap',
-    padding: '6px 0',
-    borderTop: '0.5px solid rgba(200,168,74,0.1)',
-  },
-  stamp: { marginTop: '0.75rem', textAlign: 'center' },
-  stampText: {
-    display: 'inline-block',
-    border: '2px solid rgba(180,40,40,0.35)',
-    color: 'rgba(200,60,60,0.4)',
-    fontFamily: "'Oswald', sans-serif",
-    fontSize: 9, letterSpacing: 3,
-    padding: '3px 12px',
-    transform: 'rotate(-1.5deg)',
-    textTransform: 'uppercase',
-  },
 }
