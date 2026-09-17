@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import ThemeToggle from './ThemeToggle'        // ← сегментный переключатель тем
 import ScrollProgress from './ScrollProgress'  // ← золотая полоса прогресса чтения
+import { useTheme } from '../theme/ThemeProvider'
+import ArchiveChrome from './archive/ArchiveChrome'  // ← «железо» темы «Архив»
 
 /* ============================================================
    Нижняя навигация (mobile tab bar).
@@ -49,6 +51,7 @@ const EMAIL = 'yakov.kachalin@mail.ru'
 
 export default function Layout({ children }) {
   const { user, signOut } = useAuth()
+  const { isArchive } = useTheme()
   const location = useLocation()
   const navigate = useNavigate()
   const [profile, setProfile] = useState(null)
@@ -81,6 +84,18 @@ export default function Layout({ children }) {
 
   // индекс активной вкладки для «бегунка» нижней навигации (-1 → прячем)
   const tabIndex = NAV.findIndex(t => t.to === location.pathname)
+
+  /* Тема «Архив» приносит СВОЁ «железо»: системную шапку, полосу
+     разделов, панель задач и подвал. Шапка/футер/таб-бар из светлой
+     и тёмной тем в ней не участвуют — не прячем их стилями, а просто
+     не рендерим. Данные (пользователь, профиль, выход) те же. */
+  if (isArchive) {
+    return (
+      <ArchiveChrome user={user} profile={profile} onSignOut={handleSignOut}>
+        {children}
+      </ArchiveChrome>
+    )
+  }
 
   return (
     <>

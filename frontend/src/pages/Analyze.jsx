@@ -12,6 +12,8 @@ import Reveal from '../components/Reveal'  // ← лёгкое scroll/stagger-п
 import CubesHero from '../components/CubesHero'  // ← реальная 3D-модель кубов (GLB)
 import CubeSettings, { CUBE_DEFAULT } from '../components/CubeSettings'  // ← настраиваемый калибровочный куб
 import { prepareImage } from '../prepareImage'  // ← оригинал на сервер + превью для UI
+import { useTheme } from '../theme/ThemeProvider'
+import ArchiveAnalyze from '../components/archive/ArchiveAnalyze'  // ← вид этой же страницы в теме «Архив»
 
 const MAX_PHOTOS = 100
 const POLL_MS    = 5000
@@ -53,9 +55,16 @@ export default function Analyze() {
   // Блок cube для payload + валидность параметров куба (из CubeSettings).
   const [cube, setCube]         = useState(CUBE_DEFAULT)
   const [cubeValid, setCubeValid] = useState(true)
-  const onCubeChange = useCallback(({ payload, valid }) => {
+  // Разобранные размеры куба — нужны только для подписи карточки
+  // калибровочного куба в теме «Архив». В payload не идут.
+  const [cubeSpec, setCubeSpec] = useState({ edgeMm: 70, squaresPerSide: 4 })
+  const onCubeChange = useCallback(({ payload, valid, edgeMm, squaresPerSide }) => {
     setCube(payload); setCubeValid(valid)
+    setCubeSpec(prev => (prev.edgeMm === edgeMm && prev.squaresPerSide === squaresPerSide)
+      ? prev
+      : { edgeMm, squaresPerSide })
   }, [])
+  const { isArchive } = useTheme()
   // Стабильные ссылки — иначе memo на ReportPanel бесполезен: новая стрелка
   // на каждый рендер Analyze (а он идёт на каждое нажатие в любом поле)
   // считалась бы сменой пропса и тянула бы за собой пересборку отчёта.
@@ -444,6 +453,42 @@ export default function Analyze() {
   // галочкой (done), а не завис на числе (active).
   const finished = !!(result || has3d)
   const currentStep = finished ? 4 : busy ? 2 : 1
+
+  /* ── Тема «Архив»: другой ВИД той же страницы ──────────────────────────
+     Ветка стоит после всех хуков, поэтому порядок вызовов не меняется.
+     Логика целиком остаётся здесь — ArchiveAnalyze получает готовые
+     обработчики и не знает ни про api, ни про очередь. */
+  if (isArchive) {
+    return (
+      <>
+        <ArchiveAnalyze
+          photos={photos} fileInputRef={fileInputRef} handleFiles={handleFiles}
+          onDrop={onDrop} removePhoto={removePhoto}
+          title={title} setTitle={setTitle} notes={notes} setNotes={setNotes}
+          isProd={isProd} setIsProd={setIsProd}
+          busy={busy} compressing={compressing} compProg={compProg} compMsg={compMsg}
+          upProg={upProg} status={status} online={online}
+          runAnalysis={runAnalysis} addToQueue={addToQueue} reset={reset}
+          openReport={openReport}
+          result={result} parsed={parsed}
+          plyUrl={plyUrl} glbUrl={glbUrl} upVec={upVec} upGlbVec={upGlbVec} diag={diag}
+          startTime={startTime} analysisId={analysisId}
+          onCubeChange={onCubeChange} cubeSpec={cubeSpec}
+          sizeStr={sizeStr}
+        />
+        {result && (
+          <ReportPanel
+            open={reportOpen}
+            onOpen={openReport}
+            onClose={closeReport}
+            result={result}
+            photos={photos}
+            title={title}
+          />
+        )}
+      </>
+    )
+  }
 
   return (
     <div className="page content" style={{ paddingTop: 0 }}>

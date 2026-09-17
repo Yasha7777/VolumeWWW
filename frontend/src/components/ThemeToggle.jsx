@@ -2,8 +2,12 @@ import { useTheme } from '../theme/ThemeProvider'
 
 /* ============================================================
    ThemeToggle — сегментный переключатель тем в шапке сайта.
-   2 позиции: Светлая (☀) · Тёмная (🌙).
+   3 позиции: Светлая (☀) · Тёмная (🌙) · Архив (▤).
    Скользящий «бегунок» едет к активной позиции.
+
+   В теме «Архив» шапки из Layout нет — там свой переключатель
+   в системной строке (components/archive/ArchiveChrome.jsx),
+   но компонент один и тот же: список OPTS общий.
    ============================================================ */
 
 const SunIcon = () => (
@@ -19,9 +23,19 @@ const MoonIcon = () => (
   </svg>
 )
 
-const OPTS = [
-  { key: 'light', label: 'Светлая тема', Icon: SunIcon },
-  { key: 'dark',  label: 'Тёмная тема',  Icon: MoonIcon },
+/* «Архив» — картотечный ящик: три горизонтальные полосы в рамке.
+   Контурный мотив, как и остальные иконки шапки. */
+const ArchiveIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter">
+    <rect x="3" y="4" width="18" height="16" />
+    <path d="M3 9h18M3 14h18M10 6.5h4M10 11.5h4M10 16.5h4" />
+  </svg>
+)
+
+export const OPTS = [
+  { key: 'light',   label: 'Светлая тема', Icon: SunIcon },
+  { key: 'dark',    label: 'Тёмная тема',  Icon: MoonIcon },
+  { key: 'archive', label: 'Тема «Архив»', Icon: ArchiveIcon },
 ]
 
 export default function ThemeToggle() {

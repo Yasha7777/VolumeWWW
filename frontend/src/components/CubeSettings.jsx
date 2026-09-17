@@ -29,11 +29,25 @@ const round5 = (v) => Math.round(v * 1e5) / 1e5
 const fmt = (v) => (Number.isFinite(v) ? String(Math.round(v * 100) / 100) : '')
 
 /**
- * @param {(state: { payload: object, valid: boolean }) => void} onChange
- *   Вызывается при каждом изменении — отдаёт готовый блок cube и флаг валидности.
+ * @param {(state: { payload: object, valid: boolean, edgeMm: number|null,
+ *                   squareMm: number|null, squaresPerSide: number|null }) => void} onChange
+ *   Вызывается при каждом изменении — отдаёт готовый блок cube, флаг валидности
+ *   и разобранные значения для подписей (карточка куба в теме «Архив» рисует
+ *   настоящую грань, а не число из макета).
+ * @param {boolean} [open] Управляемое состояние панели. Не передан — панель
+ *   живёт сама (прежнее поведение). Передан — открытием рулит родитель:
+ *   в теме «Архив» окно СВОЙСТВА_КУБА разворачивается кнопкой панели задач.
+ * @param {(next: boolean) => void} [onOpenChange]
  */
-export default function CubeSettings({ onChange }) {
-  const [open, setOpen]        = useState(false)
+export default function CubeSettings({ onChange, open: openProp, onOpenChange }) {
+  const [openState, setOpenState] = useState(false)
+  const controlled = openProp !== undefined
+  const open = controlled ? openProp : openState
+  const setOpen = (next) => {
+    const value = typeof next === 'function' ? next(open) : next
+    if (!controlled) setOpenState(value)
+    onOpenChange?.(value)
+  }
   const [nStr, setNStr]        = useState(String(DEF_N))
   const [squareStr, setSquare] = useState(DEF_SQUARE)  // сторона квадрата, мм
   const [edgeStr, setEdge]     = useState(DEF_EDGE)    // длина грани, мм
@@ -109,12 +123,24 @@ export default function CubeSettings({ onChange }) {
       raw_value_mm:     squareValid ? sq : CUBE_DEFAULT.raw_value_mm,
     }
 
-    return { payload, valid, nValid, squareValid, edgeValid, is_custom: !!is_custom, sizeM }
+    return {
+      payload, valid, nValid, squareValid, edgeValid, is_custom: !!is_custom, sizeM,
+      // разобранные значения для подписей снаружи (карточка куба)
+      edgeMm:   edgeValid ? ed : null,
+      squareMm: squareValid ? sq : null,
+      squaresPerSide: nValid ? n : null,
+    }
   }, [nStr, squareStr, edgeStr, lastEdited])
 
   // Пробрасываем наверх результат при каждом изменении.
   useEffect(() => {
-    onChange?.({ payload: derived.payload, valid: derived.valid })
+    onChange?.({
+      payload: derived.payload,
+      valid: derived.valid,
+      edgeMm: derived.edgeMm,
+      squareMm: derived.squareMm,
+      squaresPerSide: derived.squaresPerSide,
+    })
   }, [derived, onChange])
 
   const reset = () => {

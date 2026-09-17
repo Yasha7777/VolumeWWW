@@ -5,6 +5,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles.css'
 import './theme-dark.css'                        // ← тёмная тема + переключатель (ПОСЛЕ styles.css)
+import './theme-archive.css'                     // ← тема «Архив» (ПОСЛЕ styles.css и theme-dark.css)
 import './report-panel.css'                      // ← стили выдвижного окна отчёта
 import { ThemeProvider } from './theme/ThemeProvider'
 import App from './App.jsx'

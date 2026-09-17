@@ -8,6 +8,8 @@ import { DiagnosticsBlock, DiagThumb, pickDiagnostics } from '../components/Diag
 import { subscribe, listQueue, retryItem, removeItem } from '../queue/queue'; // ← офлайн-очередь (PWA)
 import Reveal from '../components/Reveal';
 import { MeasureCardSkeleton } from '../components/Skeleton';
+import { useTheme } from '../theme/ThemeProvider';
+import ArchiveHistory from '../components/archive/ArchiveHistory';  // ← вид этого же списка в теме «Архив»
 
 // Декор по бокам — base64 из отдельных файлов (Vite ?raw)
 // декор загружается отдельными файлами из public/decor/*.png —
@@ -1034,6 +1036,7 @@ function Swan() {
    Страница
    ============================================================ */
 export default function History() {
+  const { isArchive } = useTheme();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -1410,6 +1413,52 @@ export default function History() {
     (u.name || '').trim() ||
     (u.company || '').trim() ||
     `${u.id.slice(0, 8)}…`;
+
+  /* ── Тема «Архив»: другой ВИД того же списка ───────────────────────────
+     Ветка стоит после всех хуков — порядок вызовов не меняется. Строки
+     отдаём уже посчитанными: разбор result (объём, масса, материал) живёт
+     здесь и в двух видах не дублируется. Тяжёлый разбор модели (PLY/GLB/
+     диагностика) — лениво, через getDetail: он нужен только для записи,
+     которую реально открыли, а не для всего списка на каждый рендер. */
+  if (isArchive) {
+    const rows = view.groups.flatMap((g) => g.items).map((it) => ({
+      id: it.id,
+      status: it.status,
+      material: getMaterial(it),
+      title: getHeading(it),
+      volume: getVolume(it),
+      weight: getWeight(it),
+      date: it.created_at,
+      photos: it.photo_urls || [],
+      thumbs: it.thumbnail_urls || [],
+      raw: it,
+    }));
+
+    const getDetail = (it) => {
+      if (!it) return null;
+      return {
+        plyUrl: it.ply_url || extractPlyUrl(it.result),
+        glbUrl: it.glb_url || extractGlbUrl(it.result),
+        up:     Array.isArray(it.up_vector) ? it.up_vector : extractUp(it.result),
+        upGlb:  Array.isArray(it.up_vector_glb) ? it.up_vector_glb : extractUpGlb(it.result),
+        diag:   pickDiagnostics(it),
+      };
+    };
+
+    return (
+      <ArchiveHistory
+        rows={rows}
+        sumVol={view.sumVol}
+        sumWeight={view.sumWeight}
+        loading={loading}
+        error={error}
+        onRefresh={refresh}
+        getDetail={getDetail}
+        query={query}
+        setQuery={setQuery}
+      />
+    );
+  }
 
   return (
     <div className="page">

@@ -1,16 +1,20 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
 /* ============================================================
-   ThemeProvider — две темы: 'light' | 'dark'
+   ThemeProvider — три темы: 'light' | 'dark' | 'archive'
    ------------------------------------------------------------
-   • light — кремовый дизайн (оверрайдов нет, styles.css).
-   • dark  — тёмная версия того же дизайна (theme-dark.css).
+   • light   — кремовый дизайн (оверрайдов нет, styles.css).
+   • dark    — тёмная версия того же дизайна (theme-dark.css).
+   • archive — «Архив»: бумажный терминал полевого анализа
+               (theme-archive.css + components/archive/*).
 
    Переключение плавное, без переходных эффектов.
    data-theme на <html>; выбор хранится в localStorage.
 
    Готическая тема 'gtc' («свага») удалена полностью — сохранённый
-   у пользователя выбор мигрирует в 'dark' (см. MIGRATE).
+   у пользователя выбор мигрирует в 'dark' (см. MIGRATE). 'archive'
+   к ней отношения не имеет: это НЕ возврат gtc, а отдельный слой
+   представления с собственными компонентами.
    ============================================================ */
 
 const ThemeCtx = createContext(null);
@@ -18,9 +22,31 @@ export const useTheme = () => useContext(ThemeCtx);
 
 const STORAGE_KEY   = 'kh-theme';
 const DEFAULT_THEME = 'light';
-const VALID   = ['light', 'dark'];
+const VALID   = ['light', 'dark', 'archive'];
 // старые значения из прошлых версий: 'normal' → light, 'swag'/'gtc' → dark
 const MIGRATE = { normal: 'light', swag: 'dark', gtc: 'dark' };
+
+/* ── Шрифты темы «Архив» — Play / Jura / IBM Plex Mono ───────────────────
+   Подключаются ТОЛЬКО когда тема реально включена: @import в CSS тянул бы
+   три семейства при каждой загрузке сайта, в том числе на логине, где из
+   них не нужен ни один. CSP разрешает fonts.googleapis.com/gstatic.com
+   (frontend/nginx.conf). Если внешние шрифты когда-нибудь запретят —
+   меняется ровно эта константа на путь к локальному css со своего домена. */
+const ARCHIVE_FONTS_ID  = 'kb-archive-fonts';
+const ARCHIVE_FONTS_HREF =
+  'https://fonts.googleapis.com/css2?family=Play:wght@400;700' +
+  '&family=Jura:wght@400;500;600;700' +
+  '&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap';
+
+const ensureArchiveFonts = () => {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(ARCHIVE_FONTS_ID)) return;
+  const link = document.createElement('link');
+  link.id   = ARCHIVE_FONTS_ID;
+  link.rel  = 'stylesheet';
+  link.href = ARCHIVE_FONTS_HREF;
+  document.head.appendChild(link);
+};
 
 const prefersReduced =
   typeof window !== 'undefined' &&
@@ -46,6 +72,7 @@ export function ThemeProvider({ children }) {
   // отражаем тему на <html> + сохраняем выбор (в т.ч. результат миграции)
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', mode);
+    if (mode === 'archive') ensureArchiveFonts();
     try { localStorage.setItem(STORAGE_KEY, mode); } catch (_) {}
   }, [mode]);
 
@@ -57,8 +84,9 @@ export function ThemeProvider({ children }) {
 
   const value = {
     mode,
-    isLight: mode === 'light',
-    isDark:  mode === 'dark',
+    isLight:   mode === 'light',
+    isDark:    mode === 'dark',
+    isArchive: mode === 'archive',
     setTheme,
     reducedMotion: prefersReduced,
   };
