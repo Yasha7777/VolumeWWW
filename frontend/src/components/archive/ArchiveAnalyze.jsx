@@ -6,8 +6,9 @@ import CubeSettings from '../CubeSettings'
 import Win from './Win'
 import Barcode from './Barcode'
 import CalibCube from './CalibCube'
+import ArcPlate, { ART } from './ArcPlate'
 import { MACHINE } from './ArchiveChrome'
-import { EV, onArchive } from './bus'
+import { EV, onArchive, revealEl } from './bus'
 import { analysisNo, cubeResolved, extraMetrics, splitMaterial, DASH } from './archiveData'
 
 /* ============================================================
@@ -57,6 +58,42 @@ const focalOf = (p) => {
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
+/* Координаты из EXIF. Разбор идёт через exifr, и у него в зависимости
+   от камеры и набора опций координаты приезжают то готовыми числами
+   `latitude/longitude`, то сырыми тегами `GPSLatitude` (массив
+   градусы/минуты/секунды) с полушарием в `GPSLatitudeRef`. Раньше
+   здесь проверялось только `latitude` — и на пачке, где exifr отдал
+   сырые теги, счётчик честно писал «ГЕОМЕТКИ 0/32» при живых
+   геометках на каждом кадре. Понимаем оба вида. */
+const dmsToDeg = (v, ref) => {
+  let deg = null
+  if (Array.isArray(v)) {
+    const [d = 0, m = 0, s = 0] = v.map(Number)
+    if (Number.isFinite(d)) deg = Math.abs(d) + (m || 0) / 60 + (s || 0) / 3600
+  } else if (Number.isFinite(Number(v))) {
+    deg = Math.abs(Number(v))
+  }
+  if (deg == null) return null
+  const neg = typeof ref === 'string' && /^[SW]/i.test(ref.trim())
+  return neg ? -deg : deg
+}
+
+export const geoOf = (p) => {
+  const ex = p?.exifData
+  if (!ex) return null
+  const lat = Number.isFinite(Number(ex.latitude))
+    ? Number(ex.latitude)
+    : dmsToDeg(ex.GPSLatitude ?? ex.gps?.latitude, ex.GPSLatitudeRef)
+  const lon = Number.isFinite(Number(ex.longitude))
+    ? Number(ex.longitude)
+    : dmsToDeg(ex.GPSLongitude ?? ex.gps?.longitude, ex.GPSLongitudeRef)
+  if (lat == null || lon == null || !Number.isFinite(lat) || !Number.isFinite(lon)) return null
+  // 0,0 — это «Остров Ноль» в Гвинейском заливе: у камеры так выглядит
+  // ненайденный фикс, а не съёмка в Атлантике.
+  if (lat === 0 && lon === 0) return null
+  return [lat, lon]
+}
+
 /* ── секундомер расчёта ──────────────────────────────────────────
    Общий components/Timer сюда не годится: он подписывает этапы
    латиницей («CLIP строит эмбеддинги…», «AI анализирует…»), а в
@@ -80,8 +117,12 @@ function ArcTimer({ startTime }) {
   )
 }
 
-/* ── строка состояния (четыре ячейки в одной рамке) ──────────── */
-function StateStrip({ photos, withExif, cubeState, phase }) {
+/* ── строка состояния ─────────────────────────────────────────
+   Три ячейки: снимки, метаданные, состояние. Ячейка калибровочного
+   куба отсюда убрана — до ответа пайплайна сказать про куб нечего,
+   и строка вечно висела с «ПО РАСЧЁТУ». Куб остался там, где он
+   проверяем: в «ПРОВЕРКЕ ПАРТИИ» и в досье результата. */
+function StateStrip({ photos, withExif, phase }) {
   return (
     <div className="arc-state">
       <div className="arc-state__cell">
@@ -92,12 +133,6 @@ function StateStrip({ photos, withExif, cubeState, phase }) {
         <span className="arc-state__k">МЕТАДАННЫЕ</span>
         <span className={`arc-state__v${photos && withExif < photos ? ' is-bad' : ''}`}>
           {!photos ? DASH : withExif === photos ? '✓ ЕСТЬ' : `${photos - withExif} НЕТ`}
-        </span>
-      </div>
-      <div className="arc-state__cell">
-        <span className="arc-state__k">КАЛИБРОВОЧНЫЙ КУБ</span>
-        <span className={`arc-state__v${cubeState === false ? ' is-bad' : ''}`}>
-          {cubeState === null ? 'ПО РАСЧЁТУ' : cubeState ? '✓ УЧТЁН' : 'НЕ НАЙДЕН'}
         </span>
       </div>
       <div className="arc-state__cell arc-state__cell--final">
@@ -262,10 +297,7 @@ function Dossier({
                 <PlyViewer plyUrl={plyUrl} glbUrl={glbUrl} up={upVec} upGlb={upGlbVec} />
               </ViewerErrorBoundary>
             ) : (
-              <div className="arc-plate">
-                <span className="arc-plate__ico" aria-hidden="true" />
-                ОБЛАКО ТОЧЕК / ТРЁХМЕРНАЯ МОДЕЛЬ
-              </div>
+              <ArcPlate kind="mesh" src={ART.mesh} caption="ОБЛАКО ТОЧЕК / ТРЁХМЕРНАЯ МОДЕЛЬ" />
             )}
             <span className="arc-blueprint__tag">[ВРАЩАТЬ]</span>
             <span className="arc-blueprint__grid">СЕТКА 22 ММ</span>
@@ -348,13 +380,21 @@ export default function ArchiveAnalyze({
     if (added > 0) setNewFrom(photos.length - added)
   }, [photos.length])
 
-  /* Кнопки панели задач: «ВВОД_СНИМКОВ.ПРГ» и «СВОЙСТВА_КУБА». */
-  useEffect(() => onArchive(EV.PICK_FILES, () => fileInputRef.current?.click()), [fileInputRef])
-  useEffect(() => onArchive(EV.CUBE, () => setCubeOpen((v) => !v)), [])
+  /* Кнопки панели задач подводят страницу к своему окну.
+     СВОЙСТВА_КУБА сперва разворачивает панель и только потом
+     прокручивает: у свёрнутой панели нулевая высота, и доводка
+     целилась бы в точку, которая через кадр уедет. */
+  const dzRef   = useRef(null)
+  const cubeRef = useRef(null)
+  useEffect(() => onArchive(EV.FILES, () => revealEl(dzRef.current)), [])
+  useEffect(() => onArchive(EV.CUBE, () => {
+    setCubeOpen(true)
+    requestAnimationFrame(() => revealEl(cubeRef.current))
+  }), [])
 
   // ── реальные метрики партии ───────────────────────────────────
   const withExif  = photos.filter((p) => !!p.exifData).length
-  const withGeo   = photos.filter((p) => p.exifData?.latitude != null).length
+  const withGeo   = photos.filter((p) => geoOf(p) != null).length
   const withFocal = photos.filter((p) => focalOf(p) != null).length
   const noFocal   = photos.length - withFocal
 
@@ -409,7 +449,10 @@ export default function ArchiveAnalyze({
           <div className="arc-head__chips">
             <span className="arc-chip is-solid">ФОТОГРАММЕТРИЯ</span>
             <span className="arc-chip">ГЕОМЕТРИЯ + КЛАССИФИКАТОР</span>
-            <span className="arc-chip">СЕАНС {docNo || 'НЕ ОТКРЫТ'}</span>
+            {/* Чип сеанса появляется только когда сеанс есть: до отправки
+                замера номера не существует, и «СЕАНС НЕ ОТКРЫТ» был
+                подписью к пустоте. */}
+            {docNo && <span className="arc-chip">СЕАНС {docNo}</span>}
           </div>
 
           <h1 className="arc-head__h1">ФОТОГРАММЕТРИЧЕСКИЙ АНАЛИЗ</h1>
@@ -435,15 +478,17 @@ export default function ArchiveAnalyze({
               {shot ? (
                 <img src={shot.dataUrl} alt="" className="arc-shot__img" />
               ) : (
-                <button
+                /* «КУЧИ» здесь не было места: система меряет объём
+                   любого навала, а не одного материала. */
+                <ArcPlate
+                  as="button"
+                  kind="frame"
+                  className="arc-plate--btn"
                   type="button"
-                  className="arc-plate arc-plate--btn"
                   onClick={() => fileInputRef.current?.click()}
-                >
-                  <span className="arc-plate__ico" aria-hidden="true" />
-                  ПЕРЕТАЩИТЕ СНИМОК КУЧИ
-                  <i>ИЛИ ВЫБЕРИТЕ ФАЙЛ</i>
-                </button>
+                  caption="КАДР ОБЪЕКТА НЕ ЗАГРУЖЕН"
+                  hint="ПЕРЕТАЩИТЕ СНИМОК ИЛИ ВЫБЕРИТЕ ФАЙЛ"
+                />
               )}
               <span className="arc-blueprint__corner arc-blueprint__corner--tl" aria-hidden="true" />
               <span className="arc-blueprint__corner arc-blueprint__corner--br" aria-hidden="true" />
@@ -451,7 +496,7 @@ export default function ArchiveAnalyze({
             <div className="arc-shot__meta">
               <span>{shot ? `${shot.width}×${shot.height}` : DASH}</span>
               <span>{shotFocal ? `${shotFocal} мм` : DASH}</span>
-              <span>ГЕО {shot?.exifData?.latitude != null ? '✓' : DASH}</span>
+              <span>ГЕО {geoOf(shot) ? '✓' : DASH}</span>
               <span>МЕТА {shot?.exifData ? '✓' : DASH}</span>
             </div>
           </Win>
@@ -477,12 +522,7 @@ export default function ArchiveAnalyze({
             onStop={dropNoFocal}
           />
         )}
-        <StateStrip
-          photos={photos.length}
-          withExif={withExif}
-          cubeState={cubeState}
-          phase={phase}
-        />
+        <StateStrip photos={photos.length} withExif={withExif} phase={phase} />
       </div>
 
       {/* ═══ ОКНА ПРОГРАММ ═══════════════════════════════════ */}
@@ -493,11 +533,12 @@ export default function ArchiveAnalyze({
           meta={`${pad2(photos.length)} / ${MAX_PHOTOS} · ${photos.length ? sizeStr : '0.0 МБ'}`}
         >
           <div
-            className="arc-dz"
+            ref={dzRef}
+            className={`arc-dz${compressing ? ' is-intake' : ''}`}
             onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('over') }}
             onDragLeave={(e) => e.currentTarget.classList.remove('over')}
             onDrop={onDrop}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => !compressing && fileInputRef.current?.click()}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click() }}
@@ -509,11 +550,32 @@ export default function ArchiveAnalyze({
               style={{ display: 'none' }}
             />
             <span className="arc-dz__scan" aria-hidden="true" />
-            <div className="arc-dz__title">ПЕРЕТАЩИТЕ СНИМКИ</div>
-            <div className="arc-dz__arrows" aria-hidden="true">↓↓↓↓↓↓↓↓↓</div>
-            <div className="arc-dz__hint">
-              ДО {MAX_PHOTOS} СНИМКОВ — ГЕОМЕТКИ ЧИТАЮТСЯ ИЗ МЕТАДАННЫХ
-            </div>
+
+            {compressing ? (
+              /* Приём партии: крупный счётчик процентов по БАЙТАМ (те же
+                 цифры, что и у полосы) плюс лента протяжки. Лента —
+                 единственное здесь чистое украшение, и она намеренно
+                 отвязана от процентов: это «плёнка идёт», а не второй,
+                 конкурирующий индикатор прогресса. */
+              <>
+                <div className="arc-dz__big">{compProg}<i>%</i></div>
+                <div className="arc-dz__title arc-dz__title--sm">ПРИЁМ ПАРТИИ</div>
+                <div className="arc-film" aria-hidden="true">
+                  {Array.from({ length: 18 }, (_, i) => (
+                    <i key={i} style={{ animationDelay: `${i * 70}ms` }} />
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="arc-dz__title">ПЕРЕТАЩИТЕ СНИМКИ</div>
+                <div className="arc-dz__arrows" aria-hidden="true">↓↓↓↓↓↓↓↓↓</div>
+                <div className="arc-dz__hint">
+                  ДО {MAX_PHOTOS} СНИМКОВ — ГЕОМЕТКИ ЧИТАЮТСЯ ИЗ МЕТАДАННЫХ
+                </div>
+              </>
+            )}
+
             <div className={`arc-bar${dzIndeterminate ? ' is-indeterminate' : ''}`}>
               {!dzIndeterminate && <span style={{ width: `${dzPct}%` }} />}
             </div>
@@ -527,6 +589,14 @@ export default function ArchiveAnalyze({
               <ul className="arc-list">
                 {REQUIREMENTS.map((r) => <li key={r}>{r}</li>)}
               </ul>
+              {/* Образцовый кадр стоит ИМЕННО ЗДЕСЬ, рядом со списком,
+                  который он иллюстрирует, — а не в окне «СНИМОК_0001»,
+                  где через секунду будет настоящий кадр пользователя.
+                  Там он читался бы как чужой замер. */}
+              <figure className="arc-sample">
+                <img className="arc-art" src={ART.sample} alt="Пример правильного кадра: объект целиком, калибровочный куб в кадре" loading="lazy" />
+                <figcaption>ОБРАЗЦОВЫЙ КАДР · ОБЪЕКТ ЦЕЛИКОМ · КУБ В КАДРЕ</figcaption>
+              </figure>
             </div>
 
             <div className="arc-box">
@@ -570,11 +640,17 @@ export default function ArchiveAnalyze({
                     <span className={`arc-th__tag${focalOf(p) != null ? ' is-ok' : ' is-bad'}`}>
                       МЕТА {focalOf(p) != null ? '✓' : '?'}
                     </span>
+                    {geoOf(p) && <span className="arc-th__geo" title="Есть координаты">◎</span>}
                     {isNew && (
-                      <span className="arc-th__read">
-                        <i className="arc-th__runner" aria-hidden="true" />
-                        ЧТЕНИЕ МЕТАДАННЫХ
-                      </span>
+                      <>
+                        <span className="arc-th__read">
+                          <i className="arc-th__runner" aria-hidden="true" />
+                          ЧТЕНИЕ МЕТАДАННЫХ
+                        </span>
+                        {/* вспышка «принят» — снимается той же выдержкой,
+                            что и плашка чтения, только на кадр позже */}
+                        <span className="arc-th__accept" aria-hidden="true">ПРИНЯТ</span>
+                      </>
                     )}
                     <button
                       type="button"
@@ -620,6 +696,9 @@ export default function ArchiveAnalyze({
           <div className="arc-field">
             <span className="arc-field__k">РЕЖИМ РАБОТЫ</span>
             <div className="arc-seg" role="group" aria-label="Режим работы">
+              {/* TEST / PROD — латиницей по прямой просьбе: это имена
+                  контуров пайплайна n8n, а не подписи интерфейса, и в
+                  логах/настройках они называются именно так. */}
               <button
                 type="button"
                 className={`arc-seg__b${!isProd ? ' is-on' : ''}`}
@@ -627,7 +706,7 @@ export default function ArchiveAnalyze({
                 disabled={busy}
                 onClick={() => !busy && setIsProd(false)}
               >
-                ТЕСТ
+                TEST
               </button>
               <button
                 type="button"
@@ -636,7 +715,7 @@ export default function ArchiveAnalyze({
                 disabled={busy}
                 onClick={() => !busy && setIsProd(true)}
               >
-                РАБОЧИЙ
+                PROD
               </button>
             </div>
           </div>
@@ -664,7 +743,7 @@ export default function ArchiveAnalyze({
             </button>
           </div>
 
-          <div className="arc-actions arc-actions--sub">
+          <div className="arc-actions arc-actions--sub" ref={cubeRef}>
             <button type="button" className="arc-btn arc-btn--ghost" onClick={reset}>
               СБРОСИТЬ СЕССИЮ
             </button>

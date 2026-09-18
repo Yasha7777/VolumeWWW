@@ -2,20 +2,25 @@ import { useMemo, useState } from 'react'
 import PlyViewer from '../PlyViewer'
 import ViewerErrorBoundary from '../ViewerErrorBoundary'
 import { DiagnosticsBlock } from '../Diagnostics'
-import Win from './Win'
 import Barcode from './Barcode'
+import ArcPlate, { ART } from './ArcPlate'
 import { analysisNo, extraMetrics, splitMaterial, DASH } from './archiveData'
 
 /* ============================================================
    ArchiveHistory — экран 02 АРХИВ в теме «Архив».
    ------------------------------------------------------------
    Слой представления над pages/History.jsx: строки приезжают
-   уже отфильтрованными и посчитанными, здесь только вёрстка,
-   раскрытие скан-листа и «осмотр» записи.
+   уже отфильтрованными и посчитанными, здесь только вёрстка и
+   раскрытие записи.
+
+   Запись раскрывается ПО НАЖАТИЮ и прямо под своей строкой.
+   Раскрытие по наведению было ошибкой: курсор, идущий к
+   содержимому карточки, по дороге пересекал соседние строки —
+   те открывались и закрывались, а нужная схлопывалась под
+   рукой. Наведение теперь только подсвечивает.
 
    Отличия от макета — по одной причине, всегда одной: числа,
-   которых у приложения нет, не выдумываются. Достоверность
-   показывается, если пайплайн её прислал, иначе прочерк.
+   которых у приложения нет, не выдумываются.
    ============================================================ */
 
 const pad3 = (n) => String(n).padStart(3, '0')
@@ -27,148 +32,200 @@ const fmtDate = (iso) => {
     ? DASH
     : `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()}`
 }
+const fmtTime = (iso) => {
+  const d = new Date(iso)
+  return Number.isNaN(+d) ? '' : `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+}
 
 const num = (v, digits = 2) => (Number.isFinite(v) ? v.toFixed(digits) : null)
 
-/* ── скан-лист: раскрывается под записью ─────────────────────── */
-function ScanSheet({ row, no, onInspect }) {
-  const thumbs = (row.thumbs?.length ? row.thumbs : row.photos || []).slice(0, 3)
-  const extra  = useMemo(() => extraMetrics(row.raw?.result), [row.raw?.result])
-  const shots  = row.photos?.length || 0
+const STATUS = {
+  completed: { label: 'ГОТОВ',      cls: 'is-ok' },
+  error:     { label: 'ОШИБКА',     cls: 'is-bad' },
+  pending:   { label: 'В ОБРАБОТКЕ', cls: 'is-run' },
+}
+const statusOf = (s) => STATUS[s] || STATUS.pending
 
-  return (
-    <div className="arc-scan">
-      <div className="arc-scan__films">
-        {Array.from({ length: 3 }, (_, i) => (
-          <span key={i} className="arc-scan__film">
-            {thumbs[i]
-              ? <img src={thumbs[i]} alt="" loading="lazy" />
-              : <i className="arc-scan__empty" aria-hidden="true" />}
-          </span>
-        ))}
-      </div>
+/* ── раскрытая запись ────────────────────────────────────────
+   Содержит всё, что показывают светлая и тёмная темы: текст
+   ответа пайплайна, снимки, трёхмерную модель, диагностику,
+   владельца и место съёмки. Штрих-кода здесь нет намеренно —
+   в окне записи он ничего не кодирует, кроме самого себя.  */
+function Record({ row, detail, onDelete, deleting }) {
+  const mat   = splitMaterial(row.material)
+  const extra = useMemo(() => extraMetrics(row.raw?.result), [row.raw?.result])
+  const st    = statusOf(row.status)
+  const has3d = !!(detail?.plyUrl || detail?.glbUrl)
+  const photos = row.photos || []
+  const thumbs = row.thumbs || []
+  const thumbAt = (i) => thumbs[i] || photos[i]
 
-      <div className="arc-scan__data">
-        <div><span>СКАН</span><b>{no} / {pad2(shots)} {shots === 1 ? 'СНИМОК' : 'СНИМКА'}</b></div>
-        <div><span>ДОСТОВЕРНОСТЬ</span><b>{extra.confidence != null ? extra.confidence.toFixed(2) : DASH}</b></div>
-        <div>
-          <span>КАЛИБРОВОЧНЫЙ КУБ</span>
-          <b className={row.volume != null ? '' : 'is-bad'}>{row.volume != null ? '✓' : DASH}</b>
-        </div>
-        <div><span>НОМЕР</span><b>{analysisNo(row.id) || DASH}</b></div>
-      </div>
-
-      <button type="button" className="arc-btn arc-btn--chip" onClick={onInspect}>
-        [ОСМОТР]
-      </button>
+  const metric = (k, v, cls = '') => (
+    <div className="arc-rec__m">
+      <span>{k}</span>
+      <b className={cls}>{v ?? DASH}</b>
     </div>
   )
-}
-
-/* ── окно осмотра записи ─────────────────────────────────────── */
-function Inspect({ row, detail, onClose }) {
-  const parsedMat = splitMaterial(row.material)
-  const extra = useMemo(() => extraMetrics(row.raw?.result), [row.raw?.result])
-  const has3d = !!(detail?.plyUrl || detail?.glbUrl)
 
   return (
-    <Win
-      name={`ОСМОТР_${(analysisNo(row.id) || 'ЗАПИСИ').replace('-', '_')}.ПРГ`}
-      meta={fmtDate(row.date)}
-      className="arc-inspect"
-    >
-      <div className="arc-inspect__grid">
-        <div className="arc-dos__col">
-          <div className="arc-dos__k">ИЗМЕРЕННЫЙ ОБЪЁМ</div>
-          <div className="arc-dos__big">{num(row.volume) ?? DASH}</div>
-          <div className="arc-dos__unit">м³</div>
-          <div className="arc-dos__rows">
-            <div className="arc-dos__row"><span>МАТЕРИАЛ</span><b>{parsedMat.name?.toUpperCase() || DASH}</b></div>
-            <div className="arc-dos__row"><span>ФРАКЦИЯ</span><b>{parsedMat.fraction || DASH}</b></div>
-            <div className="arc-dos__row"><span>СНИМКОВ</span><b>{pad2(row.photos?.length || 0)}</b></div>
-            <div className="arc-dos__row">
-              <span>ДОСТОВЕРНОСТЬ</span>
-              <b className="arc-blue">{extra.confidence != null ? extra.confidence.toFixed(2) : DASH}</b>
-            </div>
-          </div>
-        </div>
+    <div className="arc-rec">
+      {/* ── название и мета ── */}
+      <div className="arc-rec__hd">
+        <h3 className="arc-rec__ttl">
+          {(row.title || mat.name || 'БЕЗ НАЗВАНИЯ').toUpperCase()}
+        </h3>
+        <span className={`arc-rec__st ${st.cls}`}>{st.label}</span>
+      </div>
+      <div className="arc-rec__meta">
+        <span>ЗАПИСЬ {analysisNo(row.id) || DASH}</span>
+        <span>{fmtDate(row.date)} {fmtTime(row.date)}</span>
+        {row.site && <span>{String(row.site).toUpperCase()}</span>}
+        {row.owner && <span>ВЛАДЕЛЕЦ: {String(row.owner).toUpperCase()}</span>}
+        {row.location && <span>КООРДИНАТЫ: {row.location}</span>}
+      </div>
 
-        <div className="arc-dos__col">
-          <div className="arc-dos__k">ОЦЕНКА МАССЫ</div>
-          <div className="arc-dos__big arc-dos__big--green">{num(row.weight, 1) ?? DASH}</div>
-          <div className="arc-dos__unit">т</div>
-          <div className="arc-dos__rows">
-            <div className="arc-dos__row"><span>ЗАПИСЬ ОТ</span><b>{fmtDate(row.date)}</b></div>
-            <div className="arc-dos__row"><span>НОМЕР АНАЛИЗА</span><b className="arc-amber">{analysisNo(row.id) || DASH}</b></div>
-            <div className="arc-dos__row">
-              <span>ВЫСОТА</span>
-              <b>{extra.height != null ? `${extra.height.toFixed(2)} м` : DASH}</b>
-            </div>
-            <div className="arc-dos__row">
-              <span>ПЛОЩАДЬ ОСНОВАНИЯ</span>
-              <b>{extra.baseArea != null ? `${extra.baseArea.toFixed(1)} м²` : DASH}</b>
-            </div>
-          </div>
-        </div>
+      {row.status === 'error' && (
+        <p className="arc-rec__err">{String(row.errorReason || 'НЕ УДАЛОСЬ ОБРАБОТАТЬ СНИМКИ').toUpperCase()}</p>
+      )}
+      {row.status !== 'error' && row.status !== 'completed' && (
+        <p className="arc-rec__wait">ИДЁТ ОБРАБОТКА — СПИСОК ОБНОВЛЯЕТСЯ САМ</p>
+      )}
 
-        <div className="arc-dos__view">
-          <div className="arc-dos__viewhd">ВОССТАНОВЛЕННАЯ ГЕОМЕТРИЯ</div>
-          <div className="arc-blueprint">
+      {/* ── метрики ── */}
+      <div className="arc-rec__metrics">
+        {metric('ОБЪЁМ', num(row.volume) ? `${num(row.volume)} м³` : null)}
+        {metric('МАССА', num(row.weight, 1) ? `${num(row.weight, 1)} т` : null)}
+        {metric('МАТЕРИАЛ', mat.name ? mat.name.toUpperCase() : null)}
+        {metric('ФРАКЦИЯ', mat.fraction)}
+        {metric('ПЛОТНОСТЬ', row.density ? `${row.density} кг/м³` : null)}
+        {metric('ДОСТОВЕРНОСТЬ', extra.confidence != null ? extra.confidence.toFixed(2) : null, 'arc-blue')}
+        {metric('ВЫСОТА', extra.height != null ? `${extra.height.toFixed(2)} м` : null)}
+        {metric('СНИМКОВ', photos.length ? pad2(photos.length) : null)}
+      </div>
+
+      {/* ── модель крупно, диагностика мельче ── */}
+      <div className="arc-rec__grid">
+        <div className="arc-rec__view">
+          <div className="arc-rec__k">ВОССТАНОВЛЕННАЯ ГЕОМЕТРИЯ</div>
+          {/* Высокая рамка — только под настоящую модель. Пустая
+              «синька» в полэкрана читается как сломанный вьюер. */}
+          <div className={`arc-blueprint${has3d ? ' arc-blueprint--tall' : ''}`}>
             {has3d ? (
-              <ViewerErrorBoundary>
+              <ViewerErrorBoundary height="460px">
                 <PlyViewer
                   plyUrl={detail.plyUrl} glbUrl={detail.glbUrl}
-                  up={detail.up} upGlb={detail.upGlb}
+                  up={detail.up} upGlb={detail.upGlb} height="460px"
                 />
               </ViewerErrorBoundary>
             ) : (
-              <div className="arc-plate">
-                <span className="arc-plate__ico" aria-hidden="true" />
-                ТРЁХМЕРНАЯ МОДЕЛЬ НЕ СОХРАНЕНА
-              </div>
+              <ArcPlate kind="mesh" src={ART.mesh} caption="ТРЁХМЕРНАЯ МОДЕЛЬ НЕ СОХРАНЕНА" />
             )}
             <span className="arc-blueprint__tag">[ВРАЩАТЬ]</span>
           </div>
-          <Barcode caption={`${analysisNo(row.id) || 'ЗАПИСЬ'} · 2026`} />
+        </div>
+
+        <div className="arc-rec__side">
+          {detail?.diag && (
+            <>
+              <div className="arc-rec__k">ДИАГНОСТИКА</div>
+              {/* Ширину ограничиваем контейнером, а не transform: scale —
+                  пометки в этих кадрах размером в одну ячейку, и любое
+                  масштабирование картинки их размазывает (см. CLAUDE.md).
+                  Просмотр 1:1 внутри блока при этом остаётся. */}
+              <div className="arc-rec__diag"><DiagnosticsBlock diag={detail.diag} /></div>
+            </>
+          )}
+
+          {photos.length > 0 && (
+            <>
+              <div className="arc-rec__k">СНИМКИ · {pad2(photos.length)}</div>
+              <div className="arc-rec__photos">
+                {photos.map((url, i) => (
+                  <a
+                    key={i}
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="arc-rec__photo"
+                    title={`Снимок ${i + 1} — открыть полный размер`}
+                  >
+                    <img src={thumbAt(i)} alt="" loading="lazy" />
+                    <span>{pad2(i + 1)}</span>
+                  </a>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {detail?.diag && (
-        <div className="arc-dos__diag"><DiagnosticsBlock diag={detail.diag} /></div>
+      {/* ── сырой ответ пайплайна ── */}
+      {row.raw?.result && (
+        <details className="arc-rec__raw">
+          <summary>ОТВЕТ РАСЧЁТНОГО УЗЛА</summary>
+          <pre>{row.raw.result}</pre>
+        </details>
       )}
 
-      <div className="arc-actions arc-actions--sub">
-        <button type="button" className="arc-btn arc-btn--ghost" onClick={onClose}>ЗАКРЫТЬ ОСМОТР</button>
+      <div className="arc-rec__act">
+        <button
+          type="button"
+          className="arc-btn arc-btn--chip arc-btn--danger"
+          onClick={(e) => onDelete?.(row.id, e)}
+          disabled={deleting}
+        >
+          {deleting ? 'УДАЛЯЮ…' : 'УДАЛИТЬ ЗАПИСЬ'}
+        </button>
       </div>
-    </Win>
+    </div>
   )
 }
 
 /* ============================================================ */
 export default function ArchiveHistory({
   rows, sumVol, sumWeight, loading, error,
-  onRefresh, getDetail, query, setQuery,
+  onRefresh, onDelete, deleting = {}, getDetail,
+  query, setQuery,
+  adminUsers, userFilter, setUserFilter,
 }) {
-  const [openId, setOpenId]     = useState(null)   // раскрытый скан-лист
-  const [inspectId, setInspect] = useState(null)   // окно осмотра
+  const [openId, setOpenId] = useState(null)
 
-  const opened  = rows.find((r) => r.id === inspectId) || null
-  const detail  = opened && getDetail ? getDetail(opened.raw) : null
-  const lastAt  = rows.length ? rows[0].date : null
+  const lastAt = rows.length ? rows[0].date : null
+
+  /* «Архивный снимок склада» из макета был пустой синькой с
+     подписью — картинки под него в системе нет и взяться ей
+     неоткуда. Вместо заглушки показываем настоящую витрину
+     архива: кадры последних замеров. Нет ни одного — блока нет. */
+  const showcase = useMemo(() => {
+    const out = []
+    for (const r of rows) {
+      for (const t of (r.thumbs?.length ? r.thumbs : r.photos || [])) {
+        out.push(t)
+        if (out.length >= 6) return out
+      }
+    }
+    return out
+  }, [rows])
+
+  const userLabel = (u) =>
+    (u.name || '').trim() || (u.company || '').trim() || `${String(u.id).slice(0, 8)}…`
 
   return (
     <div className="arc-page">
       {/* ═══ ШАПКА АРХИВА ════════════════════════════════════ */}
-      <section className="arc-arch__top">
-        <div className="arc-blueprint arc-blueprint--wide">
-          <div className="arc-plate">
-            <span className="arc-plate__ico" aria-hidden="true" />
-            АРХИВНЫЙ СНИМОК СКЛАДА
+      <section className={`arc-arch__top${showcase.length ? '' : ' is-bare'}`}>
+        {showcase.length > 0 && (
+          <div className="arc-showcase">
+            <div className="arc-showcase__grid">
+              {showcase.map((src, i) => (
+                <span key={i} className="arc-showcase__cell">
+                  <img src={src} alt="" loading="lazy" />
+                </span>
+              ))}
+            </div>
+            <span className="arc-blueprint__cap">ПОСЛЕДНИЕ КАДРЫ АРХИВА</span>
           </div>
-          <span className="arc-blueprint__cap">СКЛАДСКАЯ ПЛОЩАДКА · {new Date().getFullYear()}</span>
-          <span className="arc-blueprint__corner arc-blueprint__corner--tl" aria-hidden="true" />
-          <span className="arc-blueprint__corner arc-blueprint__corner--br" aria-hidden="true" />
-        </div>
+        )}
 
         <div className="arc-arch__sum">
           <Barcode />
@@ -178,6 +235,7 @@ export default function ArchiveHistory({
             <div><span>СУММАРНАЯ МАССА</span><b>{num(sumWeight, 1) ?? DASH} т</b></div>
             <div><span>ПОСЛЕДНЯЯ ЗАПИСЬ</span><b>{lastAt ? fmtDate(lastAt) : DASH}</b></div>
           </div>
+
           <div className="arc-arch__tools">
             <input
               className="arc-input arc-input--find"
@@ -187,6 +245,22 @@ export default function ArchiveHistory({
               placeholder="ПОИСК ПО АРХИВУ"
               aria-label="Поиск по архиву"
             />
+            {/* Суперадмин: чужие архивы. Селектор появляется, только
+                если бэкенд подтвердил права (adminListUsers → 200). */}
+            {Array.isArray(adminUsers) && (
+              <select
+                className="arc-input arc-input--find arc-select"
+                value={userFilter}
+                onChange={(e) => setUserFilter(e.target.value)}
+                aria-label="Чей архив показывать"
+              >
+                <option value="mine">МОЙ АРХИВ</option>
+                <option value="all">ВСЕ ПОЛЬЗОВАТЕЛИ</option>
+                {adminUsers.map((u) => (
+                  <option key={u.id} value={u.id}>{userLabel(u)}</option>
+                ))}
+              </select>
+            )}
             <button type="button" className="arc-btn arc-btn--chip" onClick={onRefresh}>
               ОБНОВИТЬ
             </button>
@@ -207,29 +281,25 @@ export default function ArchiveHistory({
         {loading && <div className="arc-tab__msg">ЧТЕНИЕ АРХИВА…</div>}
         {!loading && error && <div className="arc-tab__msg is-bad">{String(error).toUpperCase()}</div>}
         {!loading && !error && !rows.length && (
-          <div className="arc-tab__msg">АРХИВ ПУСТ — ЗАПИСЕЙ НЕТ</div>
+          <div className="arc-empty">
+            <img className="arc-art" src={ART.manual} alt="" loading="lazy" />
+            <p>АРХИВ ПУСТ — ЗАПИСЕЙ НЕТ</p>
+            <i>ЗАВЕРШЁННЫЕ ЗАМЕРЫ ПОПАДАЮТ СЮДА САМИ</i>
+          </div>
         )}
 
         {rows.map((r, i) => {
-          // Нумерация по порядку в списке: сверху свежая запись — 001.
-          const no = pad3(i + 1)
           const isOpen = openId === r.id
           return (
-            <div
-              key={r.id}
-              className={`arc-tab__item${isOpen ? ' is-open' : ''}`}
-              onMouseEnter={() => setOpenId(r.id)}
-              onMouseLeave={() => setOpenId((cur) => (cur === r.id ? null : cur))}
-            >
+            <div key={r.id} className={`arc-tab__item${isOpen ? ' is-open' : ''}`}>
               <button
                 type="button"
                 className="arc-tab__row"
                 role="row"
-                onFocus={() => setOpenId(r.id)}
-                onClick={() => setInspect((cur) => (cur === r.id ? null : r.id))}
+                onClick={() => setOpenId((cur) => (cur === r.id ? null : r.id))}
                 aria-expanded={isOpen}
               >
-                <span role="cell" className="arc-tab__no">{no}</span>
+                <span role="cell" className="arc-tab__no">{pad3(i + 1)}</span>
                 <span role="cell" className="arc-tab__mat">
                   {(r.material || r.title || 'МАТЕРИАЛ НЕ ОПРЕДЕЛЁН').toUpperCase()}
                 </span>
@@ -243,21 +313,19 @@ export default function ArchiveHistory({
               </button>
 
               {isOpen && (
-                <ScanSheet row={r} no={no} onInspect={() => setInspect(r.id)} />
+                <Record
+                  row={r}
+                  detail={getDetail?.(r.raw)}
+                  onDelete={onDelete}
+                  deleting={!!deleting[r.id]}
+                />
               )}
             </div>
           )
         })}
       </div>
 
-      <p className="arc-tab__hint">
-        НАВЕДИТЕ КУРСОР НА ЗАПИСЬ — КАРТОЧКА РАСКРОЕТСЯ В СКАН-ЛИСТ
-      </p>
-
-      {/* ═══ ОСМОТР ══════════════════════════════════════════ */}
-      {opened && (
-        <Inspect row={opened} detail={detail} onClose={() => setInspect(null)} />
-      )}
+      <p className="arc-tab__hint">НАЖМИТЕ НА ЗАПИСЬ — ОНА РАСКРОЕТСЯ ПОД СТРОКОЙ</p>
     </div>
   )
 }

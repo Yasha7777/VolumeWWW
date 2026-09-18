@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { useTheme } from '../../theme/ThemeProvider'
 import { OPTS as THEME_OPTS } from '../ThemeToggle'
 import Barcode from './Barcode'
@@ -27,15 +27,24 @@ const VERSION = 'СИС. 02.26'
 const GEO     = 'ПЕТРОЗАВОДСК · КАРЕЛИЯ · 61.78 С.Ш. 34.35 В.Д.'
 const EMAIL   = 'yakov.kachalin@mail.ru'
 
-/* Разделы. Первые два — настоящие маршруты приложения, третий и
-   четвёртый в системе не подключены: по ТЗ они присутствуют в
-   полосе, но приглушены (opacity .45) и не кликаются. */
+/* Разделы. Все три — настоящие маршруты: заглушек в полосе не
+   держим. «03 ОБЪЕКТЫ» удалён, «04 ОТЧЁТЫ» подключён к /reports;
+   номера оставлены как в макете, они часть рисунка полосы. */
 const TABS = [
   { no: '01', label: 'АНАЛИЗ',  to: '/app' },
   { no: '02', label: 'АРХИВ',   to: '/history' },
-  { no: '03', label: 'ОБЪЕКТЫ', to: null },
-  { no: '04', label: 'ОТЧЁТЫ',  to: null },
+  { no: '04', label: 'ОТЧЁТЫ',  to: '/reports' },
 ]
+
+/* Кнопки панели задач — по текущему разделу: внизу ровно то, что
+   открыто на странице. Дублировать здесь переходы из меню «ПУСК»
+   незачем — раздел и так виден в полосе разделов. */
+const TASK_WINDOWS = {
+  '/app':     [{ key: 'files', label: 'ВВОД_СНИМКОВ' }, { key: 'cube', label: 'СВОЙСТВА_КУБА' }],
+  '/history': [{ key: 'archive', label: 'АРХИВ' }],
+  '/reports': [{ key: 'reports', label: 'ОТЧЁТЫ' }],
+  '/profile': [{ key: 'profile', label: 'УЧЁТНАЯ_ЗАПИСЬ' }],
+}
 
 /* ── часы панели задач ───────────────────────────────────────── */
 function Clock() {
@@ -83,6 +92,7 @@ function StartMenu({ open, onClose, onSignOut }) {
       <div className="arc-start__body">
         <Link className="arc-start__item" to="/app" role="menuitem" onClick={onClose}>АНАЛИЗ</Link>
         <Link className="arc-start__item" to="/history" role="menuitem" onClick={onClose}>АРХИВ</Link>
+        <Link className="arc-start__item" to="/reports" role="menuitem" onClick={onClose}>ОТЧЁТЫ</Link>
         <Link className="arc-start__item" to="/profile" role="menuitem" onClick={onClose}>УЧЁТНАЯ ЗАПИСЬ</Link>
 
         <div className="arc-start__sep" role="separator" />
@@ -113,7 +123,6 @@ function StartMenu({ open, onClose, onSignOut }) {
 
 export default function ArchiveChrome({ user, profile, onSignOut, children }) {
   const location = useLocation()
-  const navigate = useNavigate()
   const [startOpen, setStartOpen] = useState(false)
   const [cubeOn, setCubeOn]       = useState(false)
   const [online, setOnline]       = useState(
@@ -131,9 +140,8 @@ export default function ArchiveChrome({ user, profile, onSignOut, children }) {
     }
   }, [])
 
-  const path     = location.pathname
-  const onAnalyze = path === '/app'
-  const onArchive = path === '/history'
+  const path = location.pathname
+  const windows = TASK_WINDOWS[path] || []
 
   // Номер пользователя — стабильный, из uuid: показывать сам uuid в
   // «полевом» интерфейсе незачем, а выдумывать номер нельзя.
@@ -141,17 +149,19 @@ export default function ArchiveChrome({ user, profile, onSignOut, children }) {
   const userName = (profile?.name || user?.email || 'ОПЕРАТОР').toUpperCase()
   const org = (profile?.company || 'ОРГАНИЗАЦИЯ НЕ УКАЗАНА').toUpperCase()
 
-  /* «ВВОД_СНИМКОВ.ПРГ»: на странице анализа открывает выбор файлов
-     сразу, из архива — сперва уводит на /app. Событие подхватит
-     ArchiveAnalyze после монтирования (см. bus.js, pending). */
-  const pickFiles = () => {
-    if (!onAnalyze) navigate('/app')
-    emitArchive(EV.PICK_FILES)
-  }
-  const toggleCube = () => {
-    if (!onAnalyze) navigate('/app')
-    setCubeOn((v) => !v)
-    emitArchive(EV.CUBE)
+  /* Кнопка окна подводит страницу к этому окну и мигает его рамкой.
+     Раньше «ВВОД_СНИМКОВ» открывала системный диалог файлов, а
+     «СВОЙСТВА_КУБА» просто переключала панель — и обе выглядели
+     сломанными, если нужное окно было далеко внизу: на экране не
+     менялось ничего. Прокрутка — единственная реакция, которую
+     видно с любого места страницы. */
+  const openWindow = (key) => {
+    if (key === 'archive' || key === 'reports' || key === 'profile') {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    emitArchive(key === 'cube' ? EV.CUBE : EV.FILES)
+    if (key === 'cube') setCubeOn(true)
   }
 
   return (
@@ -185,14 +195,7 @@ export default function ArchiveChrome({ user, profile, onSignOut, children }) {
       <nav className="arc-nav" aria-label="Разделы системы">
         <div className="arc-nav__tabs">
           {TABS.map((t) => {
-            const active = t.to && path === t.to
-            if (!t.to) {
-              return (
-                <span key={t.no} className="arc-nav__tab is-off" aria-disabled="true" title="РАЗДЕЛ НЕ ПОДКЛЮЧЁН">
-                  [{t.no} {t.label}]
-                </span>
-              )
-            }
+            const active = path === t.to
             return (
               <Link
                 key={t.no}
@@ -226,17 +229,16 @@ export default function ArchiveChrome({ user, profile, onSignOut, children }) {
           </button>
 
           <div className="arc-task__btns">
-            <Link to="/app" className={`arc-task__btn${onAnalyze ? ' is-down' : ''}`}>АНАЛИЗ.ПРГ</Link>
-            <Link to="/history" className={`arc-task__btn${onArchive ? ' is-down' : ''}`}>АРХИВ.ПРГ</Link>
-            <button type="button" className="arc-task__btn" onClick={pickFiles}>ВВОД_СНИМКОВ.ПРГ</button>
-            <button
-              type="button"
-              className={`arc-task__btn${cubeOn && onAnalyze ? ' is-down' : ''}`}
-              onClick={toggleCube}
-              aria-pressed={cubeOn && onAnalyze}
-            >
-              СВОЙСТВА_КУБА
-            </button>
+            {windows.map((w) => (
+              <button
+                key={w.key}
+                type="button"
+                className={`arc-task__btn${w.key === 'cube' && cubeOn ? ' is-down' : ''}`}
+                onClick={() => openWindow(w.key)}
+              >
+                {w.label}
+              </button>
+            ))}
           </div>
 
           <Barcode className="arc-code--task" caption={null} />

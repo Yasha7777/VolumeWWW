@@ -10,6 +10,7 @@ import Reveal from '../components/Reveal';
 import { MeasureCardSkeleton } from '../components/Skeleton';
 import { useTheme } from '../theme/ThemeProvider';
 import ArchiveHistory from '../components/archive/ArchiveHistory';  // ← вид этого же списка в теме «Архив»
+import { parseWebhookResult } from '../components/RaschetDownloadButton';  // ← плотность для карточки записи
 
 // Декор по бокам — base64 из отдельных файлов (Vite ?raw)
 // декор загружается отдельными файлами из public/decor/*.png —
@@ -1426,9 +1427,14 @@ export default function History() {
       status: it.status,
       material: getMaterial(it),
       title: getHeading(it),
-      volume: getVolume(it),
-      weight: getWeight(it),
+      volume: it.status === 'error' ? null : getVolume(it),
+      weight: it.status === 'error' ? null : getWeight(it),
+      density: parseWebhookResult(it.result)?.density ?? null,
       date: it.created_at,
+      site: getSite(it),
+      location: getLocation(it),
+      owner: getOwner(it),                     // подписан бэкендом только суперадмину
+      errorReason: it.status === 'error' ? getErrorReason(it) : null,
       photos: it.photo_urls || [],
       thumbs: it.thumbnail_urls || [],
       raw: it,
@@ -1453,9 +1459,14 @@ export default function History() {
         loading={loading}
         error={error}
         onRefresh={refresh}
+        onDelete={deleteItem}
+        deleting={deleting}
         getDetail={getDetail}
         query={query}
         setQuery={setQuery}
+        adminUsers={adminUsers}
+        userFilter={userFilter}
+        setUserFilter={setUserFilter}
       />
     );
   }

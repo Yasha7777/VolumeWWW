@@ -168,7 +168,7 @@
 /* служебная подпись: капс, моно, трекинг */
 .arc-state__k, .arc-box__ttl, .arc-field__k, .arc-dos__k, .arc-log__ttl,
 .arc-code__cap, .arc-tab__hd, .arc-chip, .arc-shot__meta, .arc-dos__viewhd,
-.arc-kv span, .arc-dos__row span, .arc-scan__data span, .arc-start__label {
+.arc-kv span, .arc-dos__row span, .arc-start__label {
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 500;
@@ -280,23 +280,20 @@
 
 /* ── списки «подпись … значение» ────────────────────────────── */
 .arc-kv > div,
-.arc-dos__row,
-.arc-scan__data > div {
+.arc-dos__row {
   display: flex; align-items: baseline; gap: 10px;
   padding: 5px 0;
   border-bottom: 1px solid rgba(24, 25, 22, .12);
 }
 .arc-kv > div:last-child,
-.arc-dos__row:last-child,
-.arc-scan__data > div:last-child { border-bottom: 0; }
+.arc-dos__row:last-child { border-bottom: 0; }
 .arc-kv b,
-.arc-dos__row b,
-.arc-scan__data b {
+.arc-dos__row b {
   margin-left: auto; text-align: right;
   font-family: var(--font-mono); font-size: 12px; font-weight: 600;
   letter-spacing: .06em; color: var(--ink);
 }
-.arc-kv > div.is-bad b, .arc-kv b.is-bad, .arc-scan__data b.is-bad { color: var(--red); }
+.arc-kv > div.is-bad b, .arc-kv b.is-bad { color: var(--red); }
 .arc-kv--big b { font-size: 14px; }
 .arc-blue  { color: var(--blue) !important; }
 .arc-amber { color: var(--amber) !important; }
@@ -361,27 +358,52 @@
 .arc-blueprint__grid { bottom: 8px; right: 8px; color: var(--green-bright); }
 .arc-blueprint__cap  { bottom: 8px; left: 8px; }
 
+/* ── служебная таблица на месте будущего растра ──────────────
+   Не фотография и не иконка: сетка высот и приводочные метки.
+   Почему так — см. шапку components/archive/ArcPlate.jsx. */
 .arc-plate {
   position: relative; z-index: 1;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 8px; padding: 24px 16px; min-height: 170px; width: 100%;
+  gap: 6px; padding: 14px 16px 18px; min-height: 170px; width: 100%;
   border: 0; background: transparent; cursor: default;
   font-family: var(--font-mono); font-size: 11px; font-weight: 500;
   letter-spacing: .16em; text-align: center; color: #7E9AA4;
 }
 .arc-plate--btn { cursor: pointer; }
 .arc-plate--btn:hover { color: #A9C3CA; }
-.arc-plate i { font-style: normal; font-size: 9px; letter-spacing: .12em; opacity: .75; }
-.arc-plate__ico { position: relative; width: 34px; height: 28px; border: 1px solid currentColor; }
-.arc-plate__ico::before {
-  content: ''; position: absolute; left: 5px; top: 5px; width: 5px; height: 5px;
-  border: 1px solid currentColor;
+.arc-plate--btn:hover .arc-plate__art { opacity: 1; }
+
+.arc-plate__art {
+  display: block; width: 100%; max-width: 320px; height: auto;
+  opacity: .85; transition: opacity .2s;
 }
-.arc-plate__ico::after {                       /* силуэт кучи в рамке */
-  content: ''; position: absolute; left: 4px; right: 4px; bottom: 4px; height: 13px;
-  background: currentColor; opacity: .55;
-  clip-path: polygon(0 100%, 36% 18%, 58% 58%, 74% 36%, 100% 100%);
+.arc-plate__cap { display: block; }
+.arc-plate__hint { font-style: normal; font-size: 9px; letter-spacing: .12em; opacity: .7; }
+
+/* Вариант с готовой иллюстрацией: кадр заполняет рамку целиком,
+   подпись ложится на него полосой. */
+.arc-plate--img { padding: 0; min-height: 0; }
+.arc-plate__img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.arc-plate--img .arc-plate__cap,
+.arc-plate--img .arc-plate__hint {
+  position: absolute; left: 0; right: 0; z-index: 2;
+  padding: 6px 10px; background: rgba(18, 32, 43, .82); color: #9EBEC7;
 }
+.arc-plate--img .arc-plate__cap  { bottom: 0; }
+.arc-plate--img .arc-plate__hint { top: 0; text-align: center; }
+
+/* сетка высот */
+.arc-plate__mesh { fill: none; stroke: #3E6675; stroke-width: 1; }
+.arc-plate__mesh.is-crest { stroke: var(--green-bright); stroke-width: 1.2; opacity: .9; }
+.arc-plate__base { fill: none; stroke: #5A8695; stroke-width: 1; stroke-dasharray: 3 3; }
+.arc-plate__scale line { stroke: #5A8695; stroke-width: 1; }
+
+/* место под кадр объекта */
+.arc-plate__crop { fill: none; stroke: #3E6675; stroke-width: 1; stroke-dasharray: 5 4; }
+.arc-plate__corner line { stroke: #9EBEC7; stroke-width: 1; }
+.arc-plate__target { fill: none; stroke: #3E6675; stroke-width: 1; }
+.arc-plate__target circle:last-of-type { stroke: var(--green-bright); }
+.arc-plate__wedge rect:last-child { fill: none; stroke: #5A8695; stroke-width: 1; }
 
 /* ============================================================
    4. СИСТЕМНАЯ ШАПКА
@@ -448,8 +470,6 @@
 }
 .arc-nav__tab:hover { background: rgba(245, 242, 231, .14); color: #F2F0E4; }
 .arc-nav__tab.is-active { background: var(--surface); color: var(--ink); }
-.arc-nav__tab.is-off { opacity: .45; cursor: not-allowed; }
-.arc-nav__tab.is-off:hover { background: transparent; color: #CBD8C2; }
 .arc-nav__geo {
   margin-left: auto; padding-left: 14px;
   font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; color: #A8BC9E;
@@ -514,6 +534,36 @@
   position: sticky; top: calc(var(--sys-h) + var(--nav-h) + 14px);
 }
 
+/* Лист обмера в шапке раздела «Отчёты» — бумага на бумаге,
+   поэтому отделяется рамкой и жёсткой тенью, а не подложкой. */
+.arc-plateshot { border: var(--hairline); background: var(--surface-2); box-shadow: var(--drop); }
+.arc-plateshot img { display: block; width: 100%; height: auto; }
+.arc-plateshot figcaption {
+  padding: 7px 10px; border-top: var(--hairline);
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: .14em; color: var(--ink-3);
+}
+
+/* Образцовый кадр под списком требований к съёмке */
+.arc-sample { margin-top: 12px; border: var(--hairline); background: var(--blue-deep); }
+.arc-sample img { display: block; width: 100%; height: auto; }
+.arc-sample figcaption {
+  padding: 6px 9px; border-top: var(--hairline);
+  background: var(--surface-2);
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em; color: var(--ink-3);
+}
+
+/* Пустой архив */
+.arc-empty { display: grid; justify-items: center; gap: 8px; padding: 26px 16px; text-align: center; }
+.arc-empty img { width: min(100%, 420px); height: auto; border: var(--hairline); box-shadow: var(--drop); }
+.arc-empty p {
+  margin-top: 6px;
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .14em; color: var(--ink-2);
+}
+.arc-empty i {
+  font-style: normal;
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: .12em; color: var(--ink-3);
+}
+
 /* окно со снимком */
 .arc-shot .arc-win__body { padding: 8px; }
 .arc-shot__img { width: 100%; height: 100%; object-fit: cover; position: relative; z-index: 1;
@@ -532,34 +582,16 @@
   display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: center;
   padding: 14px; background: var(--surface-2); border: var(--hairline);
 }
-.arc-cube__stage { position: relative; width: 118px; height: 118px; perspective: 520px; flex: none; }
-.arc-cube__box {
-  position: absolute; inset: 14px 20px 22px 8px;
-  transform-style: preserve-3d;
-  transform: rotateX(-22deg) rotateY(-36deg);
+.arc-cube__svg { width: 132px; height: auto; flex: none; display: block; }
+/* Грани рисуются полигонами: шов между клетками ловится тем же
+   цветом обводки, иначе на границах видна бумага сквозь щели
+   антиалиасинга. */
+.arc-cube__svg polygon { stroke: none; shape-rendering: crispEdges; }
+.arc-cube__edges polygon { fill: none; stroke: var(--ink); stroke-width: 1; shape-rendering: geometricPrecision; }
+.arc-cube__dim line { stroke: var(--red); stroke-width: 1; }
+.arc-cube__dim text {
+  fill: var(--red); font-family: var(--font-mono); font-size: 9px; letter-spacing: .06em;
 }
-.arc-cube__face {
-  position: absolute; inset: 0; border: 1px solid var(--ink);
-  background: repeating-conic-gradient(var(--ink) 0% 25%, var(--surface-2) 0% 50%)
-    0 0 / var(--arc-cube-tile, 50%) var(--arc-cube-tile, 50%);
-}
-.arc-cube__face--front { transform: translateZ(38px); }
-.arc-cube__face--right {
-  transform: rotateY(90deg) translateZ(38px);
-  background: repeating-conic-gradient(var(--green) 0% 25%, var(--green-bright) 0% 50%)
-    0 0 / var(--arc-cube-tile, 50%) var(--arc-cube-tile, 50%);
-}
-.arc-cube__face--top {
-  transform: rotateX(90deg) translateZ(38px);
-  background: repeating-conic-gradient(var(--ink) 0% 25%, var(--surface-3) 0% 50%)
-    0 0 / var(--arc-cube-tile, 50%) var(--arc-cube-tile, 50%);
-}
-.arc-cube__dim {
-  position: absolute; font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em;
-  color: var(--red);
-}
-.arc-cube__dim--w { left: 14px; bottom: 0; border-top: 1px solid var(--red); padding: 2px 4px 0; }
-.arc-cube__dim--h { right: 0; top: 46px; border-left: 1px solid var(--red); padding: 0 0 0 4px; }
 
 .arc-cube__spec { min-width: 0; }
 .arc-cube__spec dt {
@@ -572,13 +604,13 @@
 }
 .arc-cube__size { color: var(--ink) !important; font-weight: 600; }
 .arc-cube__must { color: var(--ink) !important; font-weight: 700; }
-.arc-cube--compact .arc-cube__stage { width: 84px; height: 84px; }
+.arc-cube--compact .arc-cube__svg { width: 96px; }
 
 /* ============================================================
    7. СТРОКА СОСТОЯНИЯ
    ============================================================ */
 .arc-state {
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
   border: var(--hairline); background: var(--surface);
 }
 .arc-state__cell {
@@ -673,6 +705,31 @@
   font-family: var(--font-display); font-weight: 700; font-size: clamp(19px, 2.4vw, 26px);
   letter-spacing: .02em; color: var(--ink);
 }
+.arc-dz__title--sm { font-size: 14px; letter-spacing: .2em; color: var(--ink-3); }
+
+/* ── приём партии ───────────────────────────────────────────── */
+.arc-dz.is-intake { cursor: progress; border-color: var(--green); background: var(--surface-3); }
+.arc-dz.is-intake .arc-dz__scan { animation-duration: 1.1s; background:
+  linear-gradient(90deg, transparent, var(--green-bright), transparent); }
+.arc-dz__big {
+  font-family: var(--font-display); font-weight: 700; font-size: clamp(40px, 7vw, 68px);
+  line-height: 1; color: var(--green);
+  font-variant-numeric: tabular-nums;
+}
+.arc-dz__big i { font-style: normal; font-size: .4em; color: var(--amber); margin-left: 4px; }
+
+/* лента протяжки: «плёнка идёт». Намеренно НЕ привязана к процентам —
+   второй индикатор прогресса рядом с полосой врал бы, показывая своё. */
+.arc-film { display: flex; gap: 3px; justify-content: center; margin-top: 14px; height: 14px; }
+.arc-film i {
+  display: block; width: 6px; height: 100%;
+  border: 1px solid var(--ink-3); background: transparent;
+  animation: arc-film 1.26s steps(2) infinite;
+}
+@keyframes arc-film {
+  0%, 40% { background: transparent; }
+  50%, 90% { background: var(--green); border-color: var(--green); }
+}
 .arc-dz__arrows {
   margin-top: 10px; color: var(--green);
   font-family: var(--font-mono); font-size: 13px; letter-spacing: .34em;
@@ -722,6 +779,40 @@
   animation-delay: 0s, calc(var(--d, 0ms) + 320ms);
 }
 @keyframes arc-readend { to { opacity: 0; visibility: hidden; } }
+
+/* Вспышка «ПРИНЯТ»: включается ровно тогда, когда плашка чтения
+   сходит, и гаснет через 0.5 c. Даёт кадру отчётливый момент
+   приёмки — по нему видно, что снимок не просто появился, а прошёл
+   разбор. */
+.arc-th__accept {
+  position: absolute; inset: 0; z-index: 3;
+  display: grid; place-items: center;
+  background: rgba(143, 191, 106, .88); color: var(--ink);
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: .2em;
+  opacity: 0;
+  animation: arc-accept .5s steps(3) forwards;
+  animation-delay: calc(var(--d, 0ms) + 320ms);
+}
+@keyframes arc-accept {
+  0%   { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { opacity: 0; visibility: hidden; }
+}
+
+/* Метка координат — отдельно от «МЕТА»: EXIF есть почти всегда,
+   а геометка далеко не всегда, и путать их нельзя. */
+.arc-th__geo {
+  position: absolute; top: 0; right: 22px; z-index: 2;
+  padding: 2px 5px; background: var(--green); color: #F2F0E4;
+  font-family: var(--font-mono); font-size: 10px; line-height: 1.2;
+}
+
+/* Доводка кнопкой панели задач: мигание рамкой окна (см. bus.js). */
+.arc-flash { animation: arc-flash 1.2s steps(2) 2; }
+@keyframes arc-flash {
+  0%, 100% { box-shadow: var(--drop); }
+  50%      { box-shadow: 0 0 0 3px var(--red); }
+}
 .arc-th__runner { display: block; width: 62%; height: 2px; background: var(--ink-3); overflow: hidden; position: relative; }
 .arc-th__runner::after {
   content: ''; position: absolute; inset: 0; width: 40%;
@@ -949,6 +1040,16 @@
    14. АРХИВ
    ============================================================ */
 .arc-arch__top { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 22px; }
+.arc-arch__top.is-bare { grid-template-columns: minmax(0, 1fr); }
+
+/* Витрина архива — кадры последних замеров вместо заглушки. */
+.arc-showcase { position: relative; border: var(--hairline); background: var(--blue-deep); }
+.arc-showcase__grid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px; background: var(--ink);
+}
+.arc-showcase__cell { display: block; aspect-ratio: 4 / 3; overflow: hidden; background: var(--blue-deep); }
+.arc-showcase__cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .arc-arch__sum { display: grid; align-content: start; gap: 14px; min-width: 0; }
 .arc-arch__tools { display: flex; gap: 10px; flex-wrap: wrap; }
 .arc-arch__tools .arc-input--find { flex: 1 1 180px; }
@@ -980,10 +1081,21 @@
 .arc-tab__row i { font-style: normal; color: var(--ink-3); font-size: 10px; }
 .arc-tab__date { color: var(--ink-3); }
 
-.arc-tab__item.is-open .arc-tab__row { background: var(--green); color: #F2F0E4; }
+/* Наведение только подсвечивает; раскрытие — по нажатию. */
+.arc-tab__row:hover { background: var(--surface-3); }
+.arc-tab__item.is-open .arc-tab__row,
+.arc-tab__item.is-open .arc-tab__row:hover { background: var(--green); color: #F2F0E4; }
 .arc-tab__item.is-open .arc-tab__no,
 .arc-tab__item.is-open .arc-tab__date,
 .arc-tab__item.is-open .arc-tab__row i { color: #A8BC9E; }
+
+/* Таблица отчётов — та же сетка плюс колонка документа. */
+.arc-tab__hd--rep, .arc-tab__row--rep {
+  grid-template-columns: 74px minmax(0, 1fr) 110px 100px 110px 160px;
+}
+.arc-tab__row--rep { cursor: default; }
+.arc-tab__row--rep:hover { background: var(--surface-2); }
+.arc-tab__row--rep .arc-btn { min-height: 30px; }
 
 .arc-tab__msg {
   padding: 22px 14px; text-align: center;
@@ -995,30 +1107,105 @@
   margin-top: -10px;
 }
 
-/* скан-лист */
-.arc-scan {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 18px; align-items: center;
-  padding: 14px; background: var(--surface-3); border-top: var(--hairline);
+/* ── раскрытая запись (прямо под своей строкой) ─────────────── */
+.arc-rec {
+  padding: 18px; background: var(--surface-3); border-top: var(--hairline);
   animation: arc-wipe .3s steps(8) both;
 }
-.arc-scan__films { display: flex; gap: 8px; }
-.arc-scan__film {
-  width: 76px; height: 56px; border: var(--hairline); background: var(--blue-deep);
-  display: grid; place-items: center; overflow: hidden;
+.arc-rec__hd { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; }
+.arc-rec__ttl {
+  font-family: var(--font-display); font-weight: 700;
+  font-size: clamp(20px, 2.6vw, 30px); line-height: 1.05; color: var(--ink);
+  overflow-wrap: anywhere;
 }
-.arc-scan__film img {
-  width: 100%; height: 100%; object-fit: cover;
-  /* халфтон: жёсткий контраст + обесцвечивание, как печать через растр */
-  filter: grayscale(1) contrast(2.2) brightness(1.05);
+.arc-rec__st {
+  padding: 4px 9px; border: var(--hairline);
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: .14em;
 }
-.arc-scan__empty { width: 18px; height: 16px; border: 1px solid #35505C; }
-.arc-scan__data { min-width: 0; }
+.arc-rec__st.is-ok  { background: var(--green); color: #F2F0E4; border-color: var(--ink); }
+.arc-rec__st.is-bad { background: var(--red); color: #F5F2E7; }
+.arc-rec__st.is-run { background: var(--surface-2); color: var(--ink-2); }
 
-.arc-inspect .arc-win__body { padding: 0; }
-.arc-inspect__grid {
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 330px);
+.arc-rec__meta {
+  display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; color: var(--ink-3);
 }
-.arc-inspect .arc-actions--sub { padding: 14px; }
+.arc-rec__err, .arc-rec__wait {
+  margin-top: 12px; padding: 9px 12px; border: var(--hairline); background: var(--surface-2);
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em;
+}
+.arc-rec__err  { border-left: 4px solid var(--red); color: var(--red); }
+.arc-rec__wait { border-left: 4px solid var(--blue); color: var(--ink-2); }
+
+.arc-rec__metrics {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
+  gap: 1px; margin-top: 16px; background: var(--ink); border: var(--hairline);
+}
+.arc-rec__m { padding: 9px 12px; background: var(--surface-2); min-width: 0; }
+.arc-rec__m span {
+  display: block; font-family: var(--font-mono); font-size: 9px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.arc-rec__m b {
+  display: block; margin-top: 4px;
+  font-family: var(--font-mono); font-size: 14px; font-weight: 600; letter-spacing: .04em;
+  color: var(--ink); overflow-wrap: anywhere;
+}
+
+.arc-rec__grid {
+  display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr);
+  gap: 16px; margin-top: 18px; align-items: start;
+}
+.arc-rec__k {
+  display: block; margin-bottom: 7px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.arc-rec__side { min-width: 0; display: grid; align-content: start; gap: 6px; }
+.arc-rec__side .arc-rec__k:not(:first-child) { margin-top: 10px; }
+.arc-blueprint--tall { min-height: 460px; }
+
+/* Диагностику ужимаем контейнером, не масштабом: пометки в этих
+   кадрах размером в одну ячейку, и scale() размазал бы их в фон. */
+.arc-rec__diag { max-width: 100%; overflow: hidden; }
+
+.arc-rec__photos {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px;
+}
+.arc-rec__photo { position: relative; display: block; border: var(--hairline); aspect-ratio: 4 / 3; }
+.arc-rec__photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.arc-rec__photo span {
+  position: absolute; left: 0; top: 0; padding: 1px 4px;
+  background: var(--ink); color: var(--surface-2);
+  font-family: var(--font-mono); font-size: 9px;
+}
+.arc-rec__photo:hover { outline: 2px solid var(--red); }
+
+.arc-rec__raw { margin-top: 16px; border: var(--hairline); background: var(--surface-2); }
+.arc-rec__raw summary {
+  padding: 9px 12px; cursor: pointer;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; color: var(--ink-3);
+}
+.arc-rec__raw pre {
+  margin: 0; padding: 12px; border-top: var(--hairline);
+  max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  font-family: var(--font-mono); font-size: 11px; line-height: 1.7; color: var(--ink-2);
+}
+.arc-rec__act { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.arc-btn--danger { color: var(--red); }
+.arc-btn--danger:hover { background: var(--red); color: #F5F2E7; }
+
+/* Селектор чужих архивов (суперадмин). Стрелка нарисована фоном:
+   без неё поле неотличимо от строки поиска рядом. */
+.arc-select {
+  -webkit-appearance: none; appearance: none; padding-right: 26px; cursor: pointer;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ink) 50%),
+    linear-gradient(135deg, var(--ink) 50%, transparent 50%);
+  background-position: calc(100% - 15px) center, calc(100% - 10px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
 
 /* ============================================================
    15. ПАНЕЛЬ ЗАДАЧ + МЕНЮ ПУСК + ПОДВАЛ
@@ -1118,9 +1305,12 @@
 [data-theme="archive"] .arc-blueprint canvas { position: relative; z-index: 1; }
 [data-theme="archive"] .arc-dos__diag { background: var(--surface); }
 
-/* Изображения темы живут в её палитре */
+/* Снимки ПОЛЬЗОВАТЕЛЯ подтягиваются к палитре темы. Собственные
+   иллюстрации темы из этого правила исключены: они и так сделаны
+   в её цветах, а второй прогон по контрасту их только пережигает. */
 [data-theme="archive"] .arc-page img { filter: contrast(1.15) saturate(.8); }
-[data-theme="archive"] .arc-scan__film img { filter: grayscale(1) contrast(2.2) brightness(1.05); }
+[data-theme="archive"] .arc-plate__img,
+[data-theme="archive"] .arc-art { filter: none; }
 
 /* ============================================================
    17. АДАПТИВ
@@ -1129,7 +1319,7 @@
    одну, панель задач переносит кнопки, а не срезает их.
    ============================================================ */
 @media (max-width: 1180px) {
-  .arc-dos__grid, .arc-inspect__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .arc-dos__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .arc-dos__view { grid-column: 1 / -1; border-top: var(--hairline); }
   .arc-log { grid-template-columns: minmax(0, 1fr); }
   .arc-log__rows { border-right: 0; border-bottom: 1px solid #3A3A33; }
@@ -1141,11 +1331,11 @@
   .arc-head__aside { position: static; }
   .arc-head__no { font-size: 190px; top: -18px; }
   .arc-arch__top { grid-template-columns: minmax(0, 1fr); }
-  .arc-state { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .arc-state__cell:nth-child(2n) { border-right: 0; }
-  .arc-state__cell:nth-child(-n+2) { border-bottom: var(--hairline); }
-  .arc-scan { grid-template-columns: minmax(0, 1fr); }
-  .arc-scan__films { flex-wrap: wrap; }
+  .arc-rec__grid { grid-template-columns: minmax(0, 1fr); }
+  .arc-blueprint--tall { min-height: 340px; }
+  .arc-state { grid-template-columns: minmax(0, 1fr); }
+  .arc-state__cell { border-right: 0; border-bottom: var(--hairline); }
+  .arc-state__cell:last-child { border-bottom: 0; }
 }
 
 @media (max-width: 780px) {
@@ -1161,14 +1351,13 @@
   .arc-nav { position: static; flex-wrap: wrap; row-gap: 0; }
   .arc-nav__geo { margin-left: 0; padding: 6px 0 8px; }
   .arc-tab__hd { display: none; }
-  .arc-tab__row {
+  .arc-tab__row, .arc-tab__row--rep {
     grid-template-columns: 56px minmax(0, 1fr);
     grid-auto-rows: min-content; row-gap: 2px;
   }
-  .arc-tab__row > span:nth-child(3),
-  .arc-tab__row > span:nth-child(4),
-  .arc-tab__row > span:nth-child(5) { grid-column: 2; text-align: left; }
-  .arc-dos__grid, .arc-inspect__grid { grid-template-columns: minmax(0, 1fr); }
+  .arc-tab__row > span:nth-child(n+3) { grid-column: 2; text-align: left; }
+  .arc-rec__grid { grid-template-columns: minmax(0, 1fr); }
+  .arc-dos__grid { grid-template-columns: minmax(0, 1fr); }
   .arc-dos__col { border-right: 0; border-bottom: var(--hairline); }
   .arc-dlg { width: 100%; margin-top: 0; }
 }
@@ -1203,7 +1392,10 @@
   .arc-th__read { animation: none !important; }
   .arc-ticker__run { animation: none !important; }
   .arc-th--in { animation: none !important; clip-path: none !important; }
-  .arc-scan { animation: none !important; }
+  .arc-th__accept { display: none !important; }
+  .arc-film i { animation: none !important; }
+  .arc-flash { animation: none !important; outline: 2px solid var(--red); }
+  .arc-rec { animation: none !important; }
   [data-theme="archive"] .cube-panel.is-open { animation: none !important; }
   .arc-caret { animation: none !important; }
   .arc-bar.is-indeterminate, .arc-log__bar.is-run { animation: none !important; }

@@ -18,6 +18,7 @@ const Register = lazy(() => import('./pages/Register'))
 const Analyze  = lazy(() => import('./pages/Analyze'))
 const History  = lazy(() => import('./pages/History'))
 const Profile  = lazy(() => import('./pages/Profile'))
+const Reports  = lazy(() => import('./pages/Reports'))   // ← раздел «04 ОТЧЁТЫ»
 const Privacy  = lazy(() => import('./pages/Privacy'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
@@ -65,6 +66,11 @@ function App() {
               <Route path="/profile" element={
                 <PrivateRoute>
                   <Layout><Profile /></Layout>
+                </PrivateRoute>
+              } />
+              <Route path="/reports" element={
+                <PrivateRoute>
+                  <Layout><Reports /></Layout>
                 </PrivateRoute>
               } />
 
