@@ -61,7 +61,7 @@ export default function Register() {
   }
 
   if (done) return (
-    <div className="auth-wrap">
+    <main className="auth-wrap">
       <div className="auth-card" style={{ textAlign:'center' }}>
         <div className="auth-logo">
           <div className="auth-logo-icon">
@@ -73,11 +73,11 @@ export default function Register() {
         <h1 className="auth-h1">Проверьте почту</h1>
         <p className="auth-sub">Мы отправили письмо с подтверждением на <strong>{email}</strong>.<br/>После подтверждения вы сможете войти.</p>
       </div>
-    </div>
+    </main>
   )
 
   return (
-    <div className="auth-wrap">
+    <main className="auth-wrap">
       <div className="auth-card">
         <div className="auth-logo">
           <div className="auth-logo-icon">
@@ -185,6 +185,6 @@ export default function Register() {
           Уже есть аккаунт? <Link to="/login">Войти</Link>
         </p>
       </div>
-    </div>
+    </main>
   )
 }

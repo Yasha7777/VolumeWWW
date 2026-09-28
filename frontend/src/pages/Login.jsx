@@ -26,7 +26,7 @@ export default function Login() {
   }
 
   return (
-    <div className="auth-wrap">
+    <main className="auth-wrap">
       <div className="auth-card">
         <div className="auth-logo">
           <div className="auth-logo-icon">
@@ -69,6 +69,6 @@ export default function Login() {
           Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
         </p>
       </div>
-    </div>
+    </main>
   )
 }

@@ -51,7 +51,7 @@
   -webkit-font-smoothing: antialiased;
 }
 .kb-landing ::selection { background: var(--gold); color: #fff; }
-.kb-landing > section, .kb-landing > .kb-l-foot { position: relative; z-index: 1; }
+.kb-landing > main > section, .kb-landing > .kb-l-foot { position: relative; z-index: 1; }
 
 /* ─── УНИВЕРСАЛЬНОЕ СТЕКЛО (матовое / soft-glass 2026) ─────────────────────────
    ТЁМНОЕ. Это не вкусовщина, а следствие: страница живёт на #0E140A, а стекло

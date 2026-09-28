@@ -489,12 +489,16 @@ export default function Landing() {
       {/* плёночное зерно поверх всей страницы — гасит бандинг на градиентах/стыках */}
       <div className="kb-l-grain" aria-hidden="true" />
       <LiquidNav user={user} />
-      <Hero user={user} />
-      <Dashboard />
-      <Engine />
-      <Process />
-      <Cinematic />
-      <FinalCta user={user} />
+      {/* <main> — всё содержимое между шапкой и подвалом (ориентир для
+          скринридеров и поиска). Стили секций в landing.css учитывают обёртку. */}
+      <main>
+        <Hero user={user} />
+        <Dashboard />
+        <Engine />
+        <Process />
+        <Cinematic />
+        <FinalCta user={user} />
+      </main>
       <Footer />
     </div>
   )
