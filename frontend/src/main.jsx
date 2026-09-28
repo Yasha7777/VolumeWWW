@@ -8,15 +8,25 @@ import './theme-dark.css'                        // ← тёмная тема + 
 import './theme-archive.css'                     // ← тема «Архив» (ПОСЛЕ styles.css и theme-dark.css)
 import './report-panel.css'                      // ← стили выдвижного окна отчёта
 import { ThemeProvider } from './theme/ThemeProvider'
-import App from './App.jsx'
+import App, { PRERENDERED } from './App.jsx'
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <ThemeProvider>
-      <App />
-    </ThemeProvider>
-  </StrictMode>
-)
+// Пререндер (scripts/vite-plugin-seo.js): публичные страницы приходят уже
+// нарисованными, #root помечен data-page. Не гидрируем, а заменяем живым
+// React: у клиента есть пользователь из кэша авторизации, у сборки — нет.
+// Чтобы замена прошла в один кадр, чанк страницы догружаем ДО рендера
+// (он уже летит по modulepreload из <head>). Не догрузился — рендерим как
+// обычно, через Suspense.
+const rootEl = document.getElementById('root')
+const preload = PRERENDERED[rootEl.dataset.page]?.preload?.() ?? Promise.resolve()
+preload.catch(() => {}).then(() => {
+  createRoot(rootEl).render(
+    <StrictMode>
+      <ThemeProvider>
+        <App />
+      </ThemeProvider>
+    </StrictMode>
+  )
+})
 
 // Очередь: слушатели сети/видимости, персистентное хранилище, первичный флаш.
 initQueue()

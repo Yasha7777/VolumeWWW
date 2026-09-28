@@ -100,7 +100,9 @@ function Metric({ to, decimals = 0 }) {
     })
     return () => controls.stop()
   }, [inView, to, decimals, reduce])
-  return <span ref={ref}>{reduce ? fmt(to) : '0'}</span>
+  // На сборке (пререндер, window нет) — итоговое значение, а не «0»: иначе
+  // в HTML для поиска и для тех, у кого выключен JS, было бы «0 м³».
+  return <span ref={ref}>{reduce || typeof window === 'undefined' ? fmt(to) : '0'}</span>
 }
 
 const scrollTo = (id) => (e) => {

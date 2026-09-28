@@ -12,13 +12,15 @@ clientsClaim()
 
 precacheAndRoute(self.__WB_MANIFEST || [])   // ← ОДИН раз (было продублировано — отсюда падала сборка)
 
-// SPA-навигация → закешированный index.html (кроме /api/ и ФАЙЛОВ).
+// SPA-навигация → закешированная ПУСТАЯ оболочка shell.html (кроме /api/ и
+// ФАЙЛОВ). Не index.html: там теперь пререндер лендинга, и на /app до старта
+// JS мелькал бы лендинг. Сами публичные страницы сюда не доходят — их раньше
+// отдаёт precacheAndRoute: / → index.html, /privacy → privacy.html (cleanURLs).
 // Путь с расширением — это настоящий файл из public/ (robots.txt, llms.txt,
 // yandex_*.html для Вебмастера), а не роут SPA: у роутов точек нет. Без этого
-// исключения SW отдавал на такие адреса index.html → в браузере рисовалась
-// наша 404, хотя nginx файл отдаёт. index.html сюда не доходит — его раньше
-// перехватывает precacheAndRoute.
-registerRoute(new NavigationRoute(createHandlerBoundToURL('/index.html'), {
+// исключения SW отдавал на такие адреса оболочку → в браузере рисовалась
+// наша 404, хотя nginx файл отдаёт.
+registerRoute(new NavigationRoute(createHandlerBoundToURL('/shell.html'), {
   denylist: [/^\/api\//, /\/[^/?]+\.[^/]+$/],
 }))
 

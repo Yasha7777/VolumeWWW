@@ -5,7 +5,19 @@
 
    • <head>: метку <!--seo--> в index.html заменяет блок тегов главной —
      title, description, canonical, Open Graph, twitter:card (и в dev тоже).
-   • sitemap.xml (только `vite build`) — только публичные канонические адреса. lastmod — дата
+   • ПРЕРЕНДЕР (только `vite build`). Отдельная SSR-сборка
+     src/prerender/entry-server.jsx → renderToString каждой публичной
+     страницы → в dist лежит HTML с текстом, H1 и метой без выполнения JS:
+       index.html   — лендинг (/)
+       privacy.html — /privacy
+       404.html     — страница 404 (nginx отдаёт её со статусом 404)
+       shell.html   — ПУСТАЯ оболочка с noindex для непубличных роутов
+                      (/login, /app, …) и для service worker: иначе на /app до
+                      старта JS мелькал бы лендинг из index.html.
+     В браузере пререндер не гидрируется, а заменяется живым React
+     (createRoot, см. main.jsx): пользователь из кэша авторизации у клиента
+     есть, а на сборке его нет — гидрация бы разъехалась.
+   • sitemap.xml — только публичные канонические адреса. lastmod — дата
      последнего коммита исходников страницы (а не дата сборки: та меняется
      при каждой пересборке, и Яндекс перестаёт lastmod верить). Исходники
      правятся прямо сейчас (есть незакоммиченные изменения) → сегодняшняя дата.
@@ -19,9 +31,29 @@
    собраться, чем выкатить сайт без страниц.
    ════════════════════════════════════════════════════════════════════════ */
 import { execFileSync } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { PUBLIC_ROUTES, canonicalUrl, headSpec } from '../src/seo/routes.js'
+import { pathToFileURL } from 'node:url'
+import { build as viteBuild } from 'vite'
+import react from '@vitejs/plugin-react'
+import { PUBLIC_ROUTES, NOT_FOUND, BRAND, canonicalUrl, headSpec } from '../src/seo/routes.js'
+
+// Исходник страницы = ключ в манифесте клиентской сборки (по нему находим
+// чанк и CSS страницы, чтобы подключить их прямо в HTML).
+const PAGE_SRC = {
+  landing: 'src/pages/Landing.jsx',
+  privacy: 'src/pages/Privacy.jsx',
+  notfound: 'src/pages/NotFound.jsx',
+}
+// Оболочка непубличных роутов: title — бренд (настоящий ставит RouteMeta
+// после старта JS), headSpec для непубличного пути даёт noindex.
+const SHELL = { path: '/shell', file: 'shell.html', title: BRAND }
+
+// Без JS анимации motion так и остаются в стартовом кадре (opacity:0, blur) —
+// текст в DOM есть, но его не видно. Для тех, у кого JS выключен, снимаем
+// стартовые стили. CSP разрешает inline-стили ('unsafe-inline' в style-src).
+const NOSCRIPT_REVEAL =
+  '<noscript><style>[style*="opacity:0"]{opacity:1!important;filter:none!important;transform:none!important}</style></noscript>'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -54,6 +86,103 @@ function sitemapXml(root) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`
 }
 
+// ── SSR-сборка entry-server.jsx ──────────────────────────────────────────
+// context/AuthContext подменяется заглушкой «гость» (auth-stub.js):
+// настоящий при импорте создаёт клиент Supabase и лезет в браузерные API.
+function prerenderStubs(root) {
+  const real = resolve(root, 'src/context/AuthContext.jsx')
+  const stub = resolve(root, 'src/prerender/auth-stub.js')
+  return {
+    name: 'kb-prerender-stubs',
+    enforce: 'pre',
+    async resolveId(source, importer, options) {
+      if (!source.includes('AuthContext')) return null
+      const r = await this.resolve(source, importer, { ...options, skipSelf: true })
+      return r?.id === real ? stub : null
+    },
+  }
+}
+
+async function buildRenderer(root, mode) {
+  const outDir = resolve(root, 'node_modules/.cache/kb-prerender')
+  await viteBuild({
+    configFile: false,          // без PWA и без этого же плагина — никакой рекурсии
+    root, mode, logLevel: 'warn',
+    plugins: [react(), prerenderStubs(root)],
+    build: {
+      ssr: 'src/prerender/entry-server.jsx',
+      outDir, emptyOutDir: true, copyPublicDir: false, minify: false,
+    },
+  })
+  const mod = await import(`${pathToFileURL(resolve(outDir, 'entry-server.js')).href}?t=${Date.now()}`)
+  return { render: mod.render, cleanup: () => rmSync(outDir, { recursive: true, force: true }) }
+}
+
+// JS-чанк страницы и весь её CSS (рекурсивно по статическим импортам) —
+// чтобы пререндер пришёл сразу со стилями, а чанк качался параллельно с
+// входным, а не после него. Входной чанк и то, что уже есть в шаблоне, — мимо.
+function pageAssets(manifest, srcKey, template) {
+  if (!manifest[srcKey]) throw new Error(`kb-seo: в манифесте сборки нет ${srcKey}`)
+  const css = new Set(), js = new Set(), seen = new Set()
+  const walk = (key) => {
+    if (seen.has(key)) return
+    seen.add(key)
+    const e = manifest[key]
+    if (!e || e.isEntry) return
+    js.add(e.file)
+    for (const c of e.css || []) css.add(c)
+    for (const k of e.imports || []) walk(k)
+  }
+  walk(srcKey)
+  const fresh = (f) => !template.includes(`/${f}"`) && !/vendor-(three|pdf)/.test(f)
+  return [
+    ...[...css].filter(fresh).map((f) => `<link rel="stylesheet" crossorigin href="/${f}">`),
+    ...[...js].filter(fresh).map((f) => `<link rel="modulepreload" crossorigin href="/${f}">`),
+  ].join('\n    ')
+}
+
+function assemble(template, { route, body = '', page = null, head = '' }) {
+  const seoBlock = /<title>[\s\S]*?<!--seo:end-->/
+  if (!seoBlock.test(template)) throw new Error('kb-seo: в шаблоне нет блока <title>…<!--seo:end-->')
+  if (!template.includes('<div id="root"></div>')) throw new Error('kb-seo: в шаблоне нет <div id="root"></div>')
+  return template
+    .replace(seoBlock, headTags(route))
+    .replace('</head>', head ? `  ${head}\n  </head>` : '</head>')
+    .replace('<div id="root"></div>', `<div id="root"${page ? ` data-page="${page}"` : ''}>${body}</div>`)
+}
+
+// Страница без H1 или без текста — значит, пререндер сломался. Выкатывать
+// такое нельзя: для поиска это снова пустая оболочка.
+function assertRendered(name, body) {
+  const h1 = (body.match(/<h1[\s>]/g) || []).length
+  const text = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  if (h1 !== 1) throw new Error(`kb-seo: ${name} — H1 должен быть ровно один, найдено ${h1}`)
+  if (text.length < 200) throw new Error(`kb-seo: ${name} — в пререндере почти нет текста (${text.length} симв.)`)
+}
+
+async function prerender(root, outDir, mode) {
+  const templatePath = resolve(outDir, 'index.html')
+  const manifestPath = resolve(outDir, '.vite/manifest.json')
+  if (!existsSync(manifestPath)) throw new Error('kb-seo: нет .vite/manifest.json — в vite.config нужен build.manifest: true')
+  const template = readFileSync(templatePath, 'utf8')   // читаем ДО перезаписи index.html
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+
+  const { render, cleanup } = await buildRenderer(root, mode)
+  try {
+    const pages = [...PUBLIC_ROUTES, NOT_FOUND]
+    for (const route of pages) {
+      const body = render(route.page, route.path)
+      assertRendered(route.file, body)
+      const head = [pageAssets(manifest, PAGE_SRC[route.page], template), NOSCRIPT_REVEAL].join('\n    ')
+      writeFileSync(resolve(outDir, route.file), assemble(template, { route, body, page: route.page, head }))
+    }
+    writeFileSync(resolve(outDir, SHELL.file), assemble(template, { route: SHELL }))
+  } finally {
+    cleanup()
+    rmSync(resolve(outDir, '.vite'), { recursive: true, force: true })   // манифест не публикуем
+  }
+}
+
 export default function seo() {
   let config
   return {
@@ -67,9 +196,10 @@ export default function seo() {
     closeBundle: {
       order: 'pre',
       sequential: true,
-      async handler() {
-        if (config.command !== 'build' || config.build.ssr) return
+      async handler(error) {
+        if (error || config.command !== 'build' || config.build.ssr) return
         const outDir = resolve(config.root, config.build.outDir)
+        await prerender(config.root, outDir, config.mode)
         writeFileSync(resolve(outDir, 'sitemap.xml'), sitemapXml(config.root))
       },
     },

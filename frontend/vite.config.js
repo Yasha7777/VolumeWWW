@@ -44,6 +44,9 @@ export default defineConfig({
   server: { proxy: { '/api': { target: 'http://localhost:8000', changeOrigin: true } } },
   build: {
     chunkSizeWarningLimit: 1600,
+    // Манифест нужен пререндеру (vite-plugin-seo): по нему он находит чанк и
+    // CSS страницы. После пререндера dist/.vite удаляется — наружу не уходит.
+    manifest: true,
     // three/pdf тяжёлые и нужны только для 3D-вьювера и PDF. Убираем их из
     // стартового modulepreload, чтобы не грузились при каждом заходе —
     // подтянутся лениво при открытии соответствующего экрана.
