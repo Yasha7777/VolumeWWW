@@ -37,6 +37,11 @@ export default defineConfig({
         // Раньше их исключал globIgnores — из-за этого офлайн рвал module-граф
         // (three статически подтягивается через SwagAtmosphere) → белый экран.
         globPatterns: ['**/*.{js,css,html,svg,png,woff,woff2}'],
+        // Шрифты темы «Архив» (src/fonts/fonts-archive.css) — не в прекэш: они
+        // нужны только тем, кто включил эту тему, а это ~200 КБ фоновой загрузки
+        // при установке PWA каждому. Их CSS в прекэше есть; без сети тема
+        // покажется системными шрифтами — как было, пока шрифты шли с Google.
+        globIgnores: ['**/assets/play-*.woff2', '**/assets/jura-*.woff2', '**/assets/ibm-plex-mono-*.woff2'],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
       },
     }),

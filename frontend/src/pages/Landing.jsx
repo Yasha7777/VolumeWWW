@@ -163,8 +163,37 @@ function LiquidNav({ user }) {
 /* Fullscreen-видео + 4-слойное растворение низа в фон (#0E140A). Grid-полосы:
    pad · center · foot. Весь контент (заголовок, кнопки, чипы) — в центральной
    колонке (container-type:size), поэтому хиро не переполняется по вертикали. */
+/* Видео героя подключаем, когда страница уже загрузилась и браузер простаивает:
+   с autoPlay + preload="auto" 2.4 МБ качались параллельно с JS/CSS/шрифтами
+   первого экрана. */
+function useDeferredVideo(src) {
+  const ref = useRef(null)
+  useEffect(() => {
+    let idleId, timer
+    const start = () => {
+      const v = ref.current
+      if (!v || v.getAttribute('src')) return
+      v.src = src
+      v.play?.().catch(() => {})          // autoplay может запретить браузер — остаётся постер
+    }
+    const idle = () => {
+      if ('requestIdleCallback' in window) idleId = window.requestIdleCallback(start, { timeout: 2000 })
+      else timer = setTimeout(start, 200)
+    }
+    if (document.readyState === 'complete') idle()
+    else window.addEventListener('load', idle, { once: true })
+    return () => {
+      window.removeEventListener('load', idle)
+      if (idleId) window.cancelIdleCallback?.(idleId)
+      clearTimeout(timer)
+    }
+  }, [src])
+  return ref
+}
+
 function Hero({ user }) {
   const ref = useRef(null)
+  const videoRef = useDeferredVideo('/landing/video.mp4')
   const reduce = useReducedMotion()
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end start'] })
   const y = useTransform(scrollYProgress, [0, 1], [0, reduce ? 0 : -40])
@@ -172,9 +201,13 @@ function Hero({ user }) {
 
   return (
     <section ref={ref} className="kb-l-hero">
-      {/* fullscreen-видео сборки насыпи; тёплый цветокор — в CSS (.kb-l-hero__video) */}
-      <video className="kb-l-hero__video" src="/landing/video.mp4" poster="/landing/hero.webp"
-        autoPlay loop muted playsInline preload="auto" aria-hidden="true" />
+      {/* fullscreen-видео сборки насыпи; тёплый цветокор — в CSS (.kb-l-hero__video).
+          src ставится ПОСЛЕ загрузки страницы (useDeferredVideo): 2.4 МБ видео не
+          конкурируют с первым экраном. До этого виден постер — первый кадр того же
+          видео (hero-poster.webp, 1280×720), поэтому старт без скачка. Прежний
+          постер hero.webp был полосой 1512×240: при cover — мыльный крупный план. */}
+      <video ref={videoRef} className="kb-l-hero__video" poster="/landing/hero-poster.webp"
+        autoPlay loop muted playsInline preload="none" aria-hidden="true" />
       {/* растворение низа видео в фон — 4 слоя, порядок важен (см. landing.css) */}
       <div className="kb-l-hero__scrim" aria-hidden="true" />
       <div className="kb-l-hero__blur" aria-hidden="true" />
@@ -341,8 +374,13 @@ function Engine() {
           </ErrorBoundary>
         )}
       </div>
-      <img className="kb-l-engine__flora kb-l-engine__flora--l" src="/decor/flora-left.png" alt="" aria-hidden="true" />
-      <img className="kb-l-engine__flora kb-l-engine__flora--r" src="/decor/flora-right.png" alt="" aria-hidden="true" />
+      {/* WebP вдвое легче PNG (117/94 КБ вместо 227/185); PNG остались — их берёт
+          History.jsx. width/height — пропорция до загрузки (без сдвига вёрстки),
+          lazy — секция ниже первого экрана. */}
+      <img className="kb-l-engine__flora kb-l-engine__flora--l" src="/decor/flora-left.webp"
+        width="520" height="1343" loading="lazy" decoding="async" alt="" aria-hidden="true" />
+      <img className="kb-l-engine__flora kb-l-engine__flora--r" src="/decor/flora-right.webp"
+        width="520" height="1372" loading="lazy" decoding="async" alt="" aria-hidden="true" />
       <div className="kb-l-engine__grid">
         <motion.div className="kb-l-engine__copy" {...reveal}>
           <h2 className="kb-l-h2">Тот же движок, <em>что в сервисе</em></h2>

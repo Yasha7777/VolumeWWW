@@ -9,9 +9,9 @@
          Тексты правь в routes.js, а не в этом файле. -->
     <!--seo-->
 
-    <!-- ранний коннект к Google Fonts: экономит ~500-700 мс на TLS-рукопожатии -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Шрифты — своим доменом (src/fonts/fonts.css), к Google сайт не ходит:
+         это передача IP посетителей (152-ФЗ). Preload шрифтов первого экрана
+         вставляет пререндер. -->
 
     <!-- инлайн-полифилл (window.global / window.process) переехал в
          src/polyfills.js — первый импорт main.jsx. Так CSP работает

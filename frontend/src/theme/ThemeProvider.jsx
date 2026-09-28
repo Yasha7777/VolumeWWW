@@ -29,23 +29,12 @@ const MIGRATE = { normal: 'light', swag: 'dark', gtc: 'dark' };
 /* ── Шрифты темы «Архив» — Play / Jura / IBM Plex Mono ───────────────────
    Подключаются ТОЛЬКО когда тема реально включена: @import в CSS тянул бы
    три семейства при каждой загрузке сайта, в том числе на логине, где из
-   них не нужен ни один. CSP разрешает fonts.googleapis.com/gstatic.com
-   (frontend/nginx.conf). Если внешние шрифты когда-нибудь запретят —
-   меняется ровно эта константа на путь к локальному css со своего домена. */
-const ARCHIVE_FONTS_ID  = 'kb-archive-fonts';
-const ARCHIVE_FONTS_HREF =
-  'https://fonts.googleapis.com/css2?family=Play:wght@400;700' +
-  '&family=Jura:wght@400;500;600;700' +
-  '&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap';
-
+   них не нужен ни один. Файлы — свои (src/fonts/fonts-archive.css), не
+   Google Fonts: см. шапку src/fonts/fonts.css. Динамический import CSS —
+   Vite сам вставит <link> один раз, повторные вызовы ничего не делают. */
 const ensureArchiveFonts = () => {
   if (typeof document === 'undefined') return;
-  if (document.getElementById(ARCHIVE_FONTS_ID)) return;
-  const link = document.createElement('link');
-  link.id   = ARCHIVE_FONTS_ID;
-  link.rel  = 'stylesheet';
-  link.href = ARCHIVE_FONTS_HREF;
-  document.head.appendChild(link);
+  import('../fonts/fonts-archive.css').catch(() => {});
 };
 
 const prefersReduced =

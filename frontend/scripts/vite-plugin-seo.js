@@ -37,7 +37,7 @@
    собраться, чем выкатить сайт без страниц.
    ════════════════════════════════════════════════════════════════════════ */
 import { execFileSync } from 'node:child_process'
-import { readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, rmSync, existsSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { build as viteBuild } from 'vite'
@@ -54,6 +54,25 @@ const PAGE_SRC = {
 // Оболочка непубличных роутов: title — бренд (настоящий ставит RouteMeta
 // после старта JS), headSpec для непубличного пути даёт noindex.
 const SHELL = { path: '/shell', file: 'shell.html', title: BRAND }
+
+// Шрифты первого экрана лендинга — preload, чтобы H1 и подзаголовок не ждали
+// цепочку HTML → CSS → woff2. Только кириллица: весь текст первого экрана
+// русский, латиница догрузится по unicode-range, если понадобится.
+// Файлы — из src/fonts/files, Vite кладёт их в /assets/ с хэшем.
+const LANDING_FONTS = [
+  'cormorant-garamond-cyrillic',          // H1, прямое начертание
+  'cormorant-garamond-italic-cyrillic',   // H1, золотая курсивная строка
+  'onest-cyrillic',                       // навигация, подзаголовок, кнопки
+]
+
+function fontPreloads(outDir) {
+  const files = readdirSync(resolve(outDir, 'assets'))
+  return LANDING_FONTS.map((base) => {
+    const f = files.find((n) => n.startsWith(`${base}-`) && n.endsWith('.woff2') && /^[A-Za-z0-9_-]{8}$/.test(n.slice(base.length + 1, -6)))
+    if (!f) throw new Error(`kb-seo: не найден шрифт ${base}-*.woff2 в dist/assets`)
+    return `<link rel="preload" href="/assets/${f}" as="font" type="font/woff2" crossorigin>`
+  }).join('\n    ')
+}
 
 // Без JS анимации motion так и остаются в стартовом кадре (opacity:0, blur) —
 // текст в DOM есть, но его не видно. Для тех, у кого JS выключен, снимаем
@@ -187,6 +206,7 @@ async function prerender(root, outDir, mode) {
       const head = [
         pageAssets(manifest, PAGE_SRC[route.page], template),
         NOSCRIPT_REVEAL,
+        route.page === 'landing' ? fontPreloads(outDir) : '',
         route.page === 'landing' ? jsonLdTag(landingJsonLd()) : '',
       ].filter(Boolean).join('\n    ')
       writeFileSync(resolve(outDir, route.file), assemble(template, { route, body, page: route.page, head }))

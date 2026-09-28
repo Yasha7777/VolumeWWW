@@ -3,6 +3,7 @@ import { initQueue } from './queue/queue'
 
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import './fonts/fonts.css'                       // ← шрифты своим доменом (Cormorant + Onest), не Google
 import './styles.css'
 import './theme-dark.css'                        // ← тёмная тема + переключатель (ПОСЛЕ styles.css)
 import './theme-archive.css'                     // ← тема «Архив» (ПОСЛЕ styles.css и theme-dark.css)
