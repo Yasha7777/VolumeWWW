@@ -22,8 +22,9 @@ export const SITE_URL = 'https://volumetric.gottland.ru'
 export const BRAND = 'Volumetric Gottland'
 export const SITE_NAME = 'Карелия Строй'
 
-// 1200×630, JPEG — webp понимают не все, кто строит превью ссылок
-export const OG_IMAGE = { path: '/og-cover.jpg', width: 1200, height: 630, alt: 'Ночная стройка: геодезисты с ноутбуками у насыпи, на экранах — её 3D-модель' }
+// 1200×630, JPEG — webp понимают не все, кто строит превью ссылок.
+// Кадр 0.5 c из public/landing/video.mp4 (hero.webp не годится: полоса 1512×240).
+export const OG_IMAGE = { path: '/og-cover.jpg', width: 1200, height: 630, alt: 'Ночная стройка: трое в касках за ноутбуками у насыпи, на экранах — её 3D-модель' }
 
 // Публичные: пререндерятся в статический HTML, попадают в sitemap.xml.
 // `file` — куда пререндер кладёт страницу в dist (nginx отдаёт её по `path`).
