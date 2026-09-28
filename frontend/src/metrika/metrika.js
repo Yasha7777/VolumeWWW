@@ -78,21 +78,28 @@ export function startMetrika(pathname) {
   maskInputs()
   if (webvisorOn) guardPrivateNavigation()
 
-  // Загрузчик из документации Метрики, только без inline-<script>.
+  // Загрузчик из кода вставки, который выдаёт интерфейс Метрики (2026-09),
+  // только без inline-<script>. tag.js?id=… + ssr:true — файл счётчика
+  // собирается на сервере Метрики по настройкам счётчика (документация,
+  // «Установка нескольких счетчиков»: при выключенном в настройках Вебвизоре
+  // модуля Вебвизора в файле нет). ecommerce:"dataLayer" из того кода не
+  // берём — магазина на сайте нет. <noscript>-пиксель тоже: он шлёт просмотр
+  // без JS, то есть без согласия.
   const w = window
   w.ym = w.ym || function ym() { (w.ym.a = w.ym.a || []).push(arguments) }
   w.ym.l = Date.now()
   const s = document.createElement('script')
   s.async = true
-  s.src = 'https://mc.yandex.ru/metrika/tag.js'
+  s.src = `https://mc.yandex.ru/metrika/tag.js?id=${ID}`
   document.head.appendChild(s)
 
   w.ym(ID, 'init', {
-    defer: true,               // просмотры шлём сами — см. MetrikaTracker
+    ssr: true,
+    defer: true,               // SPA: просмотры шлём сами (hit) — см. MetrikaTracker
     clickmap: true,
     trackLinks: true,
     accurateTrackBounce: true,
-    webvisor: webvisorOn,
+    webvisor: webvisorOn,      // false на непубличных — см. п.3 в шапке
   })
 }
 
