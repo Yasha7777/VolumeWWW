@@ -61,6 +61,59 @@ export const PRIVATE_ROUTES = [
 
 export const ROBOTS_NOINDEX = 'noindex, nofollow'
 
+/* Структурированные данные главной (JSON-LD, schema.org). Пререндер кладёт
+   их в <head> index.html. ТОЛЬКО то, что написано на самом сайте:
+   контакты — из подвала лендинга, возможности — из его разделов. Нет и не
+   должно быть aggregateRating/review (отзывов нет) и offers (цена и
+   «бесплатно» не подтверждены). FAQPage не добавлен: блока вопросов на
+   сайте нет — появится страница «вопросы и ответы», тогда и добавить. */
+export function landingJsonLd() {
+  const home = canonicalUrl('/')
+  const org = `${SITE_URL}/#organization`
+  const landing = PUBLIC_ROUTES.find((r) => r.path === '/')
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        '@id': org,
+        name: SITE_NAME,
+        url: home,
+        logo: `${SITE_URL}/pwa-512.png`,
+        email: 'yakov.kachalin@mail.ru',
+        address: { '@type': 'PostalAddress', addressLocality: 'Петрозаводск', addressRegion: 'Республика Карелия', addressCountry: 'RU' },
+      },
+      {
+        '@type': 'WebSite',
+        '@id': `${SITE_URL}/#website`,
+        url: home,
+        name: BRAND,
+        alternateName: SITE_NAME,
+        inLanguage: 'ru-RU',
+        publisher: { '@id': org },
+      },
+      {
+        '@type': 'SoftwareApplication',
+        name: BRAND,
+        url: home,
+        description: landing.description,
+        applicationCategory: 'BusinessApplication',
+        operatingSystem: 'Web',
+        inLanguage: 'ru-RU',
+        image: SITE_URL + OG_IMAGE.path,
+        publisher: { '@id': org },
+        featureList: [
+          '3D-реконструкция насыпи по серии фотографий с телефона',
+          'Объём материала над опорной плоскостью',
+          'Масса по плотности типа материала',
+          'PDF-отчёт с 3D-моделью, которую можно вращать в браузере',
+          'Экспорт модели в GLB и PLY',
+        ],
+      },
+    ],
+  }
+}
+
 // Несуществующий адрес. Заголовок ставит сама NotFound.jsx (держи строки
 // одинаковыми) — здесь он для пререндера 404.html.
 export const NOT_FOUND = { path: '/404', file: '404.html', page: 'notfound', title: '404 · страница утеряна — Карелия Строй' }

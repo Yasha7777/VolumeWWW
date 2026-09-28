@@ -11,6 +11,7 @@
        index.html   — лендинг (/)
        privacy.html — /privacy
        404.html     — страница 404 (nginx отдаёт её со статусом 404)
+     В <head> лендинга — JSON-LD из landingJsonLd() (routes.js).
        shell.html   — ПУСТАЯ оболочка с noindex для непубличных роутов
                       (/login, /app, …) и для service worker: иначе на /app до
                       старта JS мелькал бы лендинг из index.html.
@@ -36,7 +37,7 @@ import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { build as viteBuild } from 'vite'
 import react from '@vitejs/plugin-react'
-import { PUBLIC_ROUTES, NOT_FOUND, BRAND, canonicalUrl, headSpec } from '../src/seo/routes.js'
+import { PUBLIC_ROUTES, NOT_FOUND, BRAND, canonicalUrl, headSpec, landingJsonLd } from '../src/seo/routes.js'
 
 // Исходник страницы = ключ в манифесте клиентской сборки (по нему находим
 // чанк и CSS страницы, чтобы подключить их прямо в HTML).
@@ -56,6 +57,11 @@ const NOSCRIPT_REVEAL =
   '<noscript><style>[style*="opacity:0"]{opacity:1!important;filter:none!important;transform:none!important}</style></noscript>'
 
 const today = () => new Date().toISOString().slice(0, 10)
+
+// JSON-LD — блок данных, а не скрипт: CSP script-src его не касается.
+// `<` экранируем, чтобы строка с «</script>» не закрыла тег раньше времени.
+const jsonLdTag = (data) =>
+  `<script type="application/ld+json">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`
 
 const esc = (s) => String(s)
   .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -173,7 +179,11 @@ async function prerender(root, outDir, mode) {
     for (const route of pages) {
       const body = render(route.page, route.path)
       assertRendered(route.file, body)
-      const head = [pageAssets(manifest, PAGE_SRC[route.page], template), NOSCRIPT_REVEAL].join('\n    ')
+      const head = [
+        pageAssets(manifest, PAGE_SRC[route.page], template),
+        NOSCRIPT_REVEAL,
+        route.page === 'landing' ? jsonLdTag(landingJsonLd()) : '',
+      ].filter(Boolean).join('\n    ')
       writeFileSync(resolve(outDir, route.file), assemble(template, { route, body, page: route.page, head }))
     }
     writeFileSync(resolve(outDir, SHELL.file), assemble(template, { route: SHELL }))
