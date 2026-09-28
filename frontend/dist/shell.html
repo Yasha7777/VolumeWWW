@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- title, description, canonical, Open Graph, twitter:card, robots —
+         НЕ здесь: их подставляет scripts/vite-plugin-seo.js из src/seo/routes.js
+         (здесь — теги главной, пререндер переписывает блок под каждую страницу).
+         Тексты правь в routes.js, а не в этом файле. -->
+    <title>Volumetric Gottland</title>
+    <!--seo:start-->
+    <meta name="robots" content="noindex, nofollow" />
+    <!--seo:end-->
+
+    <!-- Шрифты — своим доменом (src/fonts/fonts.css), к Google сайт не ходит:
+         это передача IP посетителей (152-ФЗ). Preload шрифтов первого экрана
+         вставляет пререндер. -->
+
+    <!-- инлайн-полифилл (window.global / window.process) переехал в
+         src/polyfills.js — первый импорт main.jsx. Так CSP работает
+         со script-src 'self' без 'unsafe-inline'. -->
+  <meta name="theme-color" content="#122018">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+    <script type="module" crossorigin src="/assets/index-DkKneN-m.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-react-BuOMnXTz.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-polyfill-BxcACBI6.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-supabase-BazgpBWu.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-CoYvWcZY.css">
+  <link rel="manifest" href="/manifest.webmanifest"></head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
