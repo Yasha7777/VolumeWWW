@@ -21,42 +21,21 @@
 import { execFileSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { PUBLIC_ROUTES, BRAND, OG_IMAGE, SITE_URL, ROBOTS_NOINDEX, canonicalUrl } from '../src/seo/routes.js'
+import { PUBLIC_ROUTES, canonicalUrl, headSpec } from '../src/seo/routes.js'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
 const esc = (s) => String(s)
   .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
-// Блок <head> страницы. Обёрнут метками seo:start/seo:end — по ним пререндер
-// находит и заменяет блок под конкретную страницу. Публичная страница получает
-// canonical и Open Graph; непубличная — только title и noindex.
-export function headTags(route, { noindex = false } = {}) {
-  const t = []
-  t.push(`<title>${esc(route.title)}</title>`)
-  if (noindex) {
-    t.push(`<meta name="robots" content="${ROBOTS_NOINDEX}" />`)
-  } else {
-    const url = canonicalUrl(route.path)
-    const img = SITE_URL + OG_IMAGE.path
-    t.push(
-      `<meta name="description" content="${esc(route.description)}" />`,
-      `<link rel="canonical" href="${url}" />`,
-      `<meta property="og:type" content="website" />`,
-      `<meta property="og:site_name" content="${esc(BRAND)}" />`,
-      `<meta property="og:locale" content="ru_RU" />`,
-      `<meta property="og:url" content="${url}" />`,
-      `<meta property="og:title" content="${esc(route.title)}" />`,
-      `<meta property="og:description" content="${esc(route.description)}" />`,
-      `<meta property="og:image" content="${img}" />`,
-      `<meta property="og:image:type" content="image/jpeg" />`,
-      `<meta property="og:image:width" content="${OG_IMAGE.width}" />`,
-      `<meta property="og:image:height" content="${OG_IMAGE.height}" />`,
-      `<meta property="og:image:alt" content="${esc(OG_IMAGE.alt)}" />`,
-      `<meta name="twitter:card" content="summary_large_image" />`,
-    )
-  }
-  return `<!--seo:start-->\n    ${t.join('\n    ')}\n    <!--seo:end-->`
+// <title> + блок тегов между метками seo:start/seo:end (описание — headSpec
+// в routes.js, общее с RouteMeta.jsx). По меткам пререндер находит блок и
+// переписывает его под конкретную страницу.
+export function headTags(route) {
+  const { title, tags } = headSpec(route)
+  const attrs = (a) => Object.entries(a).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')
+  const lines = tags.map((t) => `<${t.tag} ${attrs(t.attrs)} />`)
+  return `<title>${esc(title)}</title>\n    <!--seo:start-->\n    ${lines.join('\n    ')}\n    <!--seo:end-->`
 }
 
 function lastmod(root, sources) {

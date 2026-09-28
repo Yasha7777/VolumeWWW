@@ -61,6 +61,10 @@ export const PRIVATE_ROUTES = [
 
 export const ROBOTS_NOINDEX = 'noindex, nofollow'
 
+// Несуществующий адрес. Заголовок ставит сама NotFound.jsx (держи строки
+// одинаковыми) — здесь он для пререндера 404.html.
+export const NOT_FOUND = { path: '/404', file: '404.html', page: 'notfound', title: '404 · страница утеряна — Карелия Строй' }
+
 export const findRoute = (pathname) =>
   PUBLIC_ROUTES.find((r) => r.path === pathname) ||
   PRIVATE_ROUTES.find((r) => r.path === pathname) ||
@@ -69,3 +73,35 @@ export const findRoute = (pathname) =>
 export const isPublicPath = (pathname) => PUBLIC_ROUTES.some((r) => r.path === pathname)
 
 export const canonicalUrl = (path) => SITE_URL + (path === '/' ? '/' : path)
+
+/* Теги <head> страницы — ОДНО описание на две стороны: плагин сборки
+   превращает его в HTML (пререндер), RouteMeta.jsx — в DOM при смене роута.
+   title живёт отдельно от tags: <title> в документе один, его меняют через
+   document.title, а tags целиком лежат между <!--seo:start--> и <!--seo:end-->.
+   Публичная страница — description, canonical, Open Graph; всё остальное
+   (непубличная, 404) — только robots: noindex. */
+export function headSpec(route) {
+  const pub = !!route && isPublicPath(route.path)
+  if (!pub) return { title: route?.title ?? null, tags: [{ tag: 'meta', attrs: { name: 'robots', content: ROBOTS_NOINDEX } }] }
+  const url = canonicalUrl(route.path)
+  const meta = (key, name, content) => ({ tag: 'meta', attrs: { [key]: name, content } })
+  return {
+    title: route.title,
+    tags: [
+      meta('name', 'description', route.description),
+      { tag: 'link', attrs: { rel: 'canonical', href: url } },
+      meta('property', 'og:type', 'website'),
+      meta('property', 'og:site_name', BRAND),
+      meta('property', 'og:locale', 'ru_RU'),
+      meta('property', 'og:url', url),
+      meta('property', 'og:title', route.title),
+      meta('property', 'og:description', route.description),
+      meta('property', 'og:image', SITE_URL + OG_IMAGE.path),
+      meta('property', 'og:image:type', 'image/jpeg'),
+      meta('property', 'og:image:width', String(OG_IMAGE.width)),
+      meta('property', 'og:image:height', String(OG_IMAGE.height)),
+      meta('property', 'og:image:alt', OG_IMAGE.alt),
+      meta('name', 'twitter:card', 'summary_large_image'),
+    ],
+  }
+}

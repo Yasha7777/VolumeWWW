@@ -4,6 +4,7 @@ import { AuthProvider } from './context/AuthContext'
 import PrivateRoute from './components/PrivateRoute'
 import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
+import RouteMeta from './seo/RouteMeta'
 // ── Login грузим статически: это входная точка и LCP-страница,
 //    она должна отрисоваться из начального бандла без лишнего запроса ──
 import Login from './pages/Login'
@@ -41,6 +42,8 @@ function App() {
     <ErrorBoundary name="root">
     <AuthProvider>
       <BrowserRouter>
+        {/* title / description / canonical / robots при переходах без перезагрузки */}
+        <RouteMeta />
         {/* .app-shell — общая обёртка всех роутов. Переключатель тем — в шапке (Layout). */}
         <div className="app-shell">
           <Suspense fallback={<PageLoader />}>
