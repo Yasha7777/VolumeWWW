@@ -1,10 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import seo from './scripts/vite-plugin-seo.js'
 
 export default defineConfig({
   plugins: [
     react(),
+    // sitemap / пререндер / сверка роутов. closeBundle у него `order: 'pre'` —
+    // успевает до сборки service worker, см. шапку плагина.
+    seo(),
     VitePWA({
       strategies: 'injectManifest',   // свой sw.js (там sync + push в перспективе)
       srcDir: 'src',
