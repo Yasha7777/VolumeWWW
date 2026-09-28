@@ -12,9 +12,14 @@ clientsClaim()
 
 precacheAndRoute(self.__WB_MANIFEST || [])   // ← ОДИН раз (было продублировано — отсюда падала сборка)
 
-// SPA-навигация → закешированный index.html (кроме /api/)
+// SPA-навигация → закешированный index.html (кроме /api/ и ФАЙЛОВ).
+// Путь с расширением — это настоящий файл из public/ (robots.txt, llms.txt,
+// yandex_*.html для Вебмастера), а не роут SPA: у роутов точек нет. Без этого
+// исключения SW отдавал на такие адреса index.html → в браузере рисовалась
+// наша 404, хотя nginx файл отдаёт. index.html сюда не доходит — его раньше
+// перехватывает precacheAndRoute.
 registerRoute(new NavigationRoute(createHandlerBoundToURL('/index.html'), {
-  denylist: [/^\/api\//],
+  denylist: [/^\/api\//, /\/[^/?]+\.[^/]+$/],
 }))
 
 self.addEventListener('message', (e) => { if (e.data === 'kb-skip-waiting') self.skipWaiting() })
