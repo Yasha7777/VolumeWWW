@@ -1,2 +1,35 @@
+# volumetric.gottland.ru
+#
+# Публичные страницы — / и /privacy (они же в sitemap.xml). Всё остальное —
+# вход, регистрация и приложение за авторизацией — в индекс не нужно: там
+# либо форма, либо данные пользователя. Те же адреса отдают X-Robots-Tag:
+# noindex (frontend/nginx.conf) и мета robots — это страховка на случай, если
+# поисковик узнал адрес по внешней ссылке.
+#
+# `$` на конце обязателен: без него «Disallow: /app» закрыл бы и
+# /apple-touch-icon.png, и любой будущий адрес, начинающийся с /app.
+# Список роутов сверяется со сборкой (scripts/vite-plugin-seo.js).
+#
+# Файл yandex_*.html (подтверждение прав в Вебмастере) НЕ закрывать.
+
 User-agent: *
 Allow: /
+Disallow: /api/
+Disallow: /app$
+Disallow: /history$
+Disallow: /profile$
+Disallow: /reports$
+Disallow: /login$
+Disallow: /register$
+# технические копии страниц: пререндер кладёт их файлами, канон — без .html
+Disallow: /index.html$
+Disallow: /privacy.html$
+Disallow: /shell.html$
+Disallow: /404.html$
+
+# Метки рекламы и рассылок не создают новых страниц — Яндекс склеит такие
+# адреса с каноническим. Вместо «Disallow: /*?»: при запрете робот не увидел
+# бы canonical и не перенёс бы вес ссылок с метками на чистый адрес.
+Clean-param: utm_source&utm_medium&utm_campaign&utm_content&utm_term&yclid&ysclid&gclid&fbclid&from&_openstat
+
+Sitemap: https://volumetric.gottland.ru/sitemap.xml
