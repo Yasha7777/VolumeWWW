@@ -23,6 +23,11 @@
      при каждой пересборке, и Яндекс перестаёт lastmod верить). Исходники
      правятся прямо сейчас (есть незакоммиченные изменения) → сегодняшняя дата.
 
+   • СВЕРКА РОУТОВ (buildStart, до всего остального): роуты App.jsx,
+     src/seo/routes.js, белый список nginx.conf и Disallow в robots.txt
+     обязаны совпадать. Новый роут, забытый в nginx, получил бы честный 404,
+     забытый в routes.js — не получил бы ни меты, ни noindex.
+
    ПОРЯДОК ВАЖЕН. closeBundle здесь `order: 'pre'`: он обязан отработать
    ДО vite-plugin-pwa, который в своём closeBundle собирает service worker
    и глобом по dist/ составляет список прекэша. Всё, что мы пишем в dist
@@ -37,7 +42,7 @@ import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { build as viteBuild } from 'vite'
 import react from '@vitejs/plugin-react'
-import { PUBLIC_ROUTES, NOT_FOUND, BRAND, canonicalUrl, headSpec, landingJsonLd } from '../src/seo/routes.js'
+import { PUBLIC_ROUTES, PRIVATE_ROUTES, NOT_FOUND, BRAND, canonicalUrl, headSpec, landingJsonLd } from '../src/seo/routes.js'
 
 // Исходник страницы = ключ в манифесте клиентской сборки (по нему находим
 // чанк и CSS страницы, чтобы подключить их прямо в HTML).
@@ -193,11 +198,38 @@ async function prerender(root, outDir, mode) {
   }
 }
 
+// ── Сверка роутов ────────────────────────────────────────────────────────
+function checkRoutes(root) {
+  const read = (f) => readFileSync(resolve(root, f), 'utf8')
+  const app = [...read('src/App.jsx').matchAll(/<Route\s+path="([^"]+)"/g)].map((m) => m[1]).filter((p) => p !== '*')
+  const nginx = read('nginx.conf')
+  const ngPublic = [...nginx.matchAll(/location = (\/[a-z0-9-]*) \{\s*try_files \/[a-z0-9-]+\.html =404;/g)].map((m) => m[1])
+  const ngPrivate = (nginx.match(/location ~ \^\/\(([a-z0-9|-]+)\)\$ \{\s*try_files \/shell\.html =404;/)?.[1] ?? '')
+    .split('|').filter(Boolean).map((s) => `/${s}`)
+  const robots = [...read('public/robots.txt').matchAll(/^Disallow: (\/[a-z0-9-]+)\$$/gm)].map((m) => m[1])
+
+  const pub = PUBLIC_ROUTES.map((r) => r.path)
+  const priv = PRIVATE_ROUTES.map((r) => r.path)
+  const same = (a, b) => a.length === b.length && [...a].sort().join() === [...b].sort().join()
+  const problems = []
+  if (!same(app, [...pub, ...priv])) problems.push(`App.jsx: ${app.join(' ')}\n    routes.js: ${[...pub, ...priv].join(' ')}`)
+  if (!same(ngPublic, pub)) problems.push(`nginx.conf, публичные (location = …): ${ngPublic.join(' ') || '—'}\n    routes.js PUBLIC_ROUTES: ${pub.join(' ')}`)
+  if (!same(ngPrivate, priv)) problems.push(`nginx.conf, непубличные (→ shell.html): ${ngPrivate.join(' ') || '—'}\n    routes.js PRIVATE_ROUTES: ${priv.join(' ')}`)
+  const notClosed = priv.filter((p) => !robots.includes(p))
+  if (notClosed.length) problems.push(`robots.txt: нет «Disallow: <роут>$» для ${notClosed.join(' ')}`)
+  if (problems.length) {
+    throw new Error(`kb-seo: роуты разъехались — поправь, иначе на проде будут 404 или страницы без noindex:\n  - ${problems.join('\n  - ')}`)
+  }
+}
+
 export default function seo() {
   let config
   return {
     name: 'kb-seo',
     configResolved(c) { config = c },
+    buildStart() {
+      if (config.command === 'build' && !config.build.ssr) checkRoutes(config.root)
+    },
     // И в dev, и в сборке: шаблон получает теги главной (по умолчанию).
     transformIndexHtml(html) {
       if (!html.includes('<!--seo-->')) throw new Error('kb-seo: в index.html нет метки <!--seo-->')
