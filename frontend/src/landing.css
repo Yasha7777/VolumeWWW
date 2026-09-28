@@ -224,6 +224,12 @@
 .kb-l-mark__icon svg { width: 20px; height: 20px; }
 .kb-l-mark__name { font-family: var(--serif); font-weight: 700; font-size: var(--fs-2xl); color: var(--text); line-height: 1; letter-spacing: -.01em; }
 .kb-l-mark__sub { font-size: var(--fs-2xs); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-top: 3px; }
+/* «ИИ · ОБЪЁМ И МАССА» на пару пикселей шире прежнего «AI · …»: на 390 px
+   подпись уходила во вторую строку. Трекинг .12em на узких экранах
+   возвращает прежнее поведение на каждой ширине (замерено 320–414: 390 —
+   одна строка, ≤375 — две, как и раньше). НЕ nowrap: на 320/360 он
+   выталкивает кнопку «Начать» за край экрана. */
+@media (max-width: 400px) { .kb-l-mark__sub { letter-spacing: .12em; } }
 .kb-l-mark__text { display: flex; flex-direction: column; }
 
 /* ─── НАВИГАЦИЯ (sticky + стекло) ───────────────────────────────────────────── */
@@ -415,6 +421,10 @@
 .kb-l-bento__metrics { flex: 3 1 420px; min-width: 0;
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: 1fr; gap: var(--sp-3-5); padding-block: var(--sp-4); }
+/* Нечётное число плиток (после снятия «Погрешности» их три) → последняя на всю
+   ширину, иначе в сетке 2×2 дыра. ВРЕМЕННЫЙ вариант «A» из трёх, показанных
+   владельцу (A — на всю ширину, B — три в ряд, C — «Экспорт» в сетку). */
+.kb-l-bento__metrics > :last-child:nth-child(odd) { grid-column: 1 / -1; }
 .kb-l-bento__metrics > :nth-child(odd)  { transform: translateY(-16px); }
 .kb-l-bento__metrics > :nth-child(even) { transform: translateY(16px); }
 @media (max-width: 560px) { .kb-l-bento__metrics > * { transform: none; } }

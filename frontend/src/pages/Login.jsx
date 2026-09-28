@@ -38,11 +38,11 @@ export default function Login() {
         </div>
 
         <h1 className="auth-h1">Вход в сервис</h1>
-        <p className="auth-sub">Карелия Строй — AI Анализ материалов</p>
+        <p className="auth-sub">Карелия Строй — ИИ-анализ материалов</p>
 
         <form onSubmit={submit}>
           <div className="auth-field">
-            <label>Email</label>
+            <label>Эл. почта</label>
             <input
               type="email" required autoFocus autoComplete="email"
               value={email} onChange={e => setEmail(e.target.value)}

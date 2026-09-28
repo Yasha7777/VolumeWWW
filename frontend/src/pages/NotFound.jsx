@@ -152,7 +152,7 @@ export default function NotFound() {
         <House strokeWidth={1.75} aria-hidden="true" />
         <span className="kb-404__mark-txt">
           <b>Карелия Строй</b>
-          <span>AI · объём и масса</span>
+          <span>ИИ · объём и масса</span>
         </span>
       </Link>
 

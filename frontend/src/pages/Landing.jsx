@@ -35,17 +35,23 @@ const EASE_OUT_CUBIC = [0.33, 1, 0.68, 1]
 // выбранную реконструкцию — см. EngineCloudImpl.
 const EngineScene = lazy(() => import('../components/three/EngineCloudImpl'))
 
+/* Слова — отдельными inline-block спанами (у каждого своя задержка), а между
+   ними НАСТОЯЩИЙ пробел, не margin: иначе в тексте документа слова слипаются
+   («Расчётобъёмаимассы») — так H1 видят поисковик, скринридер и копирование. */
 function BlurText({ text, className = '' }) {
   const reduce = useReducedMotion()
   return (
     <span className={className}>
       {text.split(' ').map((w, i) => (
-        <motion.span key={i}
-          initial={reduce ? false : { filter: 'blur(12px)', opacity: 0, y: '0.3em' }}
-          animate={reduce ? {} : { filter: 'blur(0px)', opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, delay: 0.15 + i * 0.08, ease: EASE }}
-          style={{ display: 'inline-block', marginRight: '0.25em', willChange: 'filter, transform' }}
-        >{w}</motion.span>
+        <span key={i}>
+          {i > 0 && ' '}
+          <motion.span
+            initial={reduce ? false : { filter: 'blur(12px)', opacity: 0, y: '0.3em' }}
+            animate={reduce ? {} : { filter: 'blur(0px)', opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.15 + i * 0.08, ease: EASE }}
+            style={{ display: 'inline-block', willChange: 'filter, transform' }}
+          >{w}</motion.span>
+        </span>
       ))}
     </span>
   )
@@ -126,7 +132,7 @@ const Mark = () => (
     <span className="kb-l-mark__icon"><HouseMark /></span>
     <span className="kb-l-mark__text">
       <span className="kb-l-mark__name">Карелия Строй</span>
-      <span className="kb-l-mark__sub">AI · объём и масса</span>
+      <span className="kb-l-mark__sub">ИИ · объём и масса</span>
     </span>
   </Link>
 )
@@ -218,15 +224,18 @@ function Hero({ user }) {
       <div className="kb-l-hero__pad" aria-hidden="true" />
 
       <motion.div className="kb-l-hero__center" style={{ y, opacity }}>
+        {/* H1 — главный поисковый запрос, а не бренд: бренд «Volumetric Gottland»
+            стоит в конце <title> (src/seo/routes.js). Две строки, как и раньше:
+            белая + золотая курсивная. */}
         <h1 className="kb-l-hero__title">
-          <BlurText text="Volumetric" />
+          <BlurText text="Расчёт объёма и массы" />{' '}
           {/* em с ПРЯМЫМ текстом (не через BlurText): background-clip:text shimmer сквозь
               пословные спаны не работает. Blur-in — на всю строку через motion. */}
           <motion.em className="kb-l-hero__em"
             initial={reduce ? false : { filter: 'blur(12px)', opacity: 0, y: '0.22em' }}
             animate={reduce ? {} : { filter: 'blur(0px)', opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.5, ease: EASE }}>
-            Gottland
+            насыпи по фото
           </motion.em>
         </h1>
         <motion.p className="kb-l-hero__sub"
@@ -249,8 +258,9 @@ function Hero({ user }) {
         <motion.div className="kb-l-hero__chips"
           initial={reduce ? false : { opacity: 0, y: 14 }} animate={reduce ? {} : { opacity: 1, y: 0 }}
           transition={{ duration: 0.7, ease: EASE, delay: 1.1 }}>
+          {/* «Точность ±1.8%» убрана (2026-09-28): цифра не подтверждена замерами.
+              Не возвращать без подтверждения и не подставлять другую. */}
           <span className="kb-l-hero__chip">Объём&nbsp;<b>~ 1&nbsp;428 м³</b></span>
-          <span className="kb-l-hero__chip">Точность&nbsp;<b>±1.8%</b></span>
           <span className="kb-l-hero__chip">Масса&nbsp;<b>~ 2&nbsp;271 т</b></span>
         </motion.div>
       </motion.div>
@@ -297,11 +307,8 @@ function Dashboard() {
                 <span className="kb-l-w__num"><Metric to={1.59} decimals={2} /><span className="kb-l-unit">т/м³</span></span>
                 <span className="kb-l-w__note">по типу материала</span>
               </motion.div>
-              <motion.div className="kb-l-w kb-l-glass" {...reveal} transition={{ ...reveal.transition, delay: 0.24 }}>
-                <span className="kb-l-w__label">Погрешность</span>
-                <span className="kb-l-w__num"><Metric to={1.8} decimals={1} /><span className="kb-l-unit">%</span></span>
-                <span className="kb-l-w__note">на типовых насыпях</span>
-              </motion.div>
+              {/* Плитка «Погрешность 1.8% на типовых насыпях» убрана (2026-09-28):
+                  цифра не подтверждена. Не возвращать без подтверждения. */}
             </div>
           </div>
 
@@ -498,7 +505,7 @@ function FinalCta({ user }) {
 function Footer() {
   const copyEmail = () => {
     navigator.clipboard?.writeText('yakov.kachalin@mail.ru')
-    alert('Email скопирован: yakov.kachalin@mail.ru')
+    alert('Адрес эл. почты скопирован: yakov.kachalin@mail.ru')
   }
   return (
     <footer className="kb-l-foot">
@@ -512,7 +519,7 @@ function Footer() {
         </nav>
       </div>
       <div className="kb-l-foot__bottom">
-        <span>© 2026 Карелия Строй — AI сервис</span>
+        <span>© 2026 Карелия Строй — ИИ-сервис</span>
         <span>Петрозаводск · Карелия</span>
       </div>
     </footer>

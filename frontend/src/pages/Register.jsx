@@ -89,11 +89,11 @@ export default function Register() {
         </div>
 
         <h1 className="auth-h1">Создать аккаунт</h1>
-        <p className="auth-sub">Карелия Строй — AI Анализ материалов</p>
+        <p className="auth-sub">Карелия Строй — ИИ-анализ материалов</p>
 
         <form onSubmit={submit} noValidate>
           <div className="auth-field">
-            <label>Email</label>
+            <label>Эл. почта</label>
             <input
               type="email" required autoFocus autoComplete="email"
               value={email} onChange={handleInput(setEmail)}

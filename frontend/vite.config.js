@@ -16,8 +16,10 @@ export default defineConfig({
       injectRegister: null,           // регистрируем вручную в main.jsx
       devOptions: { enabled: false }, // SW только в проде — не мешает dev-прокси на /api
       manifest: {
-        name: 'Karelia Build AI — Объём и вес',
-        short_name: 'Karelia Build',
+        // 168-ФЗ: имя приложения — по-русски (его видно при установке PWA и
+        // под иконкой на домашнем экране).
+        name: 'Карелия Строй',
+        short_name: 'Карелия Строй',
         description: 'Фотограмметрия строительных материалов: объём, тип, вес.',
         lang: 'ru',
         theme_color: '#122018',
