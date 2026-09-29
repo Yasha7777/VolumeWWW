@@ -1,21 +1,27 @@
 /* Демо-набор страницы выбора обхода — ровно данные мокапа (тексты карточек,
    геометрия маршрутов на карте). Включается только явно: ?demo=1 в адресе или
    VITE_OBHOD_DEMO=1 при сборке. В обычном режиме страница берёт /api/scans/.
-   Фото карточек — настоящие кучи из набора Foto_20260924_cube. */
+   Фото карточек — настоящие кучи из наборов Analyz/НаборыФото (Пухта, Ладва,
+   промплощадки Петрозаводска), одинаково затонированы под макет. */
 import img1 from './img/demo/obhod-1.webp'
 import img2 from './img/demo/obhod-2.webp'
 import img3 from './img/demo/obhod-3.webp'
 import img4 from './img/demo/obhod-4.webp'
 import img5 from './img/demo/obhod-5.webp'
 import img6 from './img/demo/obhod-6.webp'
+import pile178 from './img/demo/pile-178.bin?url'
+
+// Кадры настоящего обхода кучи отсева 178 м³ (Пухта) — для проигрывания.
+const WALK = import.meta.glob('./img/demo/walk/walk-*.webp', { eager: true, query: '?url', import: 'default' })
+const walkUrls = Object.keys(WALK).sort().map((k) => WALK[k])
 
 export const DEMO_OBHODS = [
-  { id: 'o1', title: 'Щебень у склада №3', date: '28 сен 2026, 14:32', photos: 96, duration: '03:48', author: 'Яков Качалин', place: 'Петрозаводск', device: 'ARKit · iPhone 12', status: 'Готов', img: img1, ready: true, statusKey: 'ready' },
-  { id: 'o2', title: 'Песок, карьер №3', date: '26 сен 2026, 11:17', photos: 74, duration: '02:21', author: 'Яков Качалин', place: 'Петрозаводск', device: 'ARKit · iPhone 12', status: 'Готов', img: img2, ready: true, statusKey: 'ready' },
+  { id: 'o1', title: 'Отсев у склада №3', date: '28 сен 2026, 14:32', photos: 96, duration: '03:48', author: 'Яков Качалин', place: 'Петрозаводск', device: 'ARKit · iPhone 12', status: 'Готов', img: img1, ready: true, statusKey: 'ready' },
+  { id: 'o2', title: 'Гравий, карьер №3', date: '26 сен 2026, 11:17', photos: 74, duration: '02:21', author: 'Яков Качалин', place: 'Петрозаводск', device: 'ARKit · iPhone 12', status: 'Готов', img: img2, ready: true, statusKey: 'ready' },
   { id: 'o3', title: 'Щебень, участок В-12', date: '26 сен 2026, 11:17', photos: 112, duration: '04:12', author: 'Рустам Ильясов', place: 'Кондопога', device: 'ARKit · iPhone 12 mini', status: 'Готов', img: img3, ready: true, statusKey: 'ready' },
-  { id: 'o4', title: 'Глина, отвал №1', date: '22 сен 2026, 13:26', photos: 58, duration: '02:37', author: 'Артём Смирнов', place: 'Петрозаводск', device: 'ARCore · Android', status: 'Готов', img: img4, ready: true, statusKey: 'ready' },
+  { id: 'o4', title: 'Отсев, отвал №1', date: '22 сен 2026, 13:26', photos: 58, duration: '02:37', author: 'Артём Смирнов', place: 'Петрозаводск', device: 'ARCore · Android', status: 'Готов', img: img4, ready: true, statusKey: 'ready' },
   { id: 'o5', title: 'Песок, карьер №1', date: '22 сен 2026, 13:26', photos: 83, duration: '02:37', author: 'Сергей Васильев', place: 'Петрозаводск', device: 'ARKit · iPhone 12', status: 'Готов', img: img5, ready: true, statusKey: 'ready' },
-  { id: 'o6', title: 'Песок, карьер №1', date: '18 сен 2026, 15:08', photos: 67, duration: '02:52', author: 'Рустам Ильясов', place: 'Кондопога', device: 'ARKit · iPhone 12 mini', status: 'Готов', img: img6, ready: true, statusKey: 'ready' },
+  { id: 'o6', title: 'Щебень 5–20, карьер №1', date: '18 сен 2026, 15:08', photos: 67, duration: '02:52', author: 'Рустам Ильясов', place: 'Кондопога', device: 'ARKit · iPhone 12 mini', status: 'Готов', img: img6, ready: true, statusKey: 'ready' },
 ]
 
 
@@ -38,4 +44,19 @@ export const DEMO_MAP = {
   ],
   whiteNodes: [[181.5,220],[109,305],[172.5,336.5],[218,201]],
   start: [259,374],
+}
+
+// 10 кадров обхода, разложенных по линии выбранного обхода (карточка «Отсев у склада №3»:
+// 96 фото, 03:48). n — номер кадра в обходе, frac — доля времени.
+const WALK_AT = [1, 2, 4, 5, 7, 8, 10, 11, 13, 14].map((i) => DEMO_MAP.selectedRoute[i])
+DEMO_MAP.walkTotal = 96
+DEMO_MAP.walkDuration = 3 * 60 + 48
+DEMO_MAP.walk = walkUrls.map((thumb, k) => {
+  const n = Math.round(((k + 0.5) * 96) / walkUrls.length)
+  return { thumb, at: WALK_AT[k % WALK_AT.length], n, frac: (n - 1) / 95 }
+})
+
+// 3D: настоящее облако реконструкции кучи отсева 178 м³ (Пухта), прорежено до 44 тыс. точек.
+export const DEMO_CLOUDS = {
+  o1: { src: pile178, title: 'Отсев, эталон 178 м³', meta: '44 тыс. из 361 тыс. точек' },
 }

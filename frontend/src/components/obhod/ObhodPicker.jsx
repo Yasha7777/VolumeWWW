@@ -21,7 +21,7 @@ function useMedia(q) {
 export default function ObhodPicker({
   items, selected, onToggle, onContinue,
   loading = false, error = null, demo = false,
-  track = null, trackLoading = false,
+  track = null, trackLoading = false, cloud = null, theme = 'light',
   period, onPeriod,
   initialState = 'rest',
 }) {
@@ -120,7 +120,7 @@ export default function ObhodPicker({
                 transition={{ duration: reduce ? 0 : .25, delay: reduce ? 0 : .08 }}
               >
                 <motion.div className="ks-panel__map" initial={reduce ? false : { opacity: 0, scale: .985 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: .5, delay: .14, ease: [.2, .8, .2, 1] }}>
-                  <ObhodMap demo={demo} track={track} loading={trackLoading} />
+                  <ObhodMap demo={demo} track={track} loading={trackLoading} cloud={cloud} theme={theme} />
                 </motion.div>
 
                 <div className="ks-panel__list">

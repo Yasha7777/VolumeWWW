@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import seo from './scripts/vite-plugin-seo.js'
@@ -48,7 +48,9 @@ export default defineConfig({
       },
     }),
   ],
-  server: { proxy: { '/api': { target: 'http://localhost:8000', changeOrigin: true } } },
+  // /api в dev: локальный бэкенд (uvicorn :8000) или боевой — VITE_API_PROXY=https://volumetric.gottland.ru
+  // в frontend/.env.local; тогда `npm run dev` работает с настоящим входом и данными.
+  server: { proxy: { '/api': { target: process.env.VITE_API_PROXY || loadEnv('development', process.cwd(), '').VITE_API_PROXY || 'http://localhost:8000', changeOrigin: true, secure: true } } },
   build: {
     chunkSizeWarningLimit: 1600,
     // Манифест нужен пререндеру (vite-plugin-seo): по нему он находит чанк и

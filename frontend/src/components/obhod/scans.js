@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api'
-import { DEMO_OBHODS } from './demo'
+import { DEMO_OBHODS, DEMO_CLOUDS } from './demo'
 
 export const plural = (n, one, few, many) => {
   const m10 = n % 10, m100 = n % 100
@@ -32,7 +32,7 @@ export function normalizeScan(r) {
     title: r.title || 'Без названия',
     date: fmtDate(d), dateShort: fmtShort(d),
     photos: r.frame_count,
-    duration: fmtDur(r.duration_s),
+    duration: fmtDur(r.duration_s), durationS: r.duration_s,
     author: r.author_name,
     place,
     device: ['ARKit', r.device_model].filter(Boolean).join(' · '),
@@ -83,7 +83,11 @@ export function useTrack(scan, demo) {
     setSt({ track: null, loading: true })
     api.getScanTrack(scan.id)
       .then((t) => {
-        const track = { points: t?.points || [], lat: scan.lat, lon: scan.lon, acc: scan.acc }
+        const track = {
+          points: t?.points || [], frames: t?.frames || [], geo: t?.geo || null,
+          lat: scan.lat, lon: scan.lon, acc: scan.acc,
+          frameCount: scan.photos, duration: scan.durationS,
+        }
         trackCache.set(scan.id, track)
         if (alive) setSt({ track, loading: false })
       })
@@ -91,4 +95,35 @@ export function useTrack(scan, demo) {
     return () => { alive = false }
   }, [scan?.id, demo])
   return st
+}
+
+/* Облако точек для вкладки 3D. Демо — плотная реконструкция из набора.
+   Реальный обход — разреженные точки ARKit и позиции камеры из scan.json
+   (GET /api/scans/{id}/cloud); после анализа сюда можно подставить плотное облако. */
+const cloudCache = new Map()
+export function useCloud(scan, demo) {
+  const [cloud, setCloud] = useState(null)
+  useEffect(() => {
+    if (!scan) { setCloud(null); return }
+    if (demo) {
+      setCloud(DEMO_CLOUDS[scan.id] || { empty: 'Для этого обхода в демо нет облака — выберите «Отсев у склада №3»' })
+      return
+    }
+    const hit = cloudCache.get(scan.id)
+    if (hit) { setCloud(hit); return }
+    let alive = true
+    setCloud(null)
+    api.getScanCloud(scan.id)
+      .then((c) => {
+        const n = c?.points?.length || 0
+        const v = n
+          ? { data: { points: c.points, cameras: c.cameras || null }, title: scan.title, meta: `Облако ARKit · ${n.toLocaleString('ru-RU')} точек · ${c.cameras?.length || 0} кадров` }
+          : { empty: 'В этом обходе нет точек ARKit' }
+        cloudCache.set(scan.id, v)
+        if (alive) setCloud(v)
+      })
+      .catch(() => { if (alive) setCloud({ empty: 'Облако точек пока недоступно' }) })
+    return () => { alive = false }
+  }, [scan?.id, demo])
+  return cloud
 }

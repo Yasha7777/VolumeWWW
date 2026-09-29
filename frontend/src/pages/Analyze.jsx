@@ -15,7 +15,7 @@ import AnalyzeDecor from '../components/obhod/AnalyzeDecor'
 import { ObhodHero, ObhodStepper } from '../components/obhod/ObhodHero'
 import ObhodPicker from '../components/obhod/ObhodPicker'
 import ObhodRun from '../components/obhod/ObhodRun'
-import { useScans, useTrack, makePeriods } from '../components/obhod/scans'
+import { useScans, useTrack, useCloud, makePeriods } from '../components/obhod/scans'
 import '../components/obhod/obhod.css'
 import CubeSettings, { CUBE_DEFAULT } from '../components/CubeSettings'  // ← настраиваемый калибровочный куб
 import { prepareImage } from '../prepareImage'  // ← оригинал на сервер + превью для UI
@@ -90,6 +90,7 @@ export default function Analyze() {
   )
   // карта показывает траекторию первого выбранного обхода
   const trackState = useTrack(pickedScans[0] || null, demo)
+  const cloud = useCloud(pickedScans[0] || null, demo)
   const toggleScan = useCallback((id) => {
     setScanSel(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }, [])
@@ -537,6 +538,8 @@ export default function Analyze() {
               demo={demo}
               track={trackState.track}
               trackLoading={trackState.loading}
+              cloud={cloud}
+              theme={isDark ? 'dark' : 'light'}
               period={periods[periodIdx]}
               onPeriod={() => setPeriodIdx(i => (i + 1) % periods.length)}
             />

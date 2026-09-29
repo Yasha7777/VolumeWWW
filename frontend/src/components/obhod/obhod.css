@@ -145,6 +145,7 @@
 .ks-mark--foot { font-size: 9.4px; line-height: 16px; text-transform: uppercase; letter-spacing: .02em; }
 .ks-mark__brand { letter-spacing: .16em; }
 .ks-mark--coords2 { font-size: 10.5px; line-height: 14px; }
+:root[data-theme='dark'] .ks-scope .ks-mark { color: #d9d7cf; text-shadow: 0 0 6px rgba(0,0,0,.95), 0 0 14px rgba(0,0,0,.8); }
 
 /* ── hero ──────────────────────────────────────────── */
 .ks-hero { position: relative; z-index: 1; text-align: center; padding-top: 32px; }
@@ -256,7 +257,7 @@
   font-family: var(--font-mono); font-size: 10px; line-height: 16px; font-weight: 500; letter-spacing: .02em; vertical-align: top;
 }
 :root[data-theme='dark'] .ks-scope .ks-badge { color: #b5d69c; box-shadow: inset 0 0 0 1px rgba(143,212,106,.25); }
-.ks-card__title { margin: 1px 0 0; font-family: var(--font-mono); font-size: 11.5px; line-height: 16px; font-weight: 500; letter-spacing: -.01em; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ks-card__title { margin: 1px 0 0; font-family: var(--font-sans); font-size: 12.5px; line-height: 16px; font-weight: 600; letter-spacing: -.005em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ks-card__row { display: flex; align-items: center; gap: 10px; height: 14px; margin-top: 3px; font-family: var(--font-mono); font-size: 10px; color: var(--muted); white-space: nowrap; }
 .ks-card__title + .ks-card__row { margin-top: 8px; }
 .ks-card__row--gap { margin-top: 6px; }
@@ -276,6 +277,17 @@
   border: 1.5px solid rgba(255,255,255,.85); background: rgba(255,255,255,.28); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
 }
 .ks-check--photo.is-on { background: var(--green-600); border-color: #d8e6cc; }
+/* Тёмный макет: название ярче и крупнее, строки гротеском (в светлом — моно),
+   чекбокс на фото — яркий зелёный с галочкой. */
+:root[data-theme='dark'] .ks-scope .ks-card__title { color: #eeede8; }
+:root[data-theme='dark'] .ks-scope .ks-card__photo img { filter: brightness(.9) contrast(1.08); }
+:root[data-theme='dark'] .ks-scope .ks-card__row { font-family: var(--font-sans); font-size: 11px; color: #cfcec8; }
+:root[data-theme='dark'] .ks-scope .ks-card__row svg { color: #9d9c96; }
+:root[data-theme='dark'] .ks-scope .ks-card__device { color: #7d7c77; }
+:root[data-theme='dark'] .ks-scope .ks-check--photo.is-on { background: #8fd46a; border-color: #8fd46a; }
+:root[data-theme='dark'] .ks-scope .ks-check--photo.is-on::after {
+  content: ''; width: 7px; height: 4px; margin-top: -2px; border: solid #0f1a0b; border-width: 0 0 2px 2px; transform: rotate(-45deg);
+}
 
 /* map */
 .ks-map { position: relative; width: 539px; height: 488px; border-radius: 9px; overflow: hidden; background: var(--card-bg); }
@@ -299,6 +311,80 @@
 
 .ks-map__head { position: absolute; left: 15px; top: 15px; }
 .ks-map__title { margin: 0; font-size: 11.5px; line-height: 16px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--ink); }
+/* вкладки «Карта обходов / 3D»: в режиме карты выглядят как заголовок макета */
+.ks-map__head { z-index: 3; }
+.ks-map__tabs { display: flex; align-items: center; gap: 12px; }
+.ks-map__tab {
+  position: relative; padding: 0; border: 0; background: none; cursor: pointer;
+  font: 600 11.5px/16px var(--font-sans); letter-spacing: .03em; text-transform: uppercase; color: var(--muted-2);
+  transition: color .2s;
+}
+.ks-map__tab + .ks-map__tab::before { content: ''; position: absolute; left: -7px; top: 4px; width: 1px; height: 9px; background: var(--line); }
+.ks-map__tab.is-on { color: var(--ink); }
+.ks-map__tab:not(.is-on):hover { color: var(--ink-3); }
+.ks-map__tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+.ks-map__tab:last-child:not(.is-on) { padding: 0 6px; border-radius: 4px; color: var(--accent-ink, var(--green-600)); box-shadow: inset 0 0 0 1px var(--sel-border); }
+:root[data-theme='dark'] .ks-scope .ks-map__tab:last-child:not(.is-on) { color: var(--accent); }
+.ks-map__loc--3d { margin-top: 12px; }
+
+/* проигрывание обхода */
+.ks-replay { opacity: 0; transition: opacity .3s; }
+.ks-replay.is-on { opacity: 1; }
+.ks-replay__trail { fill: none; stroke: var(--accent); stroke-width: 3.2; stroke-linecap: round; filter: drop-shadow(0 0 3px rgba(143,212,106,.7)); }
+.ks-replay__core { fill: #fff; stroke: var(--accent); stroke-width: 3; }
+.ks-replay__pulse { fill: rgba(143,212,106,.28); transform-box: fill-box; transform-origin: center; animation: ks-pulse 1.4s ease-out infinite; }
+@keyframes ks-pulse { from { transform: scale(.45); opacity: 1; } to { transform: scale(1.35); opacity: 0; } }
+.ks-shot {
+  position: absolute; left: 0; top: 0; z-index: 2; width: 112px; padding: 3px; border-radius: 8px; pointer-events: none;
+  background: var(--card-bg); box-shadow: 0 0 0 1px var(--line-2), 0 10px 24px -8px rgba(30,25,15,.45);
+  opacity: 0; transition: opacity .25s;
+}
+.ks-shot.is-on { opacity: 1; }
+.ks-shot::after { content: ''; position: absolute; left: 50%; bottom: -5px; width: 10px; height: 10px; margin-left: -5px; background: var(--card-bg); transform: rotate(45deg); box-shadow: 1px 1px 0 var(--line-2); }
+.ks-shot.is-below::after { bottom: auto; top: -5px; box-shadow: -1px -1px 0 var(--line-2); }
+.ks-shot img { display: block; width: 106px; height: 80px; object-fit: cover; border-radius: 5px; animation: ks-shot-in .22s ease-out; }
+@keyframes ks-shot-in { from { opacity: .35; transform: scale(.97); } to { opacity: 1; transform: none; } }
+.ks-shot__cap { display: block; padding: 4px 3px 1px; font-family: var(--font-mono); font-size: 9px; line-height: 11px; color: var(--ink-3); white-space: nowrap; }
+.ks-map__play {
+  position: absolute; left: 18px; top: 420px; z-index: 3; display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 10px 0 8px;
+  border: 0; border-radius: 12px; cursor: pointer; font: 500 10.5px/1 var(--font-sans); color: var(--ink-2);
+  background: var(--card-bg); box-shadow: 0 0 0 1px var(--line-2), 0 2px 6px -2px rgba(60,50,30,.18);
+}
+.ks-map__play svg { color: var(--accent); fill: currentColor; }
+.ks-map__play:hover { color: var(--ink); }
+.ks-map__play:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* 3D-облако */
+.ks-map.is-3d .ks-map__terrain { opacity: .28; filter: blur(2px) saturate(.6); }
+/* реальный обход без спутника: не подкладываем чужой карьер — нейтральная сетка */
+.ks-scope .ks-map.is-plain .ks-map__terrain, :root[data-theme='dark'] .ks-scope .ks-map.is-plain .ks-map__terrain {
+  background: radial-gradient(circle at 50% 55%, transparent 0 60%, rgba(0,0,0,.04) 100%),
+    repeating-linear-gradient(0deg, var(--line-2) 0 1px, transparent 1px 40px),
+    repeating-linear-gradient(90deg, var(--line-2) 0 1px, transparent 1px 40px),
+    var(--card-bg);
+  opacity: .9;
+}
+/* спутник Яндекса под реальным обходом: только картинка, всё рисует наш SVG */
+.ks-sat { position: absolute; inset: 0; opacity: 0; transition: opacity .4s; pointer-events: none; }
+.ks-sat.is-ready { opacity: 1; }
+.ks-sat [class*='-copyrights-pane'] { pointer-events: auto; }
+.ks-sat.is-dark [class*='-ground-pane'] { filter: brightness(.62) saturate(.55) contrast(1.05); }
+.ks-sat:not(.is-dark) [class*='-ground-pane'] { filter: saturate(.7) brightness(1.04); }
+/* логотип и условия Яндекса внизу обязаны быть видны — поднимаем свои подписи */
+.ks-map.has-sat .ks-map__legend { top: 372px; }
+.ks-map.has-sat .ks-map__scale { top: 430px; }
+.ks-map.has-sat .ks-map__play { top: 392px; }
+.ks-map.has-sat .ks-map__zoom { display: none; }
+.ks-cloud { position: absolute; inset: 0; z-index: 1; }
+.ks-cloud__gl { position: absolute; inset: 0; cursor: grab; }
+.ks-cloud__gl:active { cursor: grabbing; }
+.ks-cloud__gl canvas { display: block; }
+.ks-cloud__msg { position: absolute; inset: 0; display: grid; place-content: center; grid-auto-flow: column; gap: 9px; align-items: center; padding: 0 60px; text-align: center; font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: var(--muted); }
+.ks-cloud__spin { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--line); border-top-color: var(--accent); animation: ks-spin .8s linear infinite; }
+@keyframes ks-spin { to { transform: rotate(360deg); } }
+.ks-cloud__hint { position: absolute; right: 16px; bottom: 16px; font-family: var(--font-mono); font-size: 10px; color: var(--muted); transition: opacity .5s; pointer-events: none; }
+.ks-cloud__hint.is-gone { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .ks-replay__pulse { animation: none; } }
 .ks-map__loc { margin-top: 29px; display: flex; flex-direction: column; font-size: 10.5px; line-height: 15px; color: var(--map-ink); }
 .ks-map__loc i { display: inline-block; width: 17px; margin-left: 1px; font-style: normal; font-weight: 600; }
 .ks-map__zoom {

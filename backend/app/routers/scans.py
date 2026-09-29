@@ -5,11 +5,21 @@
 (кадры). Здесь — то, что нужно странице «Анализ»:
 
   GET  /api/scans/               список обходов пользователя (+ обложка, автор)
-  GET  /api/scans/{id}/track     траектория камеры, вид сверху, в метрах ARKit
+  GET  /api/scans/{id}/track     траектория камеры, вид сверху, в метрах ARKit,
+                                 + до 12 кадров с миниатюрами для проигрывания
+  GET  /api/scans/{id}/cloud     разреженное облако ARKit + позиции камеры (3D)
   POST /api/scans/{id}/analyze   анализ обхода: строка analyses (scan_id) из
                                  кадров обхода + прогон в n8n, как у «Повторить»
 
-Запись в scans/colmap_photos делает загрузчик обходов, не этот роутер.
+Загрузка обхода из приложения (VolmetricARKit ≥ 5), всё идемпотентно —
+телефон на плохой связи повторяет запросы, дублей не бывает:
+
+  POST /api/scans/                   заводит обход (id — UUID из приложения),
+                                     статус uploading; повтор возвращает, какие
+                                     кадры уже на сервере — телефон докачивает
+  PUT  /api/scans/{id}/frames/{i}    кадр i: JPEG байт в байт + метаданные ARKit
+  POST /api/scans/{id}/complete      scan.json целиком (облако ARKit), проверка
+                                     полноты → статус ready
 """
 import asyncio
 import logging
@@ -17,13 +27,17 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from pydantic import BaseModel
+import json
+
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
+from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
 from ..config import settings
 from ..supabase_client import supabase
+from ..imaging import make_thumbnail
 from .analyses import (
+    COLMAP_BUCKET,
     _b64_data_url,
     _call_n8n_and_save,
     _cube_block,
@@ -178,12 +192,153 @@ def _xz_from_arkit(arkit) -> Optional[list]:
     return [round(x, 3), round(z, 3)]
 
 
+REPLAY_FRAMES = 12   # сколько кадров отдаём для проигрывания обхода на карте
+
+# ─── привязка траектории ARKit к карте ───────────────────────────────────────
+#
+# ARKit снимает с worldAlignment = .gravity: ось y — вверх, а поворот вокруг
+# неё случайный (как держали телефон при старте). Приложение (≥ 5) пишет в
+# каждый кадр GPS и курс компаса. Отсюда поворот δ системы ARKit к северу:
+#   • по компасу: курс камеры (−Z позы, по горизонтали) против heading.trueDeg,
+#     круговая медиана по кадрам с погрешностью компаса ≤ 30°;
+#   • если компаса нет или он «гуляет» — по GPS: подгонка поворота
+#     ARKit-точек к GPS-точкам (Прокруст 2D без масштаба), только если обход
+#     заметно больше погрешности GPS.
+# Сдвиг — средневзвешенная разница GPS − повёрнутый ARKit (вес 1/σ²).
+M_PER_DEG_LAT = 110_540.0
+M_PER_DEG_LON = 111_320.0
+
+
+def _circ_median_deg(values: list[float]) -> tuple[float, float]:
+    """Круговая «медиана» (через средний вектор) и разброс, градусы."""
+    import math
+    if not values:
+        return 0.0, 180.0
+    sx = sum(math.sin(math.radians(v)) for v in values) / len(values)
+    cx = sum(math.cos(math.radians(v)) for v in values) / len(values)
+    mean = math.degrees(math.atan2(sx, cx)) % 360
+    r = min(1.0, math.hypot(sx, cx))
+    spread = math.degrees(math.sqrt(max(0.0, -2 * math.log(max(r, 1e-9)))))
+    return mean, spread
+
+
+def geo_align(frames: list[dict]) -> Optional[dict]:
+    """frames: [{arkit: {...cameraTransform, location, heading}}] → привязка или None."""
+    import math
+    pts = []      # (x, z, fwd_bearing_ar, loc, heading)
+    for f in frames:
+        a = f.get("arkit") if isinstance(f.get("arkit"), dict) else f
+        m = a.get("cameraTransform") or []
+        if len(m) != 16 or not all(_finite(m[i]) for i in (8, 10, 12, 14)):
+            continue
+        x, z = float(m[12]), float(m[14])
+        fx, fz = -float(m[8]), -float(m[10])
+        bearing_ar = math.degrees(math.atan2(fx, -fz)) % 360 if math.hypot(fx, fz) > 0.2 else None
+        pts.append((x, z, bearing_ar, a.get("location"), a.get("heading")))
+
+    fixes = [(x, z, l) for x, z, _, l, _ in pts
+             if isinstance(l, dict) and _finite(l.get("lat")) and _finite(l.get("lon")) and _finite(l.get("hAcc"))
+             and l["hAcc"] <= 30]
+    if not fixes:
+        return None
+    lat0 = sorted(l["lat"] for _, _, l in fixes)[len(fixes) // 2]
+    lon0 = sorted(l["lon"] for _, _, l in fixes)[len(fixes) // 2]
+    coslat = math.cos(math.radians(lat0))
+    enu = [((l["lon"] - lon0) * M_PER_DEG_LON * coslat, (l["lat"] - lat0) * M_PER_DEG_LAT, l["hAcc"], x, z)
+           for x, z, l in fixes]
+
+    # поворот по компасу
+    offsets = []
+    for x, z, b_ar, _, h in pts:
+        if b_ar is None or not isinstance(h, dict):
+            continue
+        t, acc = h.get("trueDeg"), h.get("accDeg")
+        if _finite(t) and _finite(acc) and acc <= 30:
+            offsets.append((t - b_ar) % 360)
+    delta, source, spread = None, None, None
+    if len(offsets) >= 3:
+        d, sp = _circ_median_deg(offsets)
+        if sp <= 25:
+            delta, source, spread = d, "compass", sp
+
+    # поворот по GPS, если компаса нет
+    if delta is None and len(enu) >= 4:
+        ex = sum(e for e, *_ in enu) / len(enu); ny = sum(n for _, n, *_ in enu) / len(enu)
+        ax = sum(x for *_, x, _ in enu) / len(enu); az = sum(-z for *_, z in enu) / len(enu)
+        sxx = sxy = 0.0
+        extent = 0.0
+        for e, n, _, x, z in enu:
+            u, v = x - ax, -z - az          # ARKit: (x, −z) — «восток», «север» до поворота
+            p, q = e - ex, n - ny
+            sxx += u * p + v * q
+            sxy += u * q - v * p
+            extent = max(extent, math.hypot(u, v))
+        acc = sorted(a for _, _, a, _, _ in enu)[len(enu) // 2]
+        if extent > 3 * acc:
+            # угол против часовой (математический) → по часовой как у курса
+            delta = (-math.degrees(math.atan2(sxy, sxx))) % 360
+            source = "gps"
+
+    rot = math.radians(delta or 0.0)
+    def to_en(x, z):
+        u, v = x, -z
+        return (u * math.cos(rot) + v * math.sin(rot), -u * math.sin(rot) + v * math.cos(rot))
+
+    # сдвиг: GPS − повёрнутый ARKit, вес 1/σ²
+    wsum = te = tn = 0.0
+    for e, n, acc, x, z in enu:
+        w = 1.0 / max(acc, 1.0) ** 2
+        pe, pn = to_en(x, z)
+        te += w * (e - pe); tn += w * (n - pn); wsum += w
+    te /= wsum; tn /= wsum
+    acc_best = min(a for _, _, a, _, _ in enu)
+    return {
+        "lat0": lat0, "lon0": lon0,
+        "rot_deg": round(delta, 1) if delta is not None else None,
+        "rot_source": source,
+        "rot_spread_deg": round(spread, 1) if spread is not None else None,
+        "shift_en": [round(te, 2), round(tn, 2)],
+        "acc_m": round(acc_best, 1),
+        "fixes": len(enu),
+        "_to_en": to_en,
+    }
+
+
 @router.get("/{scan_id}/track")
 def scan_track(scan_id: str, current_user: dict = Depends(get_current_user)):
     _get_scan(scan_id, current_user, cols="id")
     frames = _scan_frames(scan_id, with_arkit=True)
-    points = [p for p in (_xz_from_arkit(f.get("arkit")) for f in frames) if p]
-    return {"scan_id": scan_id, "points": points, "frames": len(frames)}
+    posed = [(f, _xz_from_arkit(f.get("arkit"))) for f in frames]
+    posed = [(f, p) for f, p in posed if p]
+    points = [p for _, p in posed]
+    # кадры для проигрывания: равномерно по обходу, только с миниатюрой
+    step = max(1, len(posed) // REPLAY_FRAMES)
+    replay = [
+        {"index": f.get("frame_index"), "at": p, "thumb": f.get("thumb_url") or f.get("public_url")}
+        for k, (f, p) in enumerate(posed)
+        if k % step == 0 and (f.get("thumb_url") or f.get("public_url"))
+    ][:REPLAY_FRAMES]
+    out = {"scan_id": scan_id, "points": points, "frames": replay, "frame_total": len(frames)}
+    geo = geo_align(frames)
+    if geo is not None:
+        to_en = geo.pop("_to_en")
+        te, tn = geo["shift_en"]
+        # точки обхода в метрах восток/север от (lat0, lon0) — фронт кладёт их на спутник
+        en = []
+        for f, _ in posed:
+            m = (f.get("arkit") or {}).get("cameraTransform")
+            e, n = to_en(float(m[12]), float(m[14]))
+            en.append([round(e + te, 2), round(n + tn, 2)])
+        geo["points_en"] = en
+        geo["frames_en"] = []
+        for r in replay:
+            f = next((f for f, _ in posed if f.get("frame_index") == r["index"]), None)
+            if f is not None:
+                m = f["arkit"]["cameraTransform"]
+                e, n = to_en(float(m[12]), float(m[14]))
+                geo["frames_en"].append([round(e + te, 2), round(n + tn, 2)])
+        out["geo"] = geo
+    return out
 
 
 # ─── анализ обхода ───────────────────────────────────────────────────────────
@@ -291,3 +446,286 @@ def analyze_scan(
     )
     return {"id": analysis_id, "status": "pending", "scan_id": scan_id,
             "mode": "prod" if body.is_prod else "test"}
+
+
+# ─── облако ARKit для 3D ─────────────────────────────────────────────────────
+
+CLOUD_MAX_POINTS = 12000
+
+
+def _scan_json(scan: dict) -> Optional[dict]:
+    path = f"{scan['storage_prefix']}/scan.json"
+    try:
+        raw = supabase.storage.from_(COLMAP_BUCKET).download(path)
+    except Exception:
+        return None
+    try:
+        # приложение пишет NaN/Infinity строками — json.loads их не ждёт в числах,
+        # а как строки они просто отфильтруются ниже
+        return json.loads(raw)
+    except ValueError:
+        return None
+
+
+def _finite(v) -> bool:
+    return isinstance(v, (int, float)) and v == v and abs(v) != float("inf")
+
+
+def build_cloud(scan_json: dict) -> dict:
+    """Точки ARKit со всех кадров, по одному разу на идентификатор (последнее
+    наблюдение точнее первого), + позиции камеры. Метры, y — вверх."""
+    by_id: dict = {}
+    anon: list = []
+    cameras: list = []
+    for fr in scan_json.get("frames") or []:
+        m = fr.get("cameraTransform") or []
+        if len(m) == 16 and all(_finite(m[i]) for i in (12, 13, 14)):
+            cameras.append([round(m[12], 3), round(m[13], 3), round(m[14], 3)])
+        pts = fr.get("featurePoints") or []
+        ids = fr.get("featurePointIdentifiers") or []
+        for k in range(0, len(pts) - 2, 3):
+            x, y, z = pts[k], pts[k + 1], pts[k + 2]
+            if not (_finite(x) and _finite(y) and _finite(z)):
+                continue
+            p = [round(x, 3), round(y, 3), round(z, 3)]
+            j = k // 3
+            if j < len(ids):
+                by_id[ids[j]] = p
+            else:
+                anon.append(p)
+    points = list(by_id.values()) + anon
+    if len(points) > CLOUD_MAX_POINTS:
+        step = len(points) / CLOUD_MAX_POINTS
+        points = [points[int(i * step)] for i in range(CLOUD_MAX_POINTS)]
+    return {"points": points, "cameras": cameras}
+
+
+@router.get("/{scan_id}/cloud")
+def scan_cloud(scan_id: str, current_user: dict = Depends(get_current_user)):
+    scan = _get_scan(scan_id, current_user, cols="id, storage_prefix")
+    cached = f"{scan['storage_prefix']}/cloud.json"
+    try:
+        return json.loads(supabase.storage.from_(COLMAP_BUCKET).download(cached))
+    except Exception:
+        pass
+    data = _scan_json(scan)
+    if data is None:
+        raise HTTPException(404, "У обхода нет scan.json — облако недоступно")
+    cloud = build_cloud(data)
+    try:
+        supabase.storage.from_(COLMAP_BUCKET).upload(
+            cached, json.dumps(cloud).encode(),
+            file_options={"content-type": "application/json", "upsert": "true", "x-upsert": "true"},
+        )
+    except Exception:
+        logger.warning("Не удалось закэшировать cloud.json для %s", scan_id)
+    return cloud
+
+
+# ─── загрузка обхода из приложения ───────────────────────────────────────────
+
+# supabase==2.5.0 (storage3 0.7) читает заголовок x-upsert, новые версии — ключ upsert;
+# передаём оба, чтобы повтор после обрыва не падал на «Duplicate».
+MAX_FRAME_BYTES = 25 * 1024 * 1024      # 12 Мп JPEG 0.95 — 3–6 МБ, запас на 48 Мп
+MAX_SCAN_JSON_BYTES = 40 * 1024 * 1024
+# В colmap_photos.arkit кладём позу и то, что нужно карте/пайплайну. Точки
+# облака туда не идут — они целиком лежат в scan.json в Storage.
+ARKIT_KEYS = (
+    "index", "timestamp", "width", "height", "intrinsics", "cameraTransform",
+    "eulerAngles", "trackingState", "trackingReason", "worldMappingStatus",
+    "exposureDuration", "exposureOffset", "ambientIntensity", "ambientColorTemperature",
+    "sharpness", "motionBlurPx", "trackingSegment", "featurePointCount",
+    "location", "heading", "device",
+)
+
+
+class ScanCreate(BaseModel):
+    id: str
+    title: Optional[str] = Field(None, max_length=200)
+    captured_at: str
+    frame_count: int = Field(..., ge=2, le=2000)
+    duration_s: Optional[float] = None
+    device_model: Optional[str] = Field(None, max_length=80)
+    app_version: Optional[str] = Field(None, max_length=40)
+    lat: Optional[float] = Field(None, ge=-90, le=90)
+    lon: Optional[float] = Field(None, ge=-180, le=180)
+    loc_accuracy_m: Optional[float] = Field(None, ge=0)
+    tracking_segments: Optional[int] = Field(None, ge=0, le=32767)
+    frames_degraded: Optional[int] = Field(None, ge=0, le=32767)
+
+
+def _uploaded_indexes(scan_id: str) -> list[int]:
+    rows = (
+        supabase.table("colmap_photos").select("frame_index").eq("scan_id", scan_id).execute()
+    ).data or []
+    return sorted({r["frame_index"] for r in rows if r.get("frame_index") is not None})
+
+
+def _own_scan(scan_id: str, current_user: dict, cols: str = "id, user_id, status, frame_count, storage_prefix") -> dict:
+    """Обход владельца (загружает только автор, даже суперадмин — чужие не трогает)."""
+    try:
+        sid = str(uuid.UUID(scan_id))
+    except ValueError:
+        raise HTTPException(400, "Некорректный id обхода")
+    rows = (
+        supabase.table("scans").select(cols).eq("id", sid).is_("deleted_at", "null").limit(1).execute()
+    ).data
+    if not rows or rows[0]["user_id"] != current_user["id"]:
+        raise HTTPException(404, "Обход не найден")
+    return rows[0]
+
+
+@router.post("/", status_code=201)
+def create_scan(body: ScanCreate, current_user: dict = Depends(get_current_user)):
+    try:
+        scan_id = str(uuid.UUID(body.id))
+    except ValueError:
+        raise HTTPException(400, "id обхода должен быть UUID")
+
+    existing = (
+        supabase.table("scans").select("id, user_id, status, frame_count").eq("id", scan_id).limit(1).execute()
+    ).data
+    meta = {
+        "title":             (body.title or "").strip() or "Без названия",
+        "frame_count":       body.frame_count,
+        "duration_s":        body.duration_s,
+        "device_model":      body.device_model,
+        "app_version":       body.app_version,
+        "lat":               body.lat,
+        "lon":               body.lon,
+        "loc_accuracy_m":    body.loc_accuracy_m,
+        "tracking_segments": body.tracking_segments,
+        "frames_degraded":   body.frames_degraded,
+        "captured_at":       body.captured_at,
+    }
+    if existing:
+        row = existing[0]
+        if row["user_id"] != current_user["id"]:
+            raise HTTPException(409, "Обход с таким id уже есть у другого пользователя")
+        # повтор с телефона: обновляем метаданные (название могли поменять) и
+        # говорим, какие кадры уже лежат на сервере
+        supabase.table("scans").update(meta).eq("id", scan_id).execute()
+        return {"id": scan_id, "status": row["status"], "uploaded": _uploaded_indexes(scan_id)}
+
+    supabase.table("scans").insert({
+        "id": scan_id,
+        "user_id": current_user["id"],
+        "status": "uploading",
+        "storage_prefix": f"scans/{scan_id}",
+        **meta,
+    }).execute()
+    return {"id": scan_id, "status": "uploading", "uploaded": []}
+
+
+@router.put("/{scan_id}/frames/{index}")
+async def upload_frame(
+    scan_id: str,
+    index: int,
+    file: UploadFile = File(...),
+    meta: str = Form("{}"),
+    current_user: dict = Depends(get_current_user),
+):
+    scan = await asyncio.to_thread(_own_scan, scan_id, current_user)
+    sid = scan["id"]
+    if index < 0 or index >= scan["frame_count"]:
+        raise HTTPException(400, f"Номер кадра вне обхода: {index}")
+
+    # идемпотентность: кадр уже есть — отвечаем тем же, байты не льём повторно
+    have = (
+        await asyncio.to_thread(
+            supabase.table("colmap_photos").select("id, public_url, thumb_url")
+            .eq("scan_id", sid).eq("frame_index", index).limit(1).execute
+        )
+    ).data
+    if have:
+        return {"index": index, "id": have[0]["id"], "public_url": have[0]["public_url"], "duplicate": True}
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(400, "Пустой кадр")
+    if len(content) > MAX_FRAME_BYTES:
+        raise HTTPException(413, "Кадр больше 25 МБ")
+    try:
+        frame_meta = json.loads(meta or "{}")
+        if not isinstance(frame_meta, dict):
+            frame_meta = {}
+    except ValueError:
+        raise HTTPException(400, "meta — не JSON")
+
+    arkit = {k: frame_meta[k] for k in ARKIT_KEYS if k in frame_meta}
+    exif = frame_meta.get("exif") if isinstance(frame_meta.get("exif"), dict) else None
+
+    prefix = scan["storage_prefix"]
+    name = f"{index:03d}.jpg"
+    storage_path = f"{prefix}/{name}"
+    # оригинал — байт в байт (EXIF с фокусным нужен пайплайну), upsert: повтор
+    # после обрыва между Storage и БД не падает на «уже существует»
+    await asyncio.to_thread(
+        supabase.storage.from_(COLMAP_BUCKET).upload,
+        storage_path, content,
+        file_options={"content-type": "image/jpeg", "upsert": "true", "x-upsert": "true"},
+    )
+    public_url = supabase.storage.from_(COLMAP_BUCKET).get_public_url(storage_path)
+
+    thumb_path, thumb_url = None, public_url
+    try:
+        thumb = await asyncio.to_thread(make_thumbnail, content)
+        thumb_path = f"{prefix}/{index:03d}_thumb.jpg"
+        await asyncio.to_thread(
+            supabase.storage.from_(COLMAP_BUCKET).upload,
+            thumb_path, thumb,
+            file_options={"content-type": "image/jpeg", "upsert": "true", "x-upsert": "true"},
+        )
+        thumb_url = supabase.storage.from_(COLMAP_BUCKET).get_public_url(thumb_path)
+    except Exception:
+        logger.warning("Миниатюра кадра %s/%s не сделалась", sid, index)
+        thumb_path = None
+
+    row = {
+        "scan_id": sid, "frame_index": index,
+        "storage_path": storage_path, "public_url": public_url,
+        "thumb_storage_path": thumb_path, "thumb_url": thumb_url,
+        "filename": name, "arkit": arkit, "exif": exif,
+    }
+    try:
+        res = await asyncio.to_thread(supabase.table("colmap_photos").insert(row).execute)
+    except Exception:
+        # гонка двух одинаковых запросов при уникальном индексе (scan_id, frame_index)
+        dup = (
+            await asyncio.to_thread(
+                supabase.table("colmap_photos").select("id, public_url")
+                .eq("scan_id", sid).eq("frame_index", index).limit(1).execute
+            )
+        ).data
+        if dup:
+            return {"index": index, "id": dup[0]["id"], "public_url": dup[0]["public_url"], "duplicate": True}
+        raise
+    return {"index": index, "id": res.data[0]["id"], "public_url": public_url}
+
+
+@router.post("/{scan_id}/complete")
+async def complete_scan(
+    scan_id: str,
+    scan_json: Optional[UploadFile] = File(None),
+    current_user: dict = Depends(get_current_user),
+):
+    scan = await asyncio.to_thread(_own_scan, scan_id, current_user)
+    sid = scan["id"]
+    if scan_json is not None:
+        raw = await scan_json.read()
+        if len(raw) > MAX_SCAN_JSON_BYTES:
+            raise HTTPException(413, "scan.json больше 40 МБ")
+        await asyncio.to_thread(
+            supabase.storage.from_(COLMAP_BUCKET).upload,
+            f"{scan['storage_prefix']}/scan.json", raw,
+            file_options={"content-type": "application/json", "upsert": "true", "x-upsert": "true"},
+        )
+    have = await asyncio.to_thread(_uploaded_indexes, sid)
+    missing = [i for i in range(scan["frame_count"]) if i not in set(have)]
+    if missing:
+        return {"id": sid, "status": scan["status"], "missing": missing[:200], "uploaded": len(have)}
+    if scan["status"] != "ready":
+        await asyncio.to_thread(
+            supabase.table("scans").update({"status": "ready"}).eq("id", sid).execute
+        )
+    return {"id": sid, "status": "ready", "missing": [], "uploaded": len(have)}

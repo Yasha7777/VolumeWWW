@@ -210,6 +210,9 @@ export const api = {
   // Траектория камеры обхода, вид сверху: { points: [[x, z], …] } в метрах ARKit.
   getScanTrack: (id) => req(`/scans/${id}/track`),
 
+  // Разреженное облако ARKit обхода: { points: [[x,y,z]…], cameras: [[x,y,z]…] }, метры, y вверх.
+  getScanCloud: (id) => req(`/scans/${id}/cloud`),
+
   // Анализ обхода: бэкенд заводит строку analyses (scan_id) из кадров обхода
   // и ставит прогон в n8n. POST не ретраится (см. req) — двойного запуска нет.
   analyzeScan: (id, { is_prod = false, cube = null, title, notes, client_id } = {}) =>
