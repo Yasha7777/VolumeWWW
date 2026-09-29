@@ -22,6 +22,11 @@ const STATUS = {
   failed:    { label: 'Ошибка',    ready: false },
 }
 
+// приложение до 5.0 называло обход по-английски: «Обход 26 Sep at 19:17» —
+// такие авто-названия показываем по-русски, свои названия не трогаем
+const EN_AUTO = /^Обход\s.*\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b.*\bat\b/
+const niceTitle = (t, d) => (!t ? 'Без названия' : EN_AUTO.test(t) && !isNaN(d) ? `Обход ${fmtShort(d)}` : t)
+
 // строка /api/scans/ → карточка
 export function normalizeScan(r) {
   const d = new Date(r.captured_at)
@@ -29,11 +34,12 @@ export function normalizeScan(r) {
   const place = r.author_city || (r.lat != null && r.lon != null ? `${r.lat.toFixed(3)}°, ${r.lon.toFixed(3)}°` : null)
   return {
     id: r.id,
-    title: r.title || 'Без названия',
+    title: niceTitle(r.title, d),
     date: fmtDate(d), dateShort: fmtShort(d),
     photos: r.frame_count,
     duration: fmtDur(r.duration_s), durationS: r.duration_s,
-    author: r.author_name,
+    // в «Анализе» — только свои обходы; имя не заполнено в профиле → «Вы»
+    author: r.author_name || 'Вы',
     place,
     device: ['ARKit', r.device_model].filter(Boolean).join(' · '),
     status: st.label, statusKey: r.status, ready: st.ready,

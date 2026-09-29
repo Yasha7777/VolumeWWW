@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../api'
 import Timer from '../components/Timer'
 import exifr from 'exifr'
@@ -15,7 +16,7 @@ import AnalyzeDecor from '../components/obhod/AnalyzeDecor'
 import { ObhodHero, ObhodStepper } from '../components/obhod/ObhodHero'
 import ObhodPicker from '../components/obhod/ObhodPicker'
 import ObhodShowcase from '../components/obhod/ObhodShowcase'
-import ObhodRun from '../components/obhod/ObhodRun'
+import { useFitZoom } from '../components/obhod/fit'
 import { useScans, useTrack, useCloud, makePeriods } from '../components/obhod/scans'
 import '../components/obhod/obhod.css'
 import CubeSettings, { CUBE_DEFAULT } from '../components/CubeSettings'  // ← настраиваемый калибровочный куб
@@ -27,6 +28,15 @@ const MAX_PHOTOS = 100
 const POLL_MS    = 5000
 
 const fmtMb = (bytes) => `${(bytes / 1048576).toFixed(1)} МБ`
+
+// демо (?demo=1): ответ пайплайна для эталонной кучи 178 м³ — в формате n8n
+const DEMO_RESULT = [
+  'Проанализировано фото: 96',
+  'Материал: Отсев дробления гранита, фракция 0–5 мм',
+  '3D-реконструкция (DUSt3R)',
+  'Объём DUSt3R: 178.40 м³',
+  'Плотность материала: 1450 кг/м³',
+].join('\n')
 
 export default function Analyze() {
   const [photos, setPhotos]     = useState([])
@@ -80,7 +90,6 @@ export default function Analyze() {
     import.meta.env.VITE_OBHOD_DEMO === '1'
   ), [])
   const [source, setSource]       = useState('scans')
-  const [scanStep, setScanStep]   = useState(1)       // 1 — выбор, 2 — запуск
   const [scanSel, setScanSel]     = useState([])
   const periods                   = useMemo(() => makePeriods(), [])
   const [periodIdx, setPeriodIdx] = useState(0)
@@ -92,9 +101,22 @@ export default function Analyze() {
   // карта показывает траекторию первого выбранного обхода
   const trackState = useTrack(pickedScans[0] || null, demo)
   const cloud = useCloud(pickedScans[0] || null, demo)
+  const ksZoom = useFitZoom()   // на невысоком окне ужимаем «Анализ», чтобы раскрытая панель влезала целиком
+  const [queueNote, setQueueNote]     = useState('')   // «поставлен в очередь» — в подвале панели
+  // обход выбирается один: клик по выбранному снимает выбор
   const toggleScan = useCallback((id) => {
-    setScanSel(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+    setScanSel(prev => prev[0] === id ? [] : [id])
+    setQueueNote('')
   }, [])
+  // запуск анализа обхода прямо из панели: «Запустить» — ждём результат на
+  // странице (как в ручной загрузке), «В очередь» — отправили и свободны
+  const [scanSending, setScanSending] = useState(false)
+  const [collapseSig, setCollapseSig] = useState(0)
+  const [scanReport, setScanReport]   = useState({ title: '', photos: [] })
+  const scanRunIds = useRef({})      // client_id на обход: повтор после обрыва сети не заведёт второй анализ
+  const doneMsgRef = useRef('')
+  const demoTimer  = useRef(null)
+  const resultRef  = useRef(null)
   // Стабильные ссылки — иначе memo на ReportPanel бесполезен: новая стрелка
   // на каждый рендер Analyze (а он идёт на каждое нажатие в любом поле)
   // считалась бы сменой пропса и тянула бы за собой пересборку отчёта.
@@ -311,7 +333,8 @@ export default function Analyze() {
           setUpGlbVec(finalUpGlb)
           setShowRaw(false)     // новый анализ — технические данные снова свёрнуты
           setReportOpen(true)   // авто-выдвижение отчёта по готовности
-          setStatus({ type:'success', title:'Готово!', msg:`Обработано ${photos.length} фото.` })
+          setStatus({ type:'success', title:'Готово!', msg: doneMsgRef.current || `Обработано ${photos.length} фото.` })
+          doneMsgRef.current = ''
           setAId(null)
 
         } else if (data.status === 'error') {
@@ -450,6 +473,76 @@ export default function Analyze() {
     }
   }
 
+  // ─── Анализ обхода из приложения ────────────────────────────────────────────
+  const clearResult = () => {
+    setResult(null); setGlbUrl(null); setPlyUrl(null); setUpVec(null); setUpGlbVec(null)
+    setDiag(null); setShowRaw(false); setReportOpen(false)
+  }
+  const runScan = async (queueOnly = false) => {
+    const s = pickedScans[0]
+    if (!s || busy || scanSending || submittingRef.current) return
+    if (!cubeValid) { setStatus({ type:'error', title:'Параметры куба', msg:'Исправьте значения калибровочного куба' }); return }
+    submittingRef.current = true
+    setStatus(null)
+    const frames = (trackState.track?.frames || []).map(f => f.thumb).filter(Boolean)
+    if (!queueOnly) {
+      clearResult()
+      setScanReport({ title: s.title, photos: [s.img, ...frames].filter(Boolean).slice(0, 3) })
+      doneMsgRef.current = `«${s.title}» · ${s.photos} ${s.photos % 10 === 1 && s.photos % 100 !== 11 ? 'кадр' : 'кадров'} обхода.`
+    }
+    // демо: без сервера — показываем весь путь, результат эталонной кучи
+    if (demo) {
+      submittingRef.current = false
+      if (queueOnly) {
+        setQueueNote(`«${s.title}» в очереди (демо)`)
+        setScanSel([]); return
+      }
+      setBusy(true); setAId('demo'); setStart(Date.now())
+      clearTimeout(demoTimer.current)
+      demoTimer.current = setTimeout(() => {
+        setBusy(false); setStart(null); setAId(null)
+        setResult(DEMO_RESULT); setReportOpen(true)
+        setStatus({ type:'success', title:'Готово!', msg: doneMsgRef.current + ' Демо: цифры эталонной кучи.' })
+        doneMsgRef.current = ''
+      }, 9000)
+      return
+    }
+    setScanSending(true)
+    const client_id = (scanRunIds.current[s.id] ||= globalThis.crypto?.randomUUID?.())
+    try {
+      const r = await api.analyzeScan(s.id, { is_prod: isProd, cube, client_id })
+      delete scanRunIds.current[s.id]
+      if (queueOnly) {
+        setQueueNote(`«${s.title}» в очереди · ${isProd ? 'PROD' : 'TEST'}`)
+        setScanSel([])
+      } else {
+        setBusy(true); setAId(r.id); setStart(Date.now())
+        startPolling(r.id)
+      }
+    } catch (e) {
+      setStatus({ type:'error', title:'Не удалось запустить анализ', msg: e?.message || 'Ошибка сервера' })
+    } finally {
+      setScanSending(false)
+      submittingRef.current = false
+    }
+  }
+  // «Не ждать»: перестаём опрашивать, анализ досчитается на сервере сам
+  const detachScan = () => {
+    clearTimeout(demoTimer.current)
+    stopPolling(); setAId(null)
+    doneMsgRef.current = ''
+    setQueueNote('Анализ досчитается на сервере')
+    setScanSel([])
+  }
+  useEffect(() => () => clearTimeout(demoTimer.current), [])
+  // результат обхода пришёл — сворачиваем панель и показываем его под плашкой
+  useEffect(() => {
+    if (source !== 'scans' || !result) return
+    setCollapseSig(n => n + 1)
+    const id = setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 450)
+    return () => clearTimeout(id)
+  }, [result, source])
+
   const reset = () => {
     if (busy) { stopPolling() }
     setPhotos([])
@@ -483,6 +576,106 @@ export default function Analyze() {
   // галочкой (done), а не завис на числе (active).
   const finished = !!(result || has3d)
   const currentStep = finished ? 4 : busy ? 2 : 1
+
+  // Карточка результата — общая для ручной загрузки и для обхода из приложения
+  const resultCard = (
+(result || has3d || diag) && (
+      <div className="result-card">
+        <div className="result-hd">
+          <span className="result-hd-title">Результат · {isProd ? 'PROD' : 'TEST'}</span>
+          {result && (
+            <div style={{ display:'flex', gap:'var(--sp-2)', alignItems:'center' }}>
+              <button className="copy-btn" onClick={copyResult}>Копировать</button>
+              <button className="copy-btn" onClick={() => setReportOpen(true)}>Открыть отчёт</button>
+            </div>
+          )}
+        </div>
+
+        {/* Структурированная сводка — вместо сырого дампа пайплайна.
+            Метрики в ячейках, материал засечками, масса с золотым
+            акцентом. Служебные поля пайплайна — под тогглом. */}
+        {result && hasSummary && (
+          <div className="rs">
+            <div className="rs-grid">
+              <div className="rs-cell">
+                <span>Материал</span>
+                <b className="rs-mat">{parsed.material || '—'}</b>
+              </div>
+              <div className="rs-cell">
+                <span>Объём, м³</span>
+                <b>{parsed.volume}</b>
+              </div>
+              <div className="rs-cell">
+                <span>Плотность, кг/м³</span>
+                <b>{parsed.density}</b>
+              </div>
+              <div className="rs-cell rs-cell--accent">
+                <span>Масса, т</span>
+                <b>{parsed.mass}</b>
+              </div>
+            </div>
+            <div className="rs-meta">
+              Исходных кадров: {parsed.framesUsed ?? '—'}
+            </div>
+            <button
+              type="button"
+              className="rs-raw-toggle"
+              onClick={() => setShowRaw(v => !v)}
+            >
+              <svg
+                width="12" height="12" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                style={{ transform: showRaw ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}
+              >
+                <path d="m6 9 6 6 6-6"/>
+              </svg>
+              {showRaw ? 'Скрыть технические данные' : 'Технические данные'}
+            </button>
+            {showRaw && (
+              <div className="rs-raw">{result}</div>
+            )}
+          </div>
+        )}
+
+        {/* Фоллбэк: если из текста не вытащились ни объём, ни материал —
+            показываем как раньше, чтобы ничего не потерять */}
+        {result && !hasSummary && (
+          <div className="result-body">{result}</div>
+        )}
+
+        {/* 3D-модель — показывается по наличию модели, а не по тексту */}
+        {has3d && (
+          <div style={{ padding:'0 var(--sp-4) var(--sp-4)' }}>
+            <div className="divider" style={{ marginTop: result ? 'var(--sp-1)' : 'var(--sp-4)' }}>
+              <div className="div-line" />
+              <span className="div-txt">Визуализация объёма</span>
+              <div className="div-line" />
+            </div>
+            <ViewerErrorBoundary>
+              <PlyViewer plyUrl={plyUrl} glbUrl={glbUrl} up={upVec} upGlb={upGlbVec} />
+            </ViewerErrorBoundary>
+            {/* рядом с 3D — та же геометрия, но с разметкой достроек */}
+            <DiagnosticsBlock diag={diag} />
+          </div>
+        )}
+
+        {/* Текст есть, а модели нет — мягкая подсказка вместо красного блока */}
+        {result && !has3d && (
+          <div style={{ padding:'0 var(--sp-4) var(--sp-4)', fontSize:'var(--fs-xs)', color:'var(--muted)' }}>
+            3D-модель для этого анализа недоступна.
+          </div>
+        )}
+
+        {/* Диагностика без 3D — блок всё равно нужен: он единственный
+            показывает, ИЗ ЧЕГО посчитан объём и где модель достраивали. */}
+        {diag && !has3d && (
+          <div style={{ padding:'0 var(--sp-4) var(--sp-4)' }}>
+            <DiagnosticsBlock diag={diag} />
+          </div>
+        )}
+      </div>
+    )
+  )
 
   /* ── Тема «Архив»: другой ВИД той же страницы ──────────────────────────
      Ветка стоит после всех хуков, поэтому порядок вызовов не меняется.
@@ -522,18 +715,24 @@ export default function Analyze() {
 
   return (
     <div className="page">
-      <div className="ks-scope">
+      <div className="ks-scope" style={ksZoom !== 1 ? { zoom: ksZoom } : undefined}>
         <AnalyzeDecor theme={isDark ? 'dark' : 'light'} />
         <ObhodHero />
-        <ObhodStepper current={source === 'upload' ? currentStep : scanStep} first={source === 'upload' ? 'Загрузить фото' : 'Обход'} />
+        <ObhodStepper current={currentStep} first={source === 'upload' ? 'Загрузить фото' : 'Обход'} />
 
-        {source === 'scans' && scanStep === 1 && (
+        {source === 'scans' && (
           <>
             <ObhodPicker
               items={scans.items}
               selected={scanSel}
               onToggle={toggleScan}
-              onContinue={() => setScanStep(2)}
+              run={{
+                isProd, setIsProd, onCube: onCubeChange,
+                busy: scanSending, waiting: busy && !!analysisId, startTime,
+                onRun: () => runScan(false), onQueue: () => runScan(true), onDetach: detachScan,
+                notice: queueNote,
+              }}
+              collapseSignal={collapseSig}
               loading={scans.loading}
               error={scans.error}
               demo={demo}
@@ -541,20 +740,29 @@ export default function Analyze() {
               trackLoading={trackState.loading}
               cloud={cloud}
               theme={isDark ? 'dark' : 'light'}
+              zoomed={ksZoom !== 1}
               period={periods[periodIdx]}
               onPeriod={() => setPeriodIdx(i => (i + 1) % periods.length)}
             />
-            <button type="button" className="ks-manual" onClick={() => setSource('upload')}>
+            {(status || resultCard) && (
+              <div className="ks-result" ref={resultRef}>
+                {status && (
+                  <div className={`status ${status.type}`}>
+                    <strong>{status.title}</strong> {status.msg}
+                    {status.history && <> <Link to="/history">Открыть Историю →</Link></>}
+                  </div>
+                )}
+                {resultCard}
+              </div>
+            )}
+            <button type="button" className="ks-manual" onClick={() => { setStatus(null); setSource('upload') }} disabled={busy}>
               Нет обхода? Загрузить фото вручную
             </button>
-            <ObhodShowcase theme={isDark ? 'dark' : 'light'} />
+            {!busy && !finished && !status && <ObhodShowcase theme={isDark ? 'dark' : 'light'} />}
           </>
         )}
-        {source === 'scans' && scanStep === 2 && (
-          <ObhodRun scans={pickedScans} demo={demo} onBack={() => setScanStep(1)} />
-        )}
         {source === 'upload' && (
-          <button type="button" className="ks-manual" onClick={() => setSource('scans')} disabled={busy}>
+          <button type="button" className="ks-manual" onClick={() => { setStatus(null); setSource('scans') }} disabled={busy}>
             ← Выбрать обход из приложения
           </button>
         )}
@@ -761,103 +969,7 @@ export default function Analyze() {
             </div>
           )}
 
-          {/* РЕЗУЛЬТАТ */}
-          {(result || has3d || diag) && (
-            <div className="result-card">
-              <div className="result-hd">
-                <span className="result-hd-title">Результат · {isProd ? 'PROD' : 'TEST'}</span>
-                {result && (
-                  <div style={{ display:'flex', gap:'var(--sp-2)', alignItems:'center' }}>
-                    <button className="copy-btn" onClick={copyResult}>Копировать</button>
-                    <button className="copy-btn" onClick={() => setReportOpen(true)}>Открыть отчёт</button>
-                  </div>
-                )}
-              </div>
-
-              {/* Структурированная сводка — вместо сырого дампа пайплайна.
-                  Метрики в ячейках, материал засечками, масса с золотым
-                  акцентом. Служебные поля пайплайна — под тогглом. */}
-              {result && hasSummary && (
-                <div className="rs">
-                  <div className="rs-grid">
-                    <div className="rs-cell">
-                      <span>Материал</span>
-                      <b className="rs-mat">{parsed.material || '—'}</b>
-                    </div>
-                    <div className="rs-cell">
-                      <span>Объём, м³</span>
-                      <b>{parsed.volume}</b>
-                    </div>
-                    <div className="rs-cell">
-                      <span>Плотность, кг/м³</span>
-                      <b>{parsed.density}</b>
-                    </div>
-                    <div className="rs-cell rs-cell--accent">
-                      <span>Масса, т</span>
-                      <b>{parsed.mass}</b>
-                    </div>
-                  </div>
-                  <div className="rs-meta">
-                    Исходных кадров: {parsed.framesUsed ?? '—'}
-                  </div>
-                  <button
-                    type="button"
-                    className="rs-raw-toggle"
-                    onClick={() => setShowRaw(v => !v)}
-                  >
-                    <svg
-                      width="12" height="12" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                      style={{ transform: showRaw ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}
-                    >
-                      <path d="m6 9 6 6 6-6"/>
-                    </svg>
-                    {showRaw ? 'Скрыть технические данные' : 'Технические данные'}
-                  </button>
-                  {showRaw && (
-                    <div className="rs-raw">{result}</div>
-                  )}
-                </div>
-              )}
-
-              {/* Фоллбэк: если из текста не вытащились ни объём, ни материал —
-                  показываем как раньше, чтобы ничего не потерять */}
-              {result && !hasSummary && (
-                <div className="result-body">{result}</div>
-              )}
-
-              {/* 3D-модель — показывается по наличию модели, а не по тексту */}
-              {has3d && (
-                <div style={{ padding:'0 var(--sp-4) var(--sp-4)' }}>
-                  <div className="divider" style={{ marginTop: result ? 'var(--sp-1)' : 'var(--sp-4)' }}>
-                    <div className="div-line" />
-                    <span className="div-txt">Визуализация объёма</span>
-                    <div className="div-line" />
-                  </div>
-                  <ViewerErrorBoundary>
-                    <PlyViewer plyUrl={plyUrl} glbUrl={glbUrl} up={upVec} upGlb={upGlbVec} />
-                  </ViewerErrorBoundary>
-                  {/* рядом с 3D — та же геометрия, но с разметкой достроек */}
-                  <DiagnosticsBlock diag={diag} />
-                </div>
-              )}
-
-              {/* Текст есть, а модели нет — мягкая подсказка вместо красного блока */}
-              {result && !has3d && (
-                <div style={{ padding:'0 var(--sp-4) var(--sp-4)', fontSize:'var(--fs-xs)', color:'var(--muted)' }}>
-                  3D-модель для этого анализа недоступна.
-                </div>
-              )}
-
-              {/* Диагностика без 3D — блок всё равно нужен: он единственный
-                  показывает, ИЗ ЧЕГО посчитан объём и где модель достраивали. */}
-              {diag && !has3d && (
-                <div style={{ padding:'0 var(--sp-4) var(--sp-4)' }}>
-                  <DiagnosticsBlock diag={diag} />
-                </div>
-              )}
-            </div>
-          )}
+          {resultCard}
         </div>
       </div>
       </Reveal>
@@ -871,8 +983,8 @@ export default function Analyze() {
           onOpen={openReport}
           onClose={closeReport}
           result={result}
-          photos={photos}
-          title={title}
+          photos={source === 'scans' ? scanReport.photos : photos}
+          title={source === 'scans' ? scanReport.title : title}
         />
       )}
     </div>

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { LIGHT_ROCKS, DARK_ROCKS, DARK_REST, DARK_WIDE, LIGHT_WIDE } from './decor'
+import { zoomOf } from './fit'
 
 // все картинки декора — хешированные URL; грузятся только картинки активной темы
 const files = import.meta.glob('./img/*.webp', { eager: true, query: '?url', import: 'default' })
@@ -146,8 +147,9 @@ function useLife(root, canvas, dark) {
     const kick = () => { if (!st.raf && st.visible && !document.hidden) { prev = performance.now(); st.raf = requestAnimationFrame(loop) } }
 
     const onMove = (e) => {
-      const r = el.getBoundingClientRect()
-      st.px = e.clientX - r.left; st.py = e.clientY - r.top
+      // страница может быть ужата (zoom) — координаты курсора переводим в CSS-пиксели декора
+      const r = el.getBoundingClientRect(), z = zoomOf(el)
+      st.px = (e.clientX - r.left) / z; st.py = (e.clientY - r.top) / z
       st.tx = Math.max(-1, Math.min(1, (e.clientX / window.innerWidth) * 2 - 1))
       st.ty = Math.max(-1, Math.min(1, (e.clientY / window.innerHeight) * 2 - 1))
       el.classList.add('has-pointer')
