@@ -68,6 +68,22 @@ export function useScans(period, demo) {
     }
   }, [demo, period?.from, period?.to])
   useEffect(() => { load() }, [load])
+  // обход, отправленный с телефона, пока страница открыта, — подтягиваем при
+  // возвращении во вкладку и раз в минуту (без мигания: loading не включаем)
+  useEffect(() => {
+    if (demo) return
+    const quiet = async () => {
+      if (document.hidden) return
+      try {
+        const rows = await api.listScans({ from: period?.from, to: period?.to })
+        setState((s) => ({ ...s, items: (rows || []).map(normalizeScan), error: null }))
+      } catch (_) { /* тихий опрос: ошибку покажет следующий явный запрос */ }
+    }
+    const onVis = () => { if (!document.hidden) quiet() }
+    document.addEventListener('visibilitychange', onVis)
+    const id = setInterval(quiet, 60000)
+    return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(id) }
+  }, [demo, period?.from, period?.to])
   return { ...state, reload: load }
 }
 

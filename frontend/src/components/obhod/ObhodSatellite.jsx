@@ -32,6 +32,8 @@ function loadYmaps(key) {
 }
 
 const W = 539, H = 488
+const MIN_SPAN_M = 40     // минимальная рамка вокруг обхода, м
+const MAX_ZOOM = 19       // глубже спутниковые снимки Карелии часто пустые
 
 // метры на восток/север от (lat0, lon0) → широта/долгота
 export function enToLatLon(geo, [e, n]) {
@@ -51,14 +53,21 @@ export default function ObhodSatellite({ geo, theme = 'light', onProjection, onE
       if (!alive || !host.current) return
       const pts = geo.points_en.map((p) => enToLatLon(geo, p))
       const lats = pts.map((p) => p[0]), lons = pts.map((p) => p[1])
-      const bounds = [[Math.min(...lats), Math.min(...lons)], [Math.max(...lats), Math.max(...lons)]]
+      // рамка не меньше MIN_SPAN_M: у короткого обхода иначе зум уходит за
+      // предел спутника (чёрные тайлы), а куча теряет окружение
+      const midLat = (Math.min(...lats) + Math.max(...lats)) / 2, midLon = (Math.min(...lons) + Math.max(...lons)) / 2
+      const halfLat = Math.max((Math.max(...lats) - Math.min(...lats)) / 2, MIN_SPAN_M / 2 / 110540)
+      const halfLon = Math.max((Math.max(...lons) - Math.min(...lons)) / 2, MIN_SPAN_M / 2 / (111320 * Math.cos((midLat * Math.PI) / 180)))
+      const bounds = [[midLat - halfLat, midLon - halfLon], [midLat + halfLat, midLon + halfLon]]
       map = new ymaps.Map(host.current, {
         center: [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2],
         zoom: 18, type: 'yandex#satellite', controls: [],
       }, { suppressMapOpenBlock: true, yandexMapDisablePoiInteractivity: true })
       map.behaviors.disable(['drag', 'scrollZoom', 'dblClickZoom', 'multiTouch', 'rightMouseButtonMagnifier', 'leftMouseButtonMagnifier'])
       // поля под заголовок, легенду и линейку, как у SVG-раскладки (fitTrack)
-      map.setBounds(bounds, { zoomMargin: [110, 70, 100, 70], checkZoomRange: true }).then(() => {
+      map.setBounds(bounds, { zoomMargin: [110, 70, 100, 70], checkZoomRange: true }).then(async () => {
+        if (!alive) return
+        if (map.getZoom() > MAX_ZOOM) await map.setZoom(MAX_ZOOM)
         if (!alive) return
         const zoom = map.getZoom()
         const proj = map.options.get('projection')

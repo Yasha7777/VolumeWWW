@@ -27,9 +27,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+import gzip
 import json
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
@@ -450,7 +451,9 @@ def analyze_scan(
 
 # ─── облако ARKit для 3D ─────────────────────────────────────────────────────
 
-CLOUD_MAX_POINTS = 12000
+# 6000 точек с точностью до сантиметра ≈ 90 КБ JSON (≈ 30 КБ gzip). Ответы
+# крупнее ~200 КБ через прокси сервера обрывались (ERR_CONTENT_LENGTH_MISMATCH).
+CLOUD_MAX_POINTS = 6000
 
 
 def _scan_json(scan: dict) -> Optional[dict]:
@@ -480,14 +483,14 @@ def build_cloud(scan_json: dict) -> dict:
     for fr in scan_json.get("frames") or []:
         m = fr.get("cameraTransform") or []
         if len(m) == 16 and all(_finite(m[i]) for i in (12, 13, 14)):
-            cameras.append([round(m[12], 3), round(m[13], 3), round(m[14], 3)])
+            cameras.append([round(m[12], 2), round(m[13], 2), round(m[14], 2)])
         pts = fr.get("featurePoints") or []
         ids = fr.get("featurePointIdentifiers") or []
         for k in range(0, len(pts) - 2, 3):
             x, y, z = pts[k], pts[k + 1], pts[k + 2]
             if not (_finite(x) and _finite(y) and _finite(z)):
                 continue
-            p = [round(x, 3), round(y, 3), round(z, 3)]
+            p = [round(x, 2), round(y, 2), round(z, 2)]
             j = k // 3
             if j < len(ids):
                 by_id[ids[j]] = p
@@ -500,12 +503,24 @@ def build_cloud(scan_json: dict) -> dict:
     return {"points": points, "cameras": cameras}
 
 
+def _json_response(request: Request, data) -> Response:
+    """JSON, сжатый gzip, если клиент умеет: облако — самый тяжёлый ответ API."""
+    raw = json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode()
+    if "gzip" in (request.headers.get("accept-encoding") or "") and len(raw) > 2048:
+        return Response(gzip.compress(raw, 6), media_type="application/json",
+                        headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
+    return Response(raw, media_type="application/json")
+
+
+CLOUD_VERSION = 2   # поменять — и закэшированные cloud.json пересчитаются
+
+
 @router.get("/{scan_id}/cloud")
-def scan_cloud(scan_id: str, current_user: dict = Depends(get_current_user)):
+def scan_cloud(scan_id: str, request: Request, current_user: dict = Depends(get_current_user)):
     scan = _get_scan(scan_id, current_user, cols="id, storage_prefix")
-    cached = f"{scan['storage_prefix']}/cloud.json"
+    cached = f"{scan['storage_prefix']}/cloud.v{CLOUD_VERSION}.json"
     try:
-        return json.loads(supabase.storage.from_(COLMAP_BUCKET).download(cached))
+        return _json_response(request, json.loads(supabase.storage.from_(COLMAP_BUCKET).download(cached)))
     except Exception:
         pass
     data = _scan_json(scan)
@@ -519,7 +534,7 @@ def scan_cloud(scan_id: str, current_user: dict = Depends(get_current_user)):
         )
     except Exception:
         logger.warning("Не удалось закэшировать cloud.json для %s", scan_id)
-    return cloud
+    return _json_response(request, cloud)
 
 
 # ─── загрузка обхода из приложения ───────────────────────────────────────────
