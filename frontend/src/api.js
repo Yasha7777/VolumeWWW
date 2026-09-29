@@ -197,6 +197,28 @@ export const api = {
       body: JSON.stringify({ is_prod: !!isProd, cube }),
     }),
 
+  // ─── Обходы (сканы из приложения VolmetricARKit, таблица scans) ─────────
+  // from/to — ISO-даты по captured_at; без них — все обходы.
+  listScans: ({ from, to } = {}) => {
+    const q = new URLSearchParams()
+    if (from) q.set('from', from)
+    if (to) q.set('to', to)
+    const qs = q.toString()
+    return req(`/scans/${qs ? `?${qs}` : ''}`)
+  },
+
+  // Траектория камеры обхода, вид сверху: { points: [[x, z], …] } в метрах ARKit.
+  getScanTrack: (id) => req(`/scans/${id}/track`),
+
+  // Анализ обхода: бэкенд заводит строку analyses (scan_id) из кадров обхода
+  // и ставит прогон в n8n. POST не ретраится (см. req) — двойного запуска нет.
+  analyzeScan: (id, { is_prod = false, cube = null, title, notes, client_id } = {}) =>
+    req(`/scans/${id}/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_prod: !!is_prod, cube, title, notes, client_id }),
+    }),
+
   // ─── Admin (суперадмин) ──────────────────────────────────
   // 200 + список профилей — ты админ; 403 — обычный пользователь.
   adminListUsers: () => req('/analyses/admin/users'),

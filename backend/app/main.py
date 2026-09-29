@@ -2,7 +2,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import analyses, profile
+from .routers import analyses, profile, scans
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
@@ -23,6 +23,7 @@ app.add_middleware(
 
 app.include_router(analyses.router, prefix="/api")
 app.include_router(profile.router, prefix="/api")
+app.include_router(scans.router, prefix="/api")
 
 
 @app.get("/api/health")

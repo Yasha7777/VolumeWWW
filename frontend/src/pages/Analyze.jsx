@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import Timer from '../components/Timer'
 import exifr from 'exifr'
@@ -9,7 +9,14 @@ import ReportPanel from '../components/ReportPanel'   // ← выдвижное 
 import { parseWebhookResult } from '../components/RaschetDownloadButton' // ← общий парсер (объём DUSt3R, масса = V×ρ)
 import { enqueue, flushItem } from '../queue/queue'  // ← офлайн-очередь (PWA)
 import Reveal from '../components/Reveal'  // ← лёгкое scroll/stagger-проявление
-import CubesHero from '../components/CubesHero'  // ← реальная 3D-модель кубов (GLB)
+// Новый вид страницы (светлая/тёмная темы): выбор обхода из приложения вместо
+// загрузки фото. Старая форма загрузки осталась — по ссылке «Загрузить фото вручную».
+import AnalyzeDecor from '../components/obhod/AnalyzeDecor'
+import { ObhodHero, ObhodStepper } from '../components/obhod/ObhodHero'
+import ObhodPicker from '../components/obhod/ObhodPicker'
+import ObhodRun from '../components/obhod/ObhodRun'
+import { useScans, useTrack, makePeriods } from '../components/obhod/scans'
+import '../components/obhod/obhod.css'
 import CubeSettings, { CUBE_DEFAULT } from '../components/CubeSettings'  // ← настраиваемый калибровочный куб
 import { prepareImage } from '../prepareImage'  // ← оригинал на сервер + превью для UI
 import { useTheme } from '../theme/ThemeProvider'
@@ -17,8 +24,6 @@ import ArchiveAnalyze from '../components/archive/ArchiveAnalyze'  // ← вид
 
 const MAX_PHOTOS = 100
 const POLL_MS    = 5000
-
-const STEPS = ['Загрузить фото', '3D-реконструкция', 'Объём и вес']
 
 const fmtMb = (bytes) => `${(bytes / 1048576).toFixed(1)} МБ`
 
@@ -64,7 +69,30 @@ export default function Analyze() {
       ? prev
       : { edgeMm, squaresPerSide })
   }, [])
-  const { isArchive } = useTheme()
+  const { isArchive, isDark } = useTheme()
+
+  // ─── Обходы из приложения (новый шаг 1) ──────────────────────────────────
+  // source: 'scans' — выбор обхода (по умолчанию), 'upload' — старая загрузка фото.
+  // ?demo=1 (или VITE_OBHOD_DEMO=1) — данные мокапа вместо /api/scans/.
+  const demo = useMemo(() => (
+    (typeof location !== 'undefined' && new URLSearchParams(location.search).has('demo')) ||
+    import.meta.env.VITE_OBHOD_DEMO === '1'
+  ), [])
+  const [source, setSource]       = useState('scans')
+  const [scanStep, setScanStep]   = useState(1)       // 1 — выбор, 2 — запуск
+  const [scanSel, setScanSel]     = useState([])
+  const periods                   = useMemo(() => makePeriods(), [])
+  const [periodIdx, setPeriodIdx] = useState(0)
+  const scans = useScans(periods[periodIdx], demo)
+  const pickedScans = useMemo(
+    () => scans.items.filter(o => scanSel.includes(o.id)),
+    [scans.items, scanSel],
+  )
+  // карта показывает траекторию первого выбранного обхода
+  const trackState = useTrack(pickedScans[0] || null, demo)
+  const toggleScan = useCallback((id) => {
+    setScanSel(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }, [])
   // Стабильные ссылки — иначе memo на ReportPanel бесполезен: новая стрелка
   // на каждый рендер Analyze (а он идёт на каждое нажатие в любом поле)
   // считалась бы сменой пропса и тянула бы за собой пересборку отчёта.
@@ -491,50 +519,44 @@ export default function Analyze() {
   }
 
   return (
-    <div className="page content" style={{ paddingTop: 0 }}>
+    <div className="page">
+      <div className="ks-scope">
+        <AnalyzeDecor theme={isDark ? 'dark' : 'light'} />
+        <ObhodHero />
+        <ObhodStepper current={source === 'upload' ? currentStep : scanStep} first={source === 'upload' ? 'Загрузить фото' : 'Обход'} />
 
-      {/* HERO */}
-      <div className="hero">
-        <CubesHero />
-        <Reveal delay={0} y={12}>
-          <div className="badge">
-            <span className="badge-dot" />
-            КАРЕЛИЯ · ФОТОГРАММЕТРИЯ · 2026
-          </div>
-        </Reveal>
-        <Reveal delay={90} y={18}>
-          <h1>Фото — и готов<em>материал, объём и вес</em></h1>
-        </Reveal>
-        <Reveal delay={180} y={14}>
-          <p>Загрузите фото строительного материала — система построит 3D-модель, определит тип, объём и приблизительный вес.</p>
-        </Reveal>
-
-        {/* Реальная последовательность процесса — подсветка текущего шага */}
-        <Reveal delay={270} y={14}>
-        <div className="steps">
-          {STEPS.map((label, i) => {
-            const n = i + 1
-            const state = n < currentStep ? 'done' : n === currentStep ? 'active' : 'todo'
-            return (
-              <Fragment key={n}>
-                {i > 0 && (
-                  <span className={`step-arr ${n <= currentStep ? 'is-passed' : ''}`}>→</span>
-                )}
-                <div className={`step is-${state}`}>
-                  <span className="step-n">
-                    {state === 'done' ? (
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                    ) : n}
-                  </span>
-                  {label}
-                </div>
-              </Fragment>
-            )
-          })}
-        </div>
-        </Reveal>
+        {source === 'scans' && scanStep === 1 && (
+          <>
+            <ObhodPicker
+              items={scans.items}
+              selected={scanSel}
+              onToggle={toggleScan}
+              onContinue={() => setScanStep(2)}
+              loading={scans.loading}
+              error={scans.error}
+              demo={demo}
+              track={trackState.track}
+              trackLoading={trackState.loading}
+              period={periods[periodIdx]}
+              onPeriod={() => setPeriodIdx(i => (i + 1) % periods.length)}
+            />
+            <button type="button" className="ks-manual" onClick={() => setSource('upload')}>
+              Нет обхода? Загрузить фото вручную
+            </button>
+          </>
+        )}
+        {source === 'scans' && scanStep === 2 && (
+          <ObhodRun scans={pickedScans} demo={demo} onBack={() => setScanStep(1)} />
+        )}
+        {source === 'upload' && (
+          <button type="button" className="ks-manual" onClick={() => setSource('scans')} disabled={busy}>
+            ← Выбрать обход из приложения
+          </button>
+        )}
       </div>
 
+      {source === 'upload' && (
+      <div className="content">
       <Reveal delay={60} y={22}>
       <div className="card">
         {/* UPLOAD SECTION */}
@@ -834,6 +856,8 @@ export default function Analyze() {
         </div>
       </div>
       </Reveal>
+      </div>
+      )}
 
       {/* выдвижное окно отчёта (рендерится порталом в body) */}
       {result && (
