@@ -3,6 +3,11 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
+    # логи контейнера не больше 3×10 МБ: без ротации json-логи росли без предела
+    # и вместе с кэшем сборок забили диск сервера (2026-09-29, 100 %)
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     env_file: .env
     expose:
       - "8000"
@@ -17,6 +22,11 @@ services:
     build:
       context: ./frontend
     restart: unless-stopped
+    # логи контейнера не больше 3×10 МБ: без ротации json-логи росли без предела
+    # и вместе с кэшем сборок забили диск сервера (2026-09-29, 100 %)
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     ports:
       - "80:80"
     depends_on:

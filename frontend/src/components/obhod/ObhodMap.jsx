@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useReducedMotion } from 'motion/react'
-import { Plus, Minus, Camera, Play, Pause } from 'lucide-react'
+import { Plus, Minus, Camera, Play, Pause, Map as MapIcon, Box, MapPin } from 'lucide-react'
 import { DEMO_MAP } from './demo'
 import ObhodSatellite, { YMAPS_KEY } from './ObhodSatellite'
 
@@ -212,8 +212,10 @@ export default function ObhodMap({ demo = false, track = null, loading = false, 
     const L = bar.label
     scale = { ticks: [['0', 0], [String(L / 2).replace('.', ','), bar.len / 2 - 6]], end: `${String(L).replace('.', ',')} м`, width: bar.len }
   } else {
+    // обход не выбран: подложка — аэрофото карьера (не план конкретного обхода),
+    // поверх — подсказка по центру
     body = null
-    loc = <span className="ks-map__hint">{loading ? 'Загружаем траекторию…' : 'Выберите обход — здесь появится его траектория'}</span>
+    loc = null
     scale = null
   }
 
@@ -221,7 +223,7 @@ export default function ObhodMap({ demo = false, track = null, loading = false, 
   const switchView = (v) => { if (v !== view) { rp.stop(); setView(v) } }
 
   return (
-    <div className={'ks-map' + (is3d ? ' is-3d' : '') + (geo && !satFailed ? ' has-sat' : '') + (!demo ? ' is-plain' : '')}>
+    <div className={'ks-map' + (is3d ? ' is-3d' : '') + (geo && !satFailed ? ' has-sat' : '') + (real && !real.onSat ? ' is-plain' : '') + (!demo && !real ? ' is-idle' : '')}>
       {geo && !satFailed && !is3d
         ? <ObhodSatellite geo={geo} theme={theme} onProjection={setSat} onError={() => setSatFailed(true)} />
         : <div className="ks-map__terrain" />}
@@ -238,6 +240,13 @@ export default function ObhodMap({ demo = false, track = null, loading = false, 
             </g>
           )}
         </svg>
+      )}
+
+      {!is3d && !demo && !real && (
+        <div className="ks-map__empty">
+          {loading ? <span className="ks-cloud__spin" /> : <MapPin size={15} strokeWidth={1.8} aria-hidden />}
+          <span>{loading ? 'Загружаем траекторию…' : <>Выберите обход справа —<br />здесь появится его траектория</>}</span>
+        </div>
       )}
 
       {!is3d && frames && (
@@ -257,10 +266,14 @@ export default function ObhodMap({ demo = false, track = null, loading = false, 
 
       <div className="ks-map__head">
         <div className="ks-map__tabs" role="tablist" aria-label="Вид">
-          <button type="button" role="tab" aria-selected={!is3d} className={'ks-map__tab' + (!is3d ? ' is-on' : '')} onClick={() => switchView('map')}>Карта обходов</button>
-          <button type="button" role="tab" aria-selected={is3d} className={'ks-map__tab' + (is3d ? ' is-on' : '')} onClick={() => switchView('3d')}>3D</button>
+          <button type="button" role="tab" aria-selected={!is3d} className={'ks-map__tab' + (!is3d ? ' is-on' : '')} onClick={() => switchView('map')}>
+            <MapIcon size={13} strokeWidth={1.8} aria-hidden />Карта обходов
+          </button>
+          <button type="button" role="tab" aria-selected={is3d} className={'ks-map__tab' + (is3d ? ' is-on' : '')} onClick={() => switchView('3d')}>
+            <Box size={13} strokeWidth={1.8} aria-hidden />3D-облако
+          </button>
         </div>
-        {!is3d && <div className="ks-map__loc">{loc}</div>}
+        {!is3d && loc && <div className="ks-map__loc">{loc}</div>}
         {is3d && cloud?.title && (
           <div className="ks-map__loc ks-map__loc--3d">
             <span><i aria-hidden>▲</i>{cloud.title}</span>

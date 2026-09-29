@@ -14,6 +14,7 @@ import Reveal from '../components/Reveal'  // ← лёгкое scroll/stagger-п
 import AnalyzeDecor from '../components/obhod/AnalyzeDecor'
 import { ObhodHero, ObhodStepper } from '../components/obhod/ObhodHero'
 import ObhodPicker from '../components/obhod/ObhodPicker'
+import ObhodShowcase from '../components/obhod/ObhodShowcase'
 import ObhodRun from '../components/obhod/ObhodRun'
 import { useScans, useTrack, useCloud, makePeriods } from '../components/obhod/scans'
 import '../components/obhod/obhod.css'
@@ -546,6 +547,7 @@ export default function Analyze() {
             <button type="button" className="ks-manual" onClick={() => setSource('upload')}>
               Нет обхода? Загрузить фото вручную
             </button>
+            <ObhodShowcase theme={isDark ? 'dark' : 'light'} />
           </>
         )}
         {source === 'scans' && scanStep === 2 && (

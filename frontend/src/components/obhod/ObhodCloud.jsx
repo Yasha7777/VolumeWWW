@@ -52,8 +52,8 @@ function normalizeArkit({ points, cameras }) {
 
 const VERT = /* glsl */`
   attribute vec3 aColor;
-  uniform float uSize, uProgress, uHeight, uPixelRatio;
-  varying vec3 vColor; varying float vBand; varying float vShow;
+  uniform float uSize, uProgress, uHeight, uPixelRatio, uSweep;
+  varying vec3 vColor; varying float vBand; varying float vShow; varying float vH;
   void main() {
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mv;
@@ -61,20 +61,30 @@ const VERT = /* glsl */`
     float cut = uProgress * 1.2 - 0.08;
     vShow = step(h, cut);
     vBand = smoothstep(0.07, 0.0, abs(h - cut)) * (1.0 - step(1.0, uProgress));
-    vColor = aColor;
+    // витрина: после появления по куче снизу вверх бежит полоса сканирования
+    if (uSweep >= 0.0) vBand = max(vBand, smoothstep(0.045, 0.0, abs(h - uSweep)) * 0.85);
+    vColor = aColor; vH = h;
     gl_PointSize = uSize * uPixelRatio / -mv.z;
   }`
 const FRAG = /* glsl */`
-  uniform vec3 uAccent;
-  varying vec3 vColor; varying float vBand; varying float vShow;
+  uniform vec3 uAccent; uniform float uIso, uGain;
+  varying vec3 vColor; varying float vBand; varying float vShow; varying float vH;
   void main() {
     vec2 c = gl_PointCoord - 0.5; float r = dot(c, c);
     if (r > 0.25 || vShow < 0.5) discard;
-    vec3 col = mix(vColor, uAccent, vBand * 0.9);
+    vec3 col = vColor * uGain;
+    // горизонтали, как на топоплане: тонкие линии через равные высоты
+    float f = fract(vH * 9.0); float iso = 1.0 - smoothstep(0.0, 0.05, min(f, 1.0 - f));
+    col = mix(col, uAccent, iso * uIso * step(0.04, vH));
+    col = mix(col, uAccent, vBand * 0.9);
     gl_FragColor = vec4(col * (1.0 - r * 0.9), 1.0);
   }`
 
-export default function ObhodCloud({ src, data, theme = 'light', onReady }) {
+export default function ObhodCloud({ src, data, theme = 'light', onReady, variant = 'map', paused = false }) {
+  const hero = variant === 'hero'
+  const pausedRef = useRef(paused)
+  const kickRef = useRef(null)
+  useEffect(() => { pausedRef.current = paused; if (!paused) kickRef.current?.() }, [paused])
   const host = useRef(null)
   const [status, setStatus] = useState('loading')
   const [touched, setTouched] = useState(false)
@@ -100,7 +110,7 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady }) {
       cleanup.push(() => { renderer.dispose(); renderer.domElement.remove() })
 
       const scene = new THREE.Scene()
-      const camera = new THREE.PerspectiveCamera(30, 1, 0.05, 60)
+      const camera = new THREE.PerspectiveCamera(hero ? 24 : 30, 1, 0.05, 60)
       const dark = theme === 'dark'
       const accent = new THREE.Color(dark ? '#8fd46a' : '#5f8f45')
 
@@ -111,8 +121,9 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady }) {
       const mat = new THREE.ShaderMaterial({
         vertexShader: VERT, fragmentShader: FRAG,
         uniforms: {
-          uSize: { value: sparse ? 24 : 12.5 }, uProgress: { value: reduce ? 1.2 : 0 },
+          uSize: { value: sparse ? 24 : hero ? 10.5 : 12.5 }, uProgress: { value: reduce ? 1.2 : 0 },
           uHeight: { value: cloud.height || 0.4 }, uPixelRatio: { value: dpr }, uAccent: { value: accent },
+          uSweep: { value: -1 }, uIso: { value: hero ? (dark ? .55 : .4) : 0 }, uGain: { value: hero && dark ? 1.18 : 1 },
         },
       })
       const pts = new THREE.Points(geo, mat)
@@ -121,8 +132,8 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady }) {
 
       // земля: кольца-засечки как у геодезической разметки + мягкая тень
       const lineCol = new THREE.Color(dark ? '#3a3d38' : '#cfc8b8')
-      const grid = new THREE.PolarGridHelper(1.55, 12, 5, 96, lineCol, lineCol)
-      grid.material.transparent = true; grid.material.opacity = dark ? 0.55 : 0.8
+      const grid = new THREE.PolarGridHelper(hero ? 1.5 : 1.55, hero ? 24 : 12, hero ? 5 : 5, 128, lineCol, lineCol)
+      grid.material.transparent = true; grid.material.opacity = dark ? (hero ? .7 : .55) : 0.8
       grid.position.y = -0.025
       scene.add(grid)
       cleanup.push(() => { grid.geometry.dispose(); grid.material.dispose() })
@@ -149,12 +160,24 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady }) {
 
       // орбита: азимут крутится сам, тянется указателем; наклон ограничен
       const H = cloud.height || 0.4
-      const target = new THREE.Vector3(0, H * 0.32, 0)
-      let theta = 0.6, phi = 0.42, vel = 0, lastInput = -1e9, dragging = false, px = 0, py = 0
-      const radius = cloud.cameras ? 4.9 : 4.3
+      const target = new THREE.Vector3(0, H * (hero ? 0.12 : 0.32), 0)
+      let theta = 0.6, phi = hero ? 0.5 : 0.42, vel = 0, lastInput = -1e9, dragging = false, px = 0, py = 0
+      const radius = cloud.cameras ? 4.9 : hero ? 4.5 : 4.3
+      // витрина: наклон к курсору (как будто куча поворачивается к взгляду)
+      const tilt = { x: 0, y: 0, tx: 0, ty: 0 }
       const place = () => {
-        camera.position.set(target.x + radius * Math.cos(phi) * Math.sin(theta), target.y + radius * Math.sin(phi), target.z + radius * Math.cos(phi) * Math.cos(theta))
+        const th = theta + tilt.x * 0.45, ph = Math.min(1.2, Math.max(0.1, phi + tilt.y * 0.12))
+        camera.position.set(target.x + radius * Math.cos(ph) * Math.sin(th), target.y + radius * Math.sin(ph), target.z + radius * Math.cos(ph) * Math.cos(th))
         camera.lookAt(target)
+      }
+      if (hero) {
+        const onTilt = (e) => {
+          const r = el.getBoundingClientRect()
+          tilt.tx = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width) * 2 - 1))
+          tilt.ty = Math.max(-1, Math.min(1, ((e.clientY - r.top) / r.height) * 2 - 1))
+        }
+        window.addEventListener('pointermove', onTilt, { passive: true })
+        cleanup.push(() => window.removeEventListener('pointermove', onTilt))
       }
       const cv = renderer.domElement
       cv.style.touchAction = 'pan-y'
@@ -190,9 +213,14 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady }) {
       let prev = t0
       function loop(now) {
         raf = 0
-        if (disposed || !visible || document.hidden) return
+        if (disposed || !visible || document.hidden || pausedRef.current) return
         const dt = Math.min(0.05, (now - prev) / 1000); prev = now
-        if (!reduce) mat.uniforms.uProgress.value = Math.min(1.2, (now - t0) / 1700)
+        if (!reduce) mat.uniforms.uProgress.value = Math.min(1.2, (now - t0) / (hero ? 2400 : 1700))
+        if (hero && !reduce) {
+          const since = (now - t0) / 1000 - 2.6
+          mat.uniforms.uSweep.value = since > 0 ? (since % 4.2) / 3.6 - 0.05 : -1
+          tilt.x += (tilt.tx - tilt.x) * Math.min(1, dt * 5); tilt.y += (tilt.ty - tilt.y) * Math.min(1, dt * 5)
+        }
         if (!dragging) {
           if (Math.abs(vel) > 1e-4) { theta += vel; vel *= 0.92 }
           else if (!reduce && now - lastInput > 2600) theta += dt * 0.16
@@ -202,6 +230,7 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady }) {
         raf = requestAnimationFrame(loop)
       }
       const onVis = () => { if (!document.hidden && !raf) { prev = performance.now(); loop(prev) } }
+      kickRef.current = () => { if (!raf && !disposed) { prev = performance.now(); raf = requestAnimationFrame(loop) } }
       document.addEventListener('visibilitychange', onVis)
       cleanup.push(() => document.removeEventListener('visibilitychange', onVis))
 
@@ -211,14 +240,14 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady }) {
     })().catch(() => { if (!disposed) setStatus('error') })
 
     return () => { disposed = true; if (raf) cancelAnimationFrame(raf); cleanup.reverse().forEach((f) => f()) }
-  }, [src, data, theme, reduce])
+  }, [src, data, theme, reduce, hero])
 
   return (
     <div className="ks-cloud">
       <div className="ks-cloud__gl" ref={host} />
-      {status === 'loading' && <div className="ks-cloud__msg"><span className="ks-cloud__spin" />Загружаем облако точек…</div>}
-      {status === 'error' && <div className="ks-cloud__msg">Облако не загрузилось. Попробуйте позже.</div>}
-      {status === 'ready' && <div className={'ks-cloud__hint' + (touched ? ' is-gone' : '')}>↻ Потяните, чтобы повернуть</div>}
+      {status === 'loading' && !hero && <div className="ks-cloud__msg"><span className="ks-cloud__spin" />Загружаем облако точек…</div>}
+      {status === 'error' && !hero && <div className="ks-cloud__msg">Облако не загрузилось. Попробуйте позже.</div>}
+      {status === 'ready' && !hero && <div className={'ks-cloud__hint' + (touched ? ' is-gone' : '')}>↻ Потяните, чтобы повернуть</div>}
     </div>
   )
 }

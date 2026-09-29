@@ -53,6 +53,10 @@ export default defineConfig({
   server: { proxy: { '/api': { target: process.env.VITE_API_PROXY || loadEnv('development', process.cwd(), '').VITE_API_PROXY || 'http://localhost:8000', changeOrigin: true, secure: true } } },
   build: {
     chunkSizeWarningLimit: 1600,
+    // Декор «Анализа» — десятки мелких webp: инлайн раздул бы JS страницы
+    // (и тёмная тема качала бы камни светлой). Отдаём файлами, грузится только
+    // активная тема. Остальное — по умолчанию Vite (≤ 4 КБ инлайнится).
+    assetsInlineLimit: (file) => (/components[\\/]obhod[\\/]img[\\/]/.test(file) ? false : undefined),
     // Манифест нужен пререндеру (vite-plugin-seo): по нему он находит чанк и
     // CSS страницы. После пререндера dist/.vite удаляется — наружу не уходит.
     manifest: true,

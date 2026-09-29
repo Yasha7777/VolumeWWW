@@ -18,7 +18,7 @@ export default function ObhodCard({ o, selected, onToggle, index = 0, animate = 
       onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle() } }}
       initial={animate ? { opacity: 0, y: 10 } : false}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: .42, delay: animate ? .18 + index * .045 : 0, ease: [.2, .8, .2, 1] }}
+      transition={{ duration: .3, delay: animate ? .07 + index * .03 : 0, ease: [.22, 1, .36, 1] }}
     >
       <motion.div className="ks-card__photo" layoutId={'thumb-' + o.id}>
         {o.img ? <img src={o.img} alt="" draggable="false" loading="lazy" /> : <span className="ks-card__nophoto">нет превью</span>}

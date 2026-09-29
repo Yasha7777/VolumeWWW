@@ -28,6 +28,7 @@ export default function ObhodPicker({
   const [state, setState] = useState(initialState)
   const reduce = useReducedMotion()
   const timer = useRef()
+  const box = useRef(null)
   const canHover = useMedia('(hover: hover) and (pointer: fine)')
   const narrow = useMedia('(max-width: 720px)')
   const SIZES = {
@@ -36,12 +37,34 @@ export default function ObhodPicker({
     open: { width: '100%', height: 'auto' },
   }
 
+  // раскрыта: Esc или клик мимо панели сворачивают
   useEffect(() => {
     if (state !== 'open') return
     const onKey = (e) => { if (e.key === 'Escape') setState('rest') }
+    const onDown = (e) => {
+      if (e.button > 0 || !box.current || box.current.contains(e.target)) return
+      if (e.target.closest?.('header, [role="dialog"], .ks-run')) return
+      setState('rest')
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    document.addEventListener('pointerdown', onDown, true)
+    return () => { window.removeEventListener('keydown', onKey); document.removeEventListener('pointerdown', onDown, true) }
   }, [state])
+  // состояние панели — для декора страницы (камни расступаются, витрина прячется)
+  useEffect(() => {
+    const scope = box.current?.closest('.ks-scope')
+    if (!scope) return
+    scope.dataset.picker = state
+    return () => { delete scope.dataset.picker }
+  }, [state])
+  // свет под курсором на плашке: только CSS-переменные, без перерисовки React
+  const glow = (e) => {
+    const el = box.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    el.style.setProperty('--gx', `${(e.clientX - r.left).toFixed(0)}px`)
+    el.style.setProperty('--gy', `${(e.clientY - r.top).toFixed(0)}px`)
+  }
   useEffect(() => () => clearTimeout(timer.current), [])
 
   const intent = (next, delay) => {
@@ -50,7 +73,10 @@ export default function ObhodPicker({
   }
 
   const picked = items.filter((o) => selected.includes(o.id))
-  const spring = reduce ? { duration: 0 } : { type: 'spring', stiffness: 210, damping: 30, mass: .9 }
+  // быстрые твины вместо мягких пружин: отклик сразу, без «вязкого» хвоста
+  const EASE = [.22, 1, .36, 1]
+  const tween = reduce ? { duration: 0 } : { duration: .32, ease: EASE }
+  const spring = reduce ? { duration: 0 } : { type: 'spring', stiffness: 520, damping: 32, mass: .7 }
   const open = state === 'open'
   const last = items[0]
   const sub = loading ? 'Загружаем обходы…'
@@ -62,14 +88,18 @@ export default function ObhodPicker({
     <div className="ks-stage">
       <LayoutGroup>
         <motion.section
+          ref={box}
           className={'ks-picker is-' + state}
           initial={false}
           animate={SIZES[state]}
-          transition={open ? { ...spring, height: reduce ? { duration: 0 } : { type: 'spring', stiffness: 170, damping: 28 } } : spring}
-          onPointerEnter={() => canHover && intent('hover', 60)}
-          onPointerLeave={() => canHover && intent('rest', 200)}
+          transition={open ? { ...tween, height: reduce ? { duration: 0 } : { duration: .44, ease: EASE } } : tween}
+          onPointerEnter={() => canHover && intent('hover', 0)}
+          onPointerLeave={() => canHover && intent('rest', 110)}
+          onPointerMove={canHover ? glow : undefined}
           aria-label="Выбор обхода"
         >
+          <span className="ks-picker__rim" aria-hidden />
+          <span className="ks-picker__sweep" aria-hidden />
           <AnimatePresence initial={false} mode="popLayout">
             {!open ? (
               <motion.button
@@ -79,7 +109,7 @@ export default function ObhodPicker({
                 onBlur={() => intent('rest', 0)}
                 aria-expanded="false"
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                exit={{ opacity: 0, transition: { duration: reduce ? 0 : .12 } }}
+                exit={{ opacity: 0, transition: { duration: reduce ? 0 : .08 } }}
               >
                 <span className="ks-bar__icons" aria-hidden>
                   <span><Camera size={17} strokeWidth={1.6} /></span>
@@ -91,7 +121,7 @@ export default function ObhodPicker({
                   <span className="ks-bar__sub">{sub}</span>
                 </span>
                 <span className="ks-bar__spacer" />
-                <motion.span className="ks-bar__thumbs" animate={{ width: state === 'hover' ? Math.max(1, Math.min(6, items.length)) * 72 - 8 : 104 }} transition={spring}>
+                <motion.span className="ks-bar__thumbs" animate={{ width: state === 'hover' ? Math.max(1, Math.min(6, items.length)) * 72 - 8 : 104 }} transition={tween}>
                   {items.slice(0, 6).map((o, i) => {
                     const fan = state === 'hover'
                     const rest = i < 3
@@ -100,9 +130,10 @@ export default function ObhodPicker({
                         key={o.id} layoutId={'thumb-' + o.id} className="ks-bar__thumb"
                         initial={false}
                         animate={fan
-                          ? { x: i * 72, rotate: 0, opacity: 1, scale: 1 }
-                          : { x: rest ? i * 26 : 52, rotate: rest ? [-7, 0, 7][i] : 7, opacity: rest ? 1 : 0, scale: .78 }}
-                        transition={{ ...spring, delay: reduce ? 0 : (fan ? i * .035 : (5 - i) * .02) }}
+                          ? { x: i * 72, y: 0, rotate: [-3, 2, -2, 3, -1, 2][i], opacity: 1, scale: 1 }
+                          : { x: rest ? i * 26 : 52, y: 0, rotate: rest ? [-7, 0, 7][i] : 7, opacity: rest ? 1 : 0, scale: .78 }}
+                        whileHover={fan && !reduce ? { y: -6, rotate: 0, scale: 1.08, transition: spring } : undefined}
+                        transition={{ ...spring, delay: reduce ? 0 : (fan ? i * .028 : 0) }}
                         style={{ zIndex: 10 - i }}
                       >
                         {o.img && <img src={o.img} alt="" draggable="false" />}
@@ -116,10 +147,10 @@ export default function ObhodPicker({
             ) : (
               <motion.div
                 key="panel" className="ks-panel"
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                transition={{ duration: reduce ? 0 : .25, delay: reduce ? 0 : .08 }}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: reduce ? 0 : .1 } }}
+                transition={{ duration: reduce ? 0 : .18, delay: reduce ? 0 : .04 }}
               >
-                <motion.div className="ks-panel__map" initial={reduce ? false : { opacity: 0, scale: .985 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: .5, delay: .14, ease: [.2, .8, .2, 1] }}>
+                <motion.div className="ks-panel__map" initial={reduce ? false : { opacity: 0, scale: .985 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: .32, delay: .06, ease: EASE }}>
                   <ObhodMap demo={demo} track={track} loading={trackLoading} cloud={cloud} theme={theme} />
                 </motion.div>
 

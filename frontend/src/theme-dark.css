@@ -86,7 +86,11 @@
    токеном выше. Прежние точечные правила для .status.error/.success/
    .info и .badge отсюда убраны — они теперь выводятся из --ok/--warn/
    --err/--info и --glass-bg. */
-[data-theme="dark"] header { background: rgba(21,22,26,.92); border-bottom-color: var(--border); }
+[data-theme="dark"] header { background: rgba(12,13,12,.9); border-bottom-color: rgba(255,255,255,.12); }
+[data-theme="dark"] .nav-btn.active {
+  background: rgba(18,24,15,.85); color: #f2f5ee; text-decoration-color: rgba(242,245,238,.75);
+  box-shadow: inset 0 0 0 1.5px #b7d8a2, 0 0 16px -3px rgba(143,212,106,.45);
+}
 [data-theme="dark"] .dz { background: rgba(255,255,255,.02); }
 [data-theme="dark"] .kb-sk { background: rgba(255,255,255,.05); }
 /* флора на тёмном фоне: инвертируем (тёмные линии → светлые),

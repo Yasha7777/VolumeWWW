@@ -120,7 +120,8 @@ const cloudCache = new Map()
 export function useCloud(scan, demo) {
   const [cloud, setCloud] = useState(null)
   useEffect(() => {
-    if (!scan) { setCloud(null); return }
+    // обход не выбран — показываем эталонную кучу как пример того, что будет
+    if (!scan) { setCloud({ ...DEMO_CLOUDS.o1, title: 'Пример: отсев, эталон 178 м³' }); return }
     if (demo) {
       setCloud(DEMO_CLOUDS[scan.id] || { empty: 'Для этого обхода в демо нет облака — выберите «Отсев у склада №3»' })
       return
