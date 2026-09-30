@@ -132,31 +132,45 @@
 }
 .ks-scope[data-picker='hover'] .ks-decor { --open: .45; }
 .ks-scope[data-picker='open'] .ks-decor { --open: 1; }
-.ks-decor__canvas { position: absolute; top: 0; left: 50%; width: 1536px; height: 1024px; margin-left: -768px; }
-.ks-decor__far { position: absolute; inset: 0; transform: translate3d(calc(var(--mx) * -5px), calc(var(--my) * -3px), 0); }
+/* Декор делится на две половины холста 1536: левая прижата к левому краю
+   экрана, правая — к правому. На экране шире 1536 CSS-px (ноутбук с ужатой
+   страницей, большой монитор) края макета совпадают с краями окна, а между
+   половинами — та же фактура фона. Уже 1536 — половины сходятся по центру,
+   как холст макета. */
+.ks-decor__half { position: absolute; top: 0; width: 768px; height: 1024px; }
+.ks-decor__half.is-l { left: min(0px, calc(50% - 768px)); }
+.ks-decor__half.is-r { right: min(0px, calc(50% - 768px)); }
+.ks-decor__far { position: absolute; inset: 0; z-index: 0; transform: translate3d(calc(var(--mx) * -5px), calc(var(--my) * -3px), 0); }
+.ks-decor__marks { z-index: 3; }
+.ks-decor__plate { position: absolute; top: 0; left: 0; width: 768px; height: 1024px; background-size: 2048px 1024px; background-repeat: no-repeat; }
+.is-l > .ks-decor__far > .ks-decor__plate {
+  background-position: -256px 0;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 150px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 150px), transparent);
+}
+.is-r > .ks-decor__far > .ks-decor__plate {
+  background-position: -1024px 0;
+  -webkit-mask-image: linear-gradient(270deg, #000 calc(100% - 150px), transparent); mask-image: linear-gradient(270deg, #000 calc(100% - 150px), transparent);
+}
+/* туман над зоной панели: в свёрнутом виде прячет срезы груд у её рамки */
 .ks-decor__fog {
-  position: absolute; left: 24px; top: 318px; width: 1488px; height: 706px; opacity: 1; transition: opacity .4s ease;
-  /* та же фактура, что у подложки: тайл выровнен по её сетке */
-  background: url('./img/tex-dark.webp') -24px -318px / 512px 512px repeat;
-  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 96px, #000 calc(100% - 96px), transparent 100%), linear-gradient(180deg, transparent 0, #000 64px, #000 calc(100% - 70px), transparent 100%);
-  -webkit-mask-composite: source-in;
-  mask-image: linear-gradient(90deg, transparent 0, #000 96px, #000 calc(100% - 96px), transparent 100%), linear-gradient(180deg, transparent 0, #000 64px, #000 calc(100% - 70px), transparent 100%);
-  mask-composite: intersect;
+  position: absolute; top: 318px; width: 744px; height: 706px; opacity: 1; transition: opacity .4s ease;
+  background: url('./img/tex-dark.webp') 0 0 / 512px 512px repeat;
+  -webkit-mask-composite: source-in; mask-composite: intersect;
+}
+.is-l .ks-decor__fog {
+  left: 24px;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 96px, #000 calc(100% - 150px), transparent 100%), linear-gradient(180deg, transparent 0, #000 64px, #000 calc(100% - 70px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 96px, #000 calc(100% - 150px), transparent 100%), linear-gradient(180deg, transparent 0, #000 64px, #000 calc(100% - 70px), transparent 100%);
+}
+.is-r .ks-decor__fog {
+  left: 0;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 150px, #000 calc(100% - 96px), transparent 100%), linear-gradient(180deg, transparent 0, #000 64px, #000 calc(100% - 70px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 150px, #000 calc(100% - 96px), transparent 100%), linear-gradient(180deg, transparent 0, #000 64px, #000 calc(100% - 70px), transparent 100%);
 }
 .ks-scope[data-picker='open'] .ks-decor__fog { opacity: 0; }
-/* шире макета: край кадра подложки уходит в фактуру, по бокам — камни ближнего плана */
-@container ks (min-width: 1560px) {
-  .ks-decor__plate {
-    -webkit-mask-image: linear-gradient(90deg, transparent 256px, #000 380px, #000 calc(100% - 380px), transparent calc(100% - 256px));
-    mask-image: linear-gradient(90deg, transparent 256px, #000 380px, #000 calc(100% - 380px), transparent calc(100% - 256px));
-  }
-}
-.ks-p.is-wide .ks-rock { filter: blur(1.2px) drop-shadow(0 14px 18px rgba(0,0,0,.6)); }
-.ks-decor.is-light .ks-p.is-wide .ks-rock { filter: blur(1px) drop-shadow(0 1px 1.5px rgba(70,55,30,.22)); }
-.ks-decor__plate { position: absolute; top: 0; left: -256px; width: 2048px; height: 1024px; background: 0 0 / 2048px 1024px no-repeat; }
 /* кусок декора: параллакс + расступаются при раскрытии панели */
 .ks-p {
-  position: absolute; display: block;
+  position: absolute; display: block; z-index: 2;
   transform: translate3d(calc(var(--mx) * var(--z) * -22px + var(--open) * var(--push, 0px)), calc(var(--my) * var(--z) * -14px), 0);
   transition: opacity .35s ease;
 }
@@ -271,9 +285,11 @@
 .ks-bar__thumb img, .ks-card__photo img, .ks-chip img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ks-bar__chev {
   flex: none; margin-left: 18px; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; color: var(--ink-3);
-  box-shadow: inset 0 0 0 1px var(--line); transition: background .35s var(--ks-ease), color .35s var(--ks-ease), transform .45s var(--ks-ease);
+  box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow .4s var(--ks-ease), color .18s var(--ks-ease), transform .45s var(--ks-ease);
 }
-.ks-picker.is-hover .ks-bar__chev { background: var(--green-800); color: #f2f5ee; box-shadow: none; transform: translateY(1px); }
+/* кружок заливается от кромки к центру, стрелка светлеет, когда фон уже тёмный —
+   без серого «пустого» кадра посередине */
+.ks-picker.is-hover .ks-bar__chev { color: #f2f5ee; box-shadow: inset 0 0 0 17px var(--green-800); transform: translateY(1px); transition-delay: 0s, .16s, 0s; }
 
 /* ── «жидкая» плашка: в покое и при наведении контур рисует SVG (liquid.js) ──
    Плашка плавно раздаётся вширь, края стекают вниз каплями; свет и светящаяся
@@ -307,19 +323,20 @@
 /* содержимое капель: проявляется, когда капля стекла больше чем наполовину */
 .ks-drip {
   position: absolute; top: calc(100% + 4px); z-index: 1; height: 34px; display: flex; align-items: center; gap: 7px;
-  width: calc(var(--dw, 200px) - 34px); padding: 0; border: 0; background: none; cursor: pointer; pointer-events: none;
+  width: 180px; padding: 0; border: 0; background: none; cursor: pointer; pointer-events: none;
   font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .03em; color: var(--ink-3); white-space: nowrap;
 }
 .ks-drip svg { flex: none; color: var(--accent); }
-.ks-drip--l { left: 20px; opacity: calc((var(--dl, 0) - .5) * 2.2); transform: translateY(calc((1 - var(--dl, 0)) * -12px)); }
-.ks-drip--r { right: 20px; justify-content: flex-end; opacity: calc((var(--dr, 0) - .5) * 2.2); transform: translateY(calc((1 - var(--dr, 0)) * -12px)); }
+/* прозрачность, сдвиг и ширину капель пишет liquid.js прямо в style */
+.ks-drip--l { left: 20px; opacity: 0; }
+.ks-drip--r { right: 20px; justify-content: flex-end; opacity: 0; }
 .ks-picker.is-hover .ks-drip { pointer-events: auto; }
 .ks-drip:hover { color: var(--ink); }
 .ks-drip--r svg { animation: ks-nudge 1.2s ease-in-out infinite; }
 .ks-picker__sweep { position: absolute; inset: 0; z-index: 2; border-radius: 16px; overflow: hidden; pointer-events: none; }
 .ks-picker__sweep::after {
   content: ''; position: absolute; top: -20%; bottom: -20%; left: 0; width: 38%; transform: translateX(-120%) skewX(-18deg); opacity: 0;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.32), transparent);
 }
 :root[data-theme='dark'] .ks-scope .ks-picker__sweep::after { background: linear-gradient(90deg, transparent, rgba(190,240,160,.12), transparent); }
 .ks-picker.is-hover .ks-picker__sweep::after { animation: ks-sweep 1.1s var(--ks-ease) .12s; }
@@ -334,8 +351,8 @@
 @keyframes ks-flash { 0% { opacity: 0; transform: scale(.3); } 30% { opacity: .9; } 100% { opacity: 0; transform: scale(1.8); } }
 .ks-picker.is-hover .ks-bar__icons > span:nth-child(1) svg { animation: ks-click .55s var(--ks-ease) .06s; }
 @keyframes ks-click { 40% { transform: scale(.82); } 100% { transform: scale(1); } }
-.ks-picker.is-hover .ks-bar__icons > span:nth-child(2) svg :is(path, circle) { stroke-dasharray: 48; animation: ks-draw 1s var(--ks-ease) .14s both; }
-@keyframes ks-draw { from { stroke-dashoffset: 48; } to { stroke-dashoffset: 0; } }
+.ks-picker.is-hover .ks-bar__icons > span:nth-child(2) svg { animation: ks-slide .9s var(--ks-ease) .12s; }
+@keyframes ks-slide { 0% { transform: none; } 40% { transform: translateX(3px); } 100% { transform: none; } }
 .ks-picker.is-hover .ks-bar__icons > span:nth-child(3) svg { animation: ks-wobble .9s cubic-bezier(.35,.6,.3,1.3) .2s; }
 @keyframes ks-wobble { 0% { transform: rotate(0); } 30% { transform: rotate(-22deg) scale(1.08); } 60% { transform: rotate(10deg); } 100% { transform: rotate(0); } }
 .ks-picker.is-hover .ks-bar__chev svg { animation: ks-nudge 1.2s ease-in-out .3s infinite; }

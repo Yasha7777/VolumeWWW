@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence, LayoutGroup, useReducedMotion } from 'motion/react'
 import { Link } from 'react-router-dom'
 import { Camera, Route, Box, ChevronDown, CalendarDays, ArrowRight, X, Check, Map as MapIcon, ListPlus, Loader2 } from 'lucide-react'
@@ -64,13 +64,30 @@ export default function ObhodPicker({
   const canHover = useMedia('(hover: hover) and (pointer: fine)')
   const narrow = useMedia('(max-width: 720px)')
   const locked = !!(run.busy || run.waiting)
+  const stage = useRef(null)
+  const dripL = useRef(null), dripR = useRef(null)
+  // Размеры — только в пикселях. «100%» и height:auto motion переводит в px
+  // через getBoundingClientRect, а при zoom у .ks-scope (невысокий ноутбук)
+  // тот врёт на коэффициент zoom — плашка сначала сжималась, потом прыгала.
+  // offsetWidth/offsetHeight zoom не искажает.
+  const [stageW, setStageW] = useState(0)
+  const [openH, setOpenH] = useState(0)
+  useLayoutEffect(() => {
+    const el = stage.current
+    if (!el) return
+    const m = () => setStageW(el.offsetWidth)
+    m(); const ro = new ResizeObserver(m); ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const barH = narrow ? 76 : 88
+  const full = stageW || 640
   const SIZES = {
-    rest: { width: narrow ? '100%' : 640, height: narrow ? 76 : 88 },
-    hover: { width: '100%', height: narrow ? 76 : 88 },
-    open: { width: '100%', height: 'auto' },
+    rest: { width: narrow ? full : Math.min(640, full), height: barH },
+    hover: { width: full, height: barH },
+    open: { width: full, height: openH || barH },
   }
 
-  useLiquid({ box, paths: [fillRef, glowRef, rimRef], state, enabled: canHover && !narrow, reduce })
+  useLiquid({ box, paths: [fillRef, glowRef, rimRef], drips: [dripL, dripR], state, enabled: canHover && !narrow, reduce })
 
   // раскрыта: Esc или клик мимо панели сворачивают — но не посреди анализа
   useEffect(() => {
@@ -85,6 +102,17 @@ export default function ObhodPicker({
     document.addEventListener('pointerdown', onDown, true)
     return () => { window.removeEventListener('keydown', onKey); document.removeEventListener('pointerdown', onDown, true) }
   }, [state, locked])
+  // высота раскрытой панели — по её содержимому (и при подгрузке карточек)
+  useLayoutEffect(() => {
+    if (state !== 'open') return
+    // ref на прямом ребёнке AnimatePresence motion пробрасывает с предупреждением
+    // React 18 — ищем панель в DOM (новую, не уходящую)
+    const el = [...(box.current?.querySelectorAll(':scope > .ks-panel') || [])].pop()
+    if (!el) return
+    const m = () => setOpenH(el.offsetHeight)
+    m(); const ro = new ResizeObserver(m); ro.observe(el)
+    return () => ro.disconnect()
+  }, [state])
   // анализ закончился — сворачиваемся, чтобы результат оказался прямо под плашкой
   useEffect(() => { if (collapseSignal) setState('rest') }, [collapseSignal])
   // состояние панели — для декора страницы (камни расступаются, витрина прячется)
@@ -101,7 +129,6 @@ export default function ObhodPicker({
     const r = el.getBoundingClientRect(), z = zoomOf(el)
     const x = ((e.clientX - r.left) / z).toFixed(0), y = ((e.clientY - r.top) / z).toFixed(0)
     for (const g of [glowGrad.current, rimGrad.current]) { g?.setAttribute('cx', x); g?.setAttribute('cy', y) }
-    el.style.setProperty('--gx', `${x}px`)
   }
   useEffect(() => () => clearTimeout(timer.current), [])
 
@@ -122,7 +149,7 @@ export default function ObhodPicker({
   const nThumbs = Math.max(1, Math.min(6, items.length))
 
   return (
-    <div className="ks-stage">
+    <div className="ks-stage" ref={stage}>
       <LayoutGroup>
         <motion.section
           ref={box}
@@ -154,17 +181,17 @@ export default function ObhodPicker({
           {/* что в каплях: слева — что внутри (карта, 3D), справа — как раскрыть */}
           {!open && (
             <>
-              <button type="button" className="ks-drip ks-drip--l" tabIndex={-1} aria-hidden onClick={() => setState('open')}>
+              <button ref={dripL} type="button" className="ks-drip ks-drip--l" tabIndex={-1} aria-hidden onClick={() => setState('open')}>
                 <MapIcon size={13} strokeWidth={1.8} /><Box size={13} strokeWidth={1.8} />
                 <span>карта обходов и 3D-облако</span>
               </button>
-              <button type="button" className="ks-drip ks-drip--r" tabIndex={-1} aria-hidden onClick={() => setState('open')}>
+              <button ref={dripR} type="button" className="ks-drip ks-drip--r" tabIndex={-1} aria-hidden onClick={() => setState('open')}>
                 <span>раскрыть</span><ChevronDown size={14} strokeWidth={2} />
               </button>
             </>
           )}
           <span className="ks-picker__sweep" aria-hidden />
-          <AnimatePresence initial={false} mode="popLayout">
+          <AnimatePresence initial={false}>
             {!open ? (
               <motion.button
                 key="bar" type="button" className="ks-bar"
@@ -264,7 +291,7 @@ export default function ObhodPicker({
                       <motion.div key="setup" className="ks-foot__setup" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.3, ease: EASE }}>
                         <span className="ks-foot__count">Обход</span>
                         <div className="ks-foot__chips">
-                          <AnimatePresence initial={false} mode="popLayout">
+                          <AnimatePresence initial={false} mode="wait">
                             {picked ? (
                               <motion.div key={picked.id} className="ks-chip" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.25, ease: EASE }}>
                                 {picked.img ? <img src={picked.img} alt="" /> : <span className="ks-chip__noimg" />}

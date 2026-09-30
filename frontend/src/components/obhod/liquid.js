@@ -61,8 +61,8 @@ function stepSpring(s, target, k, c, dt) {
   if (s.x < 0) { s.x = 0; if (s.v < 0) s.v = 0 }
 }
 
-export function useLiquid({ box, paths, state, enabled, reduce }) {
-  const st = useRef({ l: { x: 0, v: 0 }, r: { x: 0, v: 0 }, raf: 0, last: 0 })
+export function useLiquid({ box, paths, drips = [], state, enabled, reduce }) {
+  const st = useRef({ l: { x: 0, v: 0 }, r: { x: 0, v: 0 }, raf: 0, last: 0, W: 0, H: 0 })
 
   useEffect(() => {
     const el = box.current
@@ -70,16 +70,25 @@ export function useLiquid({ box, paths, state, enabled, reduce }) {
     const s = st.current
     const drip = state === 'hover' && enabled && !reduce
     const t0 = performance.now()
-    const until = t0 + 1500            // ширину анимирует motion — рисуем, пока она идёт
 
+    // рисуем из кэша размеров: размер читаем только в ResizeObserver (после
+    // раскладки), в кадре анимации — никаких чтений layout
     const draw = () => {
-      const W = el.offsetWidth, H = el.offsetHeight
-      const d = liquidPath(W, H, s.l.x, s.r.x)
+      if (!s.W) return
+      const d = liquidPath(s.W, s.H, s.l.x, s.r.x)
       for (const p of paths) p.current?.setAttribute('d', d)
-      el.style.setProperty('--dl', (s.l.x / DRIP).toFixed(3))
-      el.style.setProperty('--dr', (s.r.x / DRIP).toFixed(3))
-      el.style.setProperty('--dw', `${dripWidth(W).toFixed(0)}px`)
+      // подписи в каплях: проявляются, когда капля стекла больше чем наполовину
+      const dw = dripWidth(s.W)
+      drips.forEach((ref, i) => {
+        const e = ref.current
+        if (!e) return
+        const k = (i === 0 ? s.l.x : s.r.x) / DRIP
+        e.style.opacity = Math.max(0, Math.min(1, (k - 0.5) * 2.2)).toFixed(3)
+        e.style.transform = `translate3d(0, ${((1 - Math.min(1, k)) * -12).toFixed(1)}px, 0)`
+        e.style.width = `${(dw - 34).toFixed(0)}px`
+      })
     }
+    const measure = () => { s.W = el.offsetWidth; s.H = el.offsetHeight; draw() }
     const tick = (now) => {
       s.raf = 0
       const dt = Math.min(0.034, (now - (s.last || now)) / 1000); s.last = now
@@ -94,17 +103,17 @@ export function useLiquid({ box, paths, state, enabled, reduce }) {
         stepSpring(s.r, 0, 420, 38, dt)
       }
       draw()
-      const moving = Math.abs(s.l.v) + Math.abs(s.r.v) > 0.3 || (drip && (Math.abs(s.l.x - DRIP) > 0.3))
-      if (now < until || moving) s.raf = requestAnimationFrame(tick)
+      const settling = drip ? (age < 260 || Math.abs(s.l.x - DRIP) > 0.2 || Math.abs(s.r.x - DRIP * 0.9) > 0.2) : (s.l.x > 0.05 || s.r.x > 0.05)
+      if (settling || Math.abs(s.l.v) + Math.abs(s.r.v) > 0.2) s.raf = requestAnimationFrame(tick)
     }
-    if (reduce) { s.l.x = s.r.x = 0; draw(); return }
-    cancelAnimationFrame(s.raf)
-    s.last = 0
-    s.raf = requestAnimationFrame(tick)
-
-    // размер окна поменялся — перерисовать контур
-    const ro = new ResizeObserver(() => { if (!s.raf) draw() })
+    const ro = new ResizeObserver(measure)
     ro.observe(el)
+    measure()
+    if (reduce) { s.l.x = s.r.x = 0; draw() } else {
+      cancelAnimationFrame(s.raf)
+      s.last = 0
+      s.raf = requestAnimationFrame(tick)
+    }
     return () => { cancelAnimationFrame(s.raf); s.raf = 0; ro.disconnect() }
   }, [state, enabled, reduce]) // eslint-disable-line react-hooks/exhaustive-deps
 }

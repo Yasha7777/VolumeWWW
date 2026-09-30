@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { LIGHT_ROCKS, DARK_ROCKS, DARK_REST, DARK_WIDE, LIGHT_WIDE } from './decor'
+import { LIGHT_ROCKS, DARK_ROCKS, DARK_REST } from './decor'
 import { zoomOf } from './fit'
 
 // все картинки декора — хешированные URL; грузятся только картинки активной темы
@@ -7,6 +7,8 @@ const files = import.meta.glob('./img/*.webp', { eager: true, query: '?url', imp
 const url = (name) => files[`./img/${name}.webp`]
 
 const HALF = 768 // центр холста 1536
+// половина холста, к краю которой прижат элемент (см. .ks-decor__half)
+const sideOf = (cx) => (cx < HALF ? 'l' : 'r')
 
 // подписи и кресты: в светлом и тёмном макетах стоят немного по-разному
 const MARKS = {
@@ -31,7 +33,7 @@ const MARKS = {
    Всё двигается только transform/opacity; при prefers-reduced-motion стоит. */
 
 function Piece({ p, dark, idx }) {
-  const { s, x, y, w, r = 0, f, z = .6, rest, cube, peb, wide } = p
+  const { s, x, y, w, r = 0, f, z = .6, rest, cube, peb } = p
   const cx = x + w / 2
   const side = cx < HALF ? -1 : 1
   // сдвиг при раскрытии панели: сильнее у камней ближе к её краю и ниже шапки
@@ -41,9 +43,9 @@ function Piece({ p, dark, idx }) {
   const dur = (cube ? 7 : 9) + ((idx * 7) % 5)
   return (
     <span
-      className={'ks-p' + (cube ? ' is-cube' : '') + (rest ? ' is-rest' : '') + (peb ? ' is-peb' : '') + (wide ? ' is-wide' : '')}
-      style={{ left: x, top: y, width: w, '--z': z, '--push': `${push.toFixed(1)}px` }}
-      data-cx={cx} data-cy={y + w * .45} data-z={z}
+      className={'ks-p' + (cube ? ' is-cube' : '') + (rest ? ' is-rest' : '') + (peb ? ' is-peb' : '')}
+      style={{ left: side < 0 ? x : x - HALF, top: y, width: w, '--z': z, '--push': `${push.toFixed(1)}px` }}
+      data-cx={cx} data-cy={y + w * .45} data-z={z} data-side={side < 0 ? 'l' : 'r'}
     >
       {!dark && !peb && <span className="ks-p__sh" data-sh=""><img src={url(s)} alt="" style={img} draggable="false" /></span>}
       <span className="ks-p__float" style={{ animationDuration: `${dur}s`, animationDelay: `${-(idx * 1.7) % dur}s` }}>
@@ -53,10 +55,10 @@ function Piece({ p, dark, idx }) {
   )
 }
 
-function Cross({ x, y, size = 32, ring = 6 }) {
+function Cross({ x, y, size = 32, ring = 6, off = 0 }) {
   const h = size / 2
   return (
-    <svg className="ks-cross" style={{ left: x - h, top: y - h, width: size, height: size }} viewBox={`0 0 ${size} ${size}`} aria-hidden>
+    <svg className="ks-cross" style={{ left: x - h - off, top: y - h, width: size, height: size }} viewBox={`0 0 ${size} ${size}`} aria-hidden>
       <line x1="0" y1={h} x2={size} y2={h} /><line x1={h} y1="0" x2={h} y2={size} />
       {ring > 0 && <circle cx={h} cy={h} r={ring} />}
     </svg>
@@ -72,9 +74,10 @@ function useLife(root, canvas, dark) {
     const light = el.querySelector('.ks-decor__light')
     const shadows = [...el.querySelectorAll('[data-sh]')].map((sh) => {
       const p = sh.parentElement
-      return { sh, cx: +p.dataset.cx, cy: +p.dataset.cy, z: +p.dataset.z }
+      return { sh, cx: +p.dataset.cx, cy: +p.dataset.cy, z: +p.dataset.z, right: p.dataset.side === 'r' }
     })
     const st = { tx: 0, ty: 0, mx: 0, my: 0, px: -9999, py: -9999, raf: 0, visible: true, t0: performance.now() }
+    const last = { mx: NaN, my: NaN, px: NaN, py: NaN }
 
     // ── пыль ──
     const cv = canvas.current
@@ -82,6 +85,7 @@ function useLife(root, canvas, dark) {
     let parts = [], W = 0, H = 0
     const DPR = Math.min(window.devicePixelRatio || 1, 1.5)
     const resize = () => {
+      last.px = NaN                                  // тени пересчитать под новую ширину
       if (!cv) return
       W = el.clientWidth; H = el.clientHeight
       cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR)
@@ -117,14 +121,24 @@ function useLife(root, canvas, dark) {
       }
     }
 
-    const apply = () => {
-      el.style.setProperty('--mx', st.mx.toFixed(4))
-      el.style.setProperty('--my', st.my.toFixed(4))
-      if (light) light.style.transform = `translate3d(${(st.px - 600).toFixed(1)}px, ${(st.py - 600).toFixed(1)}px, 0)`
+    // пишем в стили только то, что изменилось: --mx/--my наследуются всеми
+    // кусками декора, и лишняя запись — пересчёт стилей десятков элементов
+    const apply = (force) => {
+      const mx = +st.mx.toFixed(3), my = +st.my.toFixed(3)
+      if (force || mx !== last.mx || my !== last.my) {
+        el.style.setProperty('--mx', mx); el.style.setProperty('--my', my)
+        last.mx = mx; last.my = my
+      }
+      const px = Math.round(st.px), py = Math.round(st.py)
+      if (!force && px === last.px && py === last.py) return
+      last.px = px; last.py = py
+      if (light) light.style.transform = `translate3d(${px - 600}px, ${py - 600}px, 0)`
       if (shadows.length) {
-        const off = (el.clientWidth / 2) - HALF      // холст центрирован
+        // начало координат каждой половины холста на экране (см. .ks-decor__half)
+        const Wd = el.clientWidth
+        const oL = Math.min(0, Wd / 2 - HALF), oR = Math.max(Wd, Wd / 2 + HALF) - 2 * HALF
         for (const s of shadows) {
-          const vx = s.cx + off - st.px, vy = s.cy - st.py
+          const vx = s.cx + (s.right ? oR : oL) - st.px, vy = s.cy - st.py
           const d = Math.hypot(vx, vy) || 1
           const k = (5 + 9 * s.z) / (1 + d / 520)
           const ox = (vx / d) * k, oy = (vy / d) * k + 5 + 5 * s.z
@@ -166,7 +180,7 @@ function useLife(root, canvas, dark) {
     document.addEventListener('visibilitychange', onVis)
     // первый кадр: тени и пыль на местах даже без движения мыши
     st.px = el.clientWidth / 2; st.py = -300
-    if (reduce) { apply(); drawDust(performance.now(), 0) } else kick()
+    if (reduce) { apply(true); drawDust(performance.now(), 0) } else { apply(true); kick() }
 
     return () => {
       cancelAnimationFrame(st.raf)
@@ -183,32 +197,43 @@ export default function AnalyzeDecor({ theme = 'light' }) {
   const root = useRef(null)
   const dust = useRef(null)
   useLife(root, dust, dark)
-  const wide = (dark ? DARK_WIDE : LIGHT_WIDE).map((p) => ({ ...p, wide: 1 }))
-  const rocks = dark ? [...DARK_ROCKS, ...DARK_REST.map((p) => ({ ...p, rest: 1 })), ...wide] : [...LIGHT_ROCKS, ...wide]
+  const rocks = dark ? [...DARK_ROCKS, ...DARK_REST.map((p) => ({ ...p, rest: 1 }))] : LIGHT_ROCKS
   const M = MARKS[dark ? 'dark' : 'light']
+  const at = (side, x) => (side === 'l' ? x : x - HALF)
 
   return (
     <div ref={root} className={'ks-decor' + (dark ? ' is-dark' : ' is-light')} aria-hidden>
-      <div className="ks-decor__canvas">
-        {/* дальний план: подложка и геодезическая разметка — двигаются вместе */}
-        <div className="ks-decor__far">
-          {dark && <div className="ks-decor__plate" style={{ backgroundImage: `url(${url('plate-dark')})` }} />}
-          {dark && <div className="ks-decor__fog" />}
-        </div>
-        {rocks.map((p, i) => <Piece key={p.s + i} p={p} dark={dark} idx={i} />)}
-        {/* геодезическая разметка — поверх камней, двигается вместе с подложкой */}
-        <div className="ks-decor__far ks-decor__marks">
-          {M.cross.map(([x, y, size, ring], i) => <Cross key={i} x={x} y={y} size={size} ring={ring} />)}
-          <div className="ks-mark ks-mark--coords" style={{ left: M.coords[0], top: M.coords[1] }}>61.7956° N<br />34.3686° E</div>
-          <div className="ks-mark ks-mark--tags" style={{ left: M.tags[0], top: M.tags[1] }}>
-            <span className="ks-mark__tri">▸</span>
-            <span>Фотограмметрия<br />3D-реконструкция<br />Объём / вес</span>
+      {['l', 'r'].map((side) => (
+        <div key={side} className={'ks-decor__half is-' + side}>
+          {/* дальний план: подложка (половина макета) и туман над зоной панели */}
+          {dark && (
+            <div className="ks-decor__far">
+              <div className="ks-decor__plate" style={{ backgroundImage: `url(${url('plate-dark')})` }} />
+              <div className="ks-decor__fog" />
+            </div>
+          )}
+          {rocks.map((p, i) => (sideOf(p.x + p.w / 2) === side ? <Piece key={p.s + i} p={p} dark={dark} idx={i} /> : null))}
+          {/* геодезическая разметка — поверх камней, двигается вместе с подложкой */}
+          <div className="ks-decor__far ks-decor__marks">
+            {M.cross.map(([x, y, size, ring], i) => (sideOf(x) === side ? <Cross key={i} x={x} y={y} size={size} ring={ring} off={side === 'l' ? 0 : HALF} /> : null))}
+            {side === 'l' ? (
+              <>
+                <div className="ks-mark ks-mark--coords" style={{ left: M.coords[0], top: M.coords[1] }}>61.7956° N<br />34.3686° E</div>
+                <div className="ks-mark ks-mark--tags" style={{ left: M.tags[0], top: M.tags[1] }}>
+                  <span className="ks-mark__tri">▸</span>
+                  <span>Фотограмметрия<br />3D-реконструкция<br />Объём / вес</span>
+                </div>
+                <div className="ks-mark ks-mark--foot" style={{ left: M.foot[0], top: M.foot[1] }}><span className="ks-mark__brand">Карелия Строй</span><br />Точные данные. Реальные объекты.</div>
+              </>
+            ) : (
+              <>
+                <div className="ks-mark ks-mark--gps" style={{ left: at('r', M.gps[0]), top: M.gps[1] }}>GPS / ARKit<br />Точность<br />±1.5%</div>
+                <div className="ks-mark ks-mark--coords2" style={{ left: at('r', M.coords2[0]), top: M.coords2[1] }}>61.7956° N&nbsp;&nbsp;&nbsp;34.3686° E</div>
+              </>
+            )}
           </div>
-          <div className="ks-mark ks-mark--foot" style={{ left: M.foot[0], top: M.foot[1] }}><span className="ks-mark__brand">Карелия Строй</span><br />Точные данные. Реальные объекты.</div>
-          <div className="ks-mark ks-mark--gps" style={{ left: M.gps[0], top: M.gps[1] }}>GPS / ARKit<br />Точность<br />±1.5%</div>
-          <div className="ks-mark ks-mark--coords2" style={{ left: M.coords2[0], top: M.coords2[1] }}>61.7956° N&nbsp;&nbsp;&nbsp;34.3686° E</div>
         </div>
-      </div>
+      ))}
       {dark && <div className="ks-decor__light" />}
       <canvas ref={dust} className="ks-decor__dust" />
     </div>
