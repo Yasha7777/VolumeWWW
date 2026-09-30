@@ -2,8 +2,11 @@
    Шрифты страницы «Анализ» (новый дизайн: выбор обхода).
    Подключается ТОЛЬКО из components/obhod/obhod.css → попадает в чанк Analyze,
    на лендинг и логин не влияет. Файлы свои (152-ФЗ, см. шапку fonts.css):
-   Tinos 700 — заголовок, Spectral 600 italic — золотая строка, Inter — интерфейс.
-   IBM Plex Mono — те же файлы, что у темы «Архив» (второй раз не качаются).
+   KS Jost — заголовок и крупные числа (буквы Jost, цифры Montserrat, см. ниже),
+   Inter — интерфейс, IBM Plex Mono — подписи (те же файлы, что у темы «Архив»,
+   второй раз не качаются). Tinos и Spectral — прежний заголовок по макету;
+   сейчас их никто не использует, поэтому браузер их не качает — оставлены,
+   чтобы вернуть одной строкой в obhod.css (--font-display).
    Имена семейств с префиксом KS, чтобы не пересечься с fonts-archive.css.
    ════════════════════════════════════════════════════════════════════════ */
 
@@ -134,4 +137,37 @@
   font-display: swap;
   src: url('./files/ibm-plex-mono-600-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ── KS Jost: буквы Jost, цифры Montserrat ─────────────────────────────────
+   Одно семейство из трёх файлов: браузер для каждого символа берёт файл,
+   чей unicode-range его покрывает. Цифры 0–9, ¹ ² ³ и № вынуты из диапазона
+   Jost и отданы Montserrat (у Jost к тому же нет «№»). Высота цифр у обоих
+   шрифтов 700/1000 — совпадает с прописными Jost без подгонки.
+   Оба вариативные (вес 100–900 в одном файле), лицензия SIL OFL 1.1:
+   Jost — Owen Earl (indestructible type*), Montserrat — Julieta Ulanovsky.
+   Файлы — из github.com/google/fonts (2026-09-30), урезаны до нужных знаков. */
+@font-face {
+  font-family: 'KS Jost';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./files/jost-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1;
+}
+@font-face {
+  font-family: 'KS Jost';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./files/jost-latin.woff2') format('woff2');
+  unicode-range: U+0000-002F, U+003A-00B1, U+00B4-00B8, U+00BA-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'KS Jost';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./files/montserrat-digits.woff2') format('woff2');
+  unicode-range: U+0030-0039, U+00B2-00B3, U+00B9, U+2116;
 }

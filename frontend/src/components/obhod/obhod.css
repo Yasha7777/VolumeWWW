@@ -17,6 +17,10 @@
 .ks-scope *, .ks-scope *::before, .ks-scope *::after { box-sizing: border-box; }
 
 .ks-scope {
+  /* заголовок и крупные числа: буквы Jost, цифры Montserrat (fonts-obhod.css).
+     Вернуть прежний вид по макету: --font-display: 'KS Tinos' + вес 700 */
+  --font-display: 'KS Jost', 'KS Inter', system-ui, sans-serif;
+  --display-w: 300;
   --font-serif: 'KS Tinos', 'Times New Roman', serif;
   --font-serif-italic: 'KS Spectral', Georgia, serif;
   --font-sans: 'KS Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -215,16 +219,16 @@
 
 /* ── hero ──────────────────────────────────────────── */
 .ks-hero { position: relative; z-index: 1; text-align: center; padding-top: 32px; }
-.ks-hero__title { margin: 0; font-family: var(--font-serif); font-size: 65px; line-height: 58px; font-weight: 700; letter-spacing: 0; color: var(--ink); }
+.ks-hero__title { margin: 0; font-family: var(--font-display); font-size: 66px; line-height: 62px; font-weight: var(--display-w); letter-spacing: -.005em; color: var(--ink); }
 .ks-hero__l1, .ks-hero__l2 { display: block; }
 :root[data-theme='dark'] .ks-scope .ks-hero__l1 {
   background: url('./img/title-stone.webp') center / 520px auto; -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(0 2px 10px rgba(0,0,0,.6));
 }
-.ks-hero__l2 { position: relative; top: 3px; font-family: var(--font-serif-italic); font-size: 61px; font-style: italic; font-weight: 600; color: var(--gold); letter-spacing: 0; }
+.ks-hero__l2 { position: relative; top: 3px; font-family: var(--font-display); font-size: 60px; font-weight: var(--display-w); color: var(--gold); letter-spacing: 0; }
 @container ks (min-width: 721px) {
   :root[data-theme='dark'] .ks-scope .ks-hero__l1 { font-size: 78px; }
-  :root[data-theme='dark'] .ks-scope .ks-hero__l2 { font-size: 65px; top: 7px; }
+  :root[data-theme='dark'] .ks-scope .ks-hero__l2 { font-size: 62px; top: 4px; }
 }
 .ks-hero__sub { margin: 18px auto 0; font-size: 15.6px; line-height: 23.5px; font-weight: 500; color: #858178; }
 
@@ -773,12 +777,13 @@
 .ks-show__card--pts { right: 50px; top: 104px; transition-delay: .5s; }
 .ks-show__card--acc { right: 56px; top: 292px; transition-delay: .65s; }
 .ks-show__label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.ks-show__big { font-family: var(--font-serif); font-size: 46px; line-height: 50px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
-.ks-show__big small { font-size: 22px; font-weight: 700; }
+/* без tabular-nums: у Montserrat в моноширинных цифрах «1» с подставкой */
+.ks-show__big { font-family: var(--font-display); font-size: 46px; line-height: 50px; font-weight: var(--display-w); color: var(--ink); }
+.ks-show__big small { font-size: 22px; font-weight: inherit; }
 :root[data-theme='dark'] .ks-scope .ks-show__big {
   background: url('./img/title-stone.webp') center / 300px auto; -webkit-background-clip: text; background-clip: text; color: transparent;
 }
-.ks-show__mid { font-family: var(--font-sans); font-size: 20px; line-height: 26px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.ks-show__mid { font-family: var(--font-display); font-size: 21px; line-height: 26px; font-weight: 400; color: var(--ink); }
 .ks-show__row { font-family: var(--font-mono); font-size: 10.5px; line-height: 15px; color: var(--ink-3); white-space: nowrap; }
 .ks-show__cap {
   position: absolute; left: 0; right: 0; bottom: 4px; margin: 0; display: flex; align-items: center; justify-content: center; gap: 8px;
