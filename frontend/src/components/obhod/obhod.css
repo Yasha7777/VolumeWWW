@@ -846,3 +846,4 @@
 .ks-cloud__seg button.is-on { background: var(--accent); color: #fff; }
 .ks-cloud__vol { display: flex; flex-direction: column; gap: 1px; font-family: var(--font-mono); font-size: 10px; line-height: 14px; color: var(--muted); }
 .ks-cloud__vol b { font-size: 15px; line-height: 20px; font-weight: 600; color: var(--map-ink, inherit); }
+.ks-cloud__vol .is-warn { color: #b0662a; }

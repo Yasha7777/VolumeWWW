@@ -30,21 +30,32 @@ async function loadKSPC(url) {
 
 function normalizeArkit({ points, cameras }) {
   const n = points.length
-  const xs = points.map((p) => p[0]).sort((a, b) => a - b)
-  const zs = points.map((p) => p[2]).sort((a, b) => a - b)
-  const cx = xs[n >> 1], cz = zs[n >> 1]
-  const r = points.map((p) => Math.hypot(p[0] - cx, p[2] - cz)).sort((a, b) => a - b)[Math.floor(n * 0.95)] || 1
-  // поверхность + плоскость земли (метры); высоты точек считаем от этой плоскости
-  const surf = buildSurface(points)
+  // поверхность, земля и область кучи (метры); см. surface.js
+  const surf = buildSurface(points, cameras || [])
+  let cx, cz, r
+  if (surf) {
+    // центр и масштаб — по петле обхода, а не по всем точкам: фон (деревья,
+    // стены) далеко за петлёй иначе раздувает масштаб и куча становится крошкой
+    ;[cx, cz] = surf.center; r = surf.R || 1
+  } else {
+    const xs = points.map((p) => p[0]).sort((a, b) => a - b)
+    const zs = points.map((p) => p[2]).sort((a, b) => a - b)
+    cx = xs[n >> 1]; cz = zs[n >> 1]
+    r = points.map((p) => Math.hypot(p[0] - cx, p[2] - cz)).sort((a, b) => a - b)[Math.floor(n * 0.95)] || 1
+  }
   const pl = surf?.plane || { a: 0, b: 0, c: points.map((p) => p[1]).sort((a, b) => a - b)[Math.floor(n * 0.04)] }
   const ground = (x, z) => pl.a * x + pl.b * z + pl.c
   const positions = new Float32Array(n * 3)
   const colors = new Uint8Array(n * 3)
+  const roi = new Float32Array(n).fill(1)
   points.forEach((p, i) => {
     positions[i * 3] = (p[0] - cx) / r; positions[i * 3 + 1] = (p[1] - ground(p[0], p[2])) / r; positions[i * 3 + 2] = (p[2] - cz) / r
+    if (surf) roi[i] = surf.inRoi[i]
   })
+  // высота для цвета/анимации — по куче, а не по самой высокой точке фона
   let top = 0
-  for (let i = 1; i < n * 3; i += 3) top = Math.max(top, positions[i])
+  if (surf?.top) top = surf.top / r
+  else for (let i = 1; i < n * 3; i += 3) top = Math.max(top, positions[i])
   // цвет по высоте: ARKit не даёт цвет точек — раскрашиваем от земли к вершине
   for (let i = 0; i < n; i++) {
     const h = Math.min(1, Math.max(0, positions[i * 3 + 1] / (top || 1)))
@@ -54,10 +65,12 @@ function normalizeArkit({ points, cameras }) {
   // сетка поверхности в тех же нормированных координатах, что и точки
   const surface = surf && surf.top > 0 ? {
     nx: surf.nx, nz: surf.nz, step: surf.cell / r, x0: (surf.x0 - cx) / r, z0: (surf.z0 - cz) / r,
-    h: surf.h.map((v) => v / r), mask: surf.mask,
-    volume: surf.volume, area: surf.area, top: surf.top,
+    h: surf.h.map((v) => v / r), mask: surf.mask, scale: r,
+    hull: surf.hull.map(([x, z]) => [(x - cx) / r, (z - cz) / r]),
+    volume: surf.volume, range: surf.volumeRange, area: surf.area, top: surf.top, size: surf.size,
+    closed: surf.closed, groundSource: surf.plane.source, hold: surf.plane.hold, foot: surf.foot,
   } : null
-  return { positions, colors, height: top || 0.4, count: n, cameras: cams, surface }
+  return { positions, colors, roi, height: top || 0.4, count: n, cameras: cams, surface }
 }
 
 /* Сетка высот → треугольники. Клетки вне маски (там нет данных) не рисуем,
@@ -90,10 +103,38 @@ function surfaceMesh(THREE, S, dark) {
   return g
 }
 
+/* Земля внутри петли обхода: ровный многоугольник под сеткой, чтобы край
+   был гладким, а не лесенкой из клеток. */
+function groundPatch(THREE, S, dark) {
+  const n = S.hull.length
+  const mx = S.hull.reduce((s, p) => s + p[0], 0) / n, mz = S.hull.reduce((s, p) => s + p[1], 0) / n
+  const pad = S.step * 2
+  const shape = new THREE.Shape(S.hull.map(([x, z]) => {
+    const d = Math.hypot(x - mx, z - mz) || 1
+    return new THREE.Vector2(x + ((x - mx) / d) * pad, -(z + ((z - mz) / d) * pad))
+  }))
+  const m = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshStandardMaterial({ color: dark ? '#5d6b52' : '#a9b394', roughness: 1 }))
+  m.rotation.x = -Math.PI / 2; m.position.y = -0.002
+  return m
+}
+
+/* Человек 1,75 м у начала обхода — сразу видно масштаб кучи. */
+function personFigure(THREE, scale, at, dark) {
+  const s = 1 / scale, grp = new THREE.Group()
+  const mat = new THREE.MeshStandardMaterial({ color: dark ? '#3c4a40' : '#4b5a4f', roughness: 0.8 })
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2 * s, 0.2 * s, 1.5 * s, 20), mat)
+  body.position.y = 0.75 * s
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13 * s, 20, 14), mat)
+  head.position.y = 1.62 * s
+  grp.add(body, head)
+  grp.position.set(at[0], 0, at[2])
+  return grp
+}
+
 const VERT = /* glsl */`
-  attribute vec3 aColor;
+  attribute vec3 aColor; attribute float aRoi;
   uniform float uSize, uProgress, uHeight, uPixelRatio, uSweep;
-  varying vec3 vColor; varying float vBand; varying float vShow; varying float vH;
+  varying vec3 vColor; varying float vBand; varying float vShow; varying float vH; varying float vRoi;
   void main() {
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mv;
@@ -103,15 +144,15 @@ const VERT = /* glsl */`
     vBand = smoothstep(0.07, 0.0, abs(h - cut)) * (1.0 - step(1.0, uProgress));
     // витрина: после появления по куче снизу вверх бежит полоса сканирования
     if (uSweep >= 0.0) vBand = max(vBand, smoothstep(0.045, 0.0, abs(h - uSweep)) * 0.85);
-    vColor = aColor; vH = h;
+    vColor = aColor; vH = h; vRoi = aRoi;
     gl_PointSize = uSize * uPixelRatio / -mv.z;
   }`
 const FRAG = /* glsl */`
-  uniform vec3 uAccent, uTint; uniform float uIso, uGain, uTintAmt, uMinH;
-  varying vec3 vColor; varying float vBand; varying float vShow; varying float vH;
+  uniform vec3 uAccent, uTint; uniform float uIso, uGain, uTintAmt, uMinH, uRoiOnly;
+  varying vec3 vColor; varying float vBand; varying float vShow; varying float vH; varying float vRoi;
   void main() {
     vec2 c = gl_PointCoord - 0.5; float r = dot(c, c);
-    if (r > 0.25 || vShow < 0.5 || vH < uMinH) discard;
+    if (r > 0.25 || vShow < 0.5 || vH < uMinH || (uRoiOnly > 0.5 && vRoi < 0.5)) discard;
     vec3 col = mix(vColor * uGain, uTint, uTintAmt);
     // горизонтали, как на топоплане: тонкие линии через равные высоты
     float f = fract(vH * 9.0); float iso = 1.0 - smoothstep(0.0, 0.05, min(f, 1.0 - f));
@@ -121,6 +162,8 @@ const FRAG = /* glsl */`
   }`
 
 const fmtM = (v, d = 1) => v.toLocaleString('ru-RU', { minimumFractionDigits: d, maximumFractionDigits: d })
+// объём: крупный — целыми (± десятки м³ всё равно не различить), мелкий — с долями
+const fmtVol = (v) => fmtM(v, v >= 100 ? 0 : v >= 10 ? 1 : 2)
 
 export default function ObhodCloud({ src, data, theme = 'light', onReady, variant = 'map', paused = false }) {
   const hero = variant === 'hero'
@@ -164,13 +207,14 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
       const geo = new THREE.BufferGeometry()
       geo.setAttribute('position', new THREE.BufferAttribute(cloud.positions, 3))
       geo.setAttribute('aColor', new THREE.BufferAttribute(cloud.colors, 3, true))
+      geo.setAttribute('aRoi', new THREE.BufferAttribute(cloud.roi || new Float32Array(cloud.count).fill(1), 1))
       const sparse = cloud.count < 20000
       const mat = new THREE.ShaderMaterial({
         vertexShader: VERT, fragmentShader: FRAG,
         uniforms: {
           uSize: { value: sparse ? 24 : hero ? 10.5 : 12.5 }, uProgress: { value: reduce ? 1.2 : 0 },
           uHeight: { value: cloud.height || 0.4 }, uPixelRatio: { value: dpr }, uAccent: { value: accent },
-          uSweep: { value: -1 }, uTint: { value: new THREE.Color(dark ? '#e8c25a' : '#d6a536') }, uTintAmt: { value: 0 }, uMinH: { value: -1e3 }, uIso: { value: hero ? (dark ? .55 : .4) : 0 }, uGain: { value: hero && dark ? 1.18 : 1 },
+          uSweep: { value: -1 }, uTint: { value: new THREE.Color(dark ? '#e8c25a' : '#d6a536') }, uTintAmt: { value: 0 }, uMinH: { value: -1e3 }, uRoiOnly: { value: 0 }, uIso: { value: hero ? (dark ? .55 : .4) : 0 }, uGain: { value: hero && dark ? 1.18 : 1 },
         },
       })
       const pts = new THREE.Points(geo, mat)
@@ -178,27 +222,40 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
       cleanup.push(() => { geo.dispose(); mat.dispose() })
 
       // поверхность по точкам VIO (только для ARKit: у плотного облака своя форма)
-      let mesh = null
+      let mesh = null, person = null, patch = null
       if (cloud.surface && !hero) {
         const sg = surfaceMesh(THREE, cloud.surface, dark)
         mesh = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0, side: THREE.DoubleSide }))
         mesh.scale.y = reduce ? 1 : 0.001
         scene.add(mesh)
+        patch = groundPatch(THREE, cloud.surface, dark)
+        scene.add(patch)
+        cleanup.push(() => { patch.geometry.dispose(); patch.material.dispose() })
         const hemi = new THREE.HemisphereLight(dark ? '#cfd8e6' : '#fffaf0', dark ? '#141810' : '#55503f', dark ? 0.7 : 0.9)
         const sun = new THREE.DirectionalLight('#fff1d6', dark ? 2.4 : 2.6); sun.position.set(1.6, 2.2, 2.4)
         scene.add(hemi, sun)
         cleanup.push(() => { sg.dispose(); mesh.material.dispose() })
-        setSurf({ volume: cloud.surface.volume, area: cloud.surface.area, top: cloud.surface.top })
+        // человек — только рядом с крупным объектом: у стола он заслонит всё
+        if (cloud.cameras?.length && cloud.surface.scale >= 2) {
+          person = personFigure(THREE, cloud.surface.scale, cloud.cameras[0], dark)
+          scene.add(person)
+          cleanup.push(() => person.traverse((o) => { o.geometry?.dispose(); o.material?.dispose() }))
+        }
+        const S = cloud.surface
+        setSurf({ volume: S.volume, range: S.range, area: S.area, top: S.top, size: S.size, closed: S.closed, groundSource: S.groundSource, foot: S.foot })
       }
       // точки поверх поверхности — мельче и золотом, как на скриншоте анализа
       const baseSize = mat.uniforms.uSize.value
       applyViewRef.current = () => {
         const on = !!mesh && viewRef.current === 'surface'
         if (mesh) mesh.visible = on
+        if (person) person.visible = on
+        if (patch) patch.visible = on
         mat.uniforms.uSize.value = on ? baseSize * 0.32 : baseSize
         // на поверхности: точки земли прячем, остальные — мелкое золото
         mat.uniforms.uTintAmt.value = on ? 1 : 0
         mat.uniforms.uMinH.value = on ? 0.06 : -1e3
+        mat.uniforms.uRoiOnly.value = on ? 1 : 0   // фон за петлёй обхода — только в режиме «Точки»
         mat.uniforms.uSweep.value = -1
         if (!raf && !disposed) kickRef.current?.()
       }
@@ -237,7 +294,8 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
       const H = cloud.height || 0.4
       const target = new THREE.Vector3(0, H * (hero ? 0.12 : 0.32), 0)
       let theta = 0.6, phi = hero ? 0.5 : 0.42, vel = 0, lastInput = -1e9, dragging = false, px = 0, py = 0
-      const radius = cloud.cameras ? 4.9 : hero ? 4.5 : 4.3
+      // объект выше петли обхода (стол, обход вплотную) — отходим дальше
+      const radius = (cloud.cameras ? 4.9 : hero ? 4.5 : 4.3) * Math.max(1, (H + 0.3) / 0.75)
       let zoom = mesh && viewRef.current === 'surface' ? 0.72 : 1
       // витрина: наклон к курсору (как будто куча поворачивается к взгляду)
       const tilt = { x: 0, y: 0, tx: 0, ty: 0 }
@@ -338,9 +396,13 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
             <button type="button" className={view === 'points' ? 'is-on' : ''} aria-pressed={view === 'points'} onClick={() => setView('points')}>Точки</button>
           </div>
           {view === 'surface' && (
-            <div className="ks-cloud__vol" title="Предварительно: по разреженным точкам ARKit, без реконструкции">
-              <b>≈ {fmtM(surf.volume)} м³</b>
-              <span>{fmtM(surf.area)} м² · высота {fmtM(surf.top, 2)} м</span>
+            <div className="ks-cloud__vol" title="Предварительно: по разреженным точкам ARKit, без реконструкции. Диапазон — от неточности уровня земли.">
+              <b>≈ {fmtVol(surf.volume)} м³</b>
+              <span>диапазон {fmtVol(surf.range[0])}–{fmtVol(surf.range[1])} м³</span>
+              {surf.foot && <span className="is-warn">у подошвы слой {fmtM(surf.foot.lift * 100, 0)} см: если это земля — ≈ {fmtVol(surf.foot.volume)} м³</span>}
+              <span>высота {fmtM(surf.top, 1)} м · подошва ≈{fmtM(surf.size[0], 0)}×{fmtM(surf.size[1], 0)} м</span>
+              {!surf.closed && <span className="is-warn">обход не замкнут — объём ненадёжен</span>}
+              {surf.closed && surf.groundSource !== 'path' && <span className="is-warn">земля найдена по точкам, не по траектории</span>}
               <span>по точкам VIO, предварительно</span>
             </div>
           )}
