@@ -62,23 +62,6 @@ export function makePeriods(now = new Date()) {
   ]
 }
 
-// периоды пересчитываются, когда сменились сутки (вкладку могли оставить
-// открытой на ночь): проверка при возврате во вкладку и раз в минуту
-export function usePeriods() {
-  const [periods, setPeriods] = useState(() => makePeriods())
-  useEffect(() => {
-    const check = () => {
-      const fresh = makePeriods()
-      setPeriods((old) => (old[0].label === fresh[0].label && old[1].label === fresh[1].label ? old : fresh))
-    }
-    const t = setInterval(check, 60e3)
-    const vis = () => { if (document.visibilityState === 'visible') check() }
-    document.addEventListener('visibilitychange', vis); window.addEventListener('focus', check)
-    return () => { clearInterval(t); document.removeEventListener('visibilitychange', vis); window.removeEventListener('focus', check) }
-  }, [])
-  return periods
-}
-
 export function useScans(period, demo) {
   const [state, setState] = useState({ items: demo ? DEMO_OBHODS : [], loading: !demo, error: null })
   const load = useCallback(async () => {

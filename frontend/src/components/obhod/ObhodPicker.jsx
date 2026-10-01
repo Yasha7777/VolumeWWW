@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { Camera, Route, Box, ChevronDown, CalendarDays, ArrowRight, X, Check, Map as MapIcon, ListPlus, Loader2 } from 'lucide-react'
 import ObhodMap from './ObhodMap'
 import ObhodCard from './ObhodCard'
+import PeriodPicker from './PeriodPicker'
 import CubeSettings from '../CubeSettings'
 import { plural } from './scans'
 import { zoomOf } from './fit'
@@ -145,7 +146,7 @@ export default function ObhodPicker({
   const sub = loading ? 'Загружаем обходы…'
     : error ? 'Не удалось загрузить обходы'
     : items.length ? `${items.length} ${plural(items.length, 'обход', 'обхода', 'обходов')} · последний ${last.dateShort || last.date}`
-    : 'Пока нет обходов за период'
+    : (period ? 'Нет обходов за выбранный период' : 'Пока нет обходов')
   const nThumbs = Math.max(1, Math.min(6, items.length))
 
   return (
@@ -250,12 +251,7 @@ export default function ObhodPicker({
                 <div className="ks-panel__list">
                   <div className="ks-panel__head">
                     <h2 className="ks-panel__title">Выберите обход</h2>
-                    <button className="ks-period" type="button" onClick={onPeriod} title="Сменить период" disabled={locked}>
-                      <CalendarDays size={16} strokeWidth={1.6} />
-                      <span className="ks-period__label">Период</span>
-                      <span className="ks-period__value">{period?.label}</span>
-                      <ChevronDown size={15} strokeWidth={1.8} className="ks-period__chev" />
-                    </button>
+                    <PeriodPicker value={period} onChange={onPeriod} disabled={locked} />
                   </div>
                   <div className="ks-grid" role="radiogroup" aria-label="Обходы">
                     {loading && [0, 1, 2, 3].map((i) => <div key={i} className="ks-skel" />)}

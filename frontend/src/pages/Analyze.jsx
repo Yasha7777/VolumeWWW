@@ -17,7 +17,8 @@ import { ObhodHero, ObhodStepper } from '../components/obhod/ObhodHero'
 import ObhodPicker from '../components/obhod/ObhodPicker'
 import ObhodShowcase from '../components/obhod/ObhodShowcase'
 import { useFitZoom } from '../components/obhod/fit'
-import { useScans, useTrack, useCloud, usePeriods } from '../components/obhod/scans'
+import { useScans, useTrack, useCloud } from '../components/obhod/scans'
+import { periodQuery } from '../components/obhod/PeriodPicker'
 import '../components/obhod/obhod.css'
 import CubeSettings, { CUBE_DEFAULT } from '../components/CubeSettings'  // ← настраиваемый калибровочный куб
 import { prepareImage } from '../prepareImage'  // ← оригинал на сервер + превью для UI
@@ -91,9 +92,9 @@ export default function Analyze() {
   ), [])
   const [source, setSource]       = useState('scans')
   const [scanSel, setScanSel]     = useState([])
-  const periods                   = usePeriods()
-  const [periodIdx, setPeriodIdx] = useState(0)
-  const scans = useScans(periods[periodIdx], demo)
+  const [period, setPeriod]       = useState(null)   // null — за всё время
+  const periodQ                   = useMemo(() => periodQuery(period), [period])
+  const scans = useScans(periodQ, demo)
   const pickedScans = useMemo(
     () => scans.items.filter(o => scanSel.includes(o.id)),
     [scans.items, scanSel],
@@ -741,8 +742,8 @@ export default function Analyze() {
               cloud={cloud}
               theme={isDark ? 'dark' : 'light'}
               zoomed={ksZoom !== 1}
-              period={periods[periodIdx]}
-              onPeriod={() => setPeriodIdx(i => (i + 1) % periods.length)}
+              period={period}
+              onPeriod={setPeriod}
             />
             {(status || resultCard) && (
               <div className="ks-result" ref={resultRef}>

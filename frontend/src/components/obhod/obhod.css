@@ -801,3 +801,40 @@
 }
 @container ks (max-width: 720px) { .ks-show { display: none; } }
 @media (prefers-reduced-motion: reduce) { .ks-show__lines path { stroke-dashoffset: 0; animation: none; } .ks-show__lines circle { opacity: 1; animation: none; } .ks-show__dot { animation: none; } }
+
+/* ── период: кнопка и календарь (PeriodPicker.jsx) ─────────────────────── */
+.ks-period-wrap { position: relative; }
+.ks-period.is-open { border-color: color-mix(in srgb, var(--accent) 55%, var(--line-2)); }
+.ks-period.is-open .ks-period__chev { transform: rotate(180deg); }
+.ks-period__chev { transition: transform .25s var(--ks-ease); }
+.ks-cal {
+  position: absolute; right: 5px; top: calc(100% + 6px); z-index: 30; width: 298px; padding: 12px;
+  border-radius: 12px; background: var(--field-bg); border: 1px solid var(--line-2);
+  box-shadow: 0 18px 40px -18px rgba(40, 32, 18, .45), 0 2px 6px rgba(40, 32, 18, .08);
+  animation: ks-cal-in .18s var(--ks-ease);
+}
+@keyframes ks-cal-in { from { opacity: 0; transform: translateY(-4px); } }
+.ks-cal__presets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--line-2); }
+.ks-cal__preset { border: 1px solid var(--line-2); background: none; border-radius: 7px; padding: 5px 9px; font-size: 12px; color: var(--ink-2); cursor: pointer; }
+.ks-cal__preset:hover { border-color: var(--ink-3); }
+.ks-cal__preset.is-on { background: #46513c; border-color: transparent; color: #f2f5ee; }
+.ks-cal__nav { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 6px; }
+.ks-cal__month { font-size: 13.5px; font-weight: 500; color: var(--ink); }
+.ks-cal__arrow { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 7px; background: none; color: var(--ink-3); cursor: pointer; }
+.ks-cal__arrow:hover:not(:disabled) { background: var(--line-2); color: var(--ink); }
+.ks-cal__arrow:disabled { opacity: .3; cursor: default; }
+.ks-cal__grid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 2px; }
+.ks-cal__wd { padding: 4px 0; text-align: center; font-family: var(--font-mono); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.ks-cal__day {
+  height: 32px; border: 0; background: none; font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2);
+  cursor: pointer; border-radius: 0; font-variant-numeric: tabular-nums;
+}
+.ks-cal__day:hover:not(:disabled) { background: var(--line-2); border-radius: 7px; }
+.ks-cal__day:disabled { color: var(--muted-2); opacity: .45; cursor: default; }
+.ks-cal__day.is-today { box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--accent) 70%, transparent); }
+.ks-cal__day.is-in { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--ink); }
+.ks-cal__day.is-edge, .ks-cal__day.is-edge:hover:not(:disabled) { background: #46513c; color: #f2f5ee; border-radius: 7px; }
+.ks-cal__hint { margin-top: 8px; font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); }
+:root[data-theme='dark'] .ks-scope .ks-cal { background: #141716; box-shadow: 0 18px 40px -16px rgba(0,0,0,.9); }
+:root[data-theme='dark'] .ks-scope .ks-cal__day.is-edge, :root[data-theme='dark'] .ks-scope .ks-cal__day.is-edge:hover, :root[data-theme='dark'] .ks-scope .ks-cal__preset.is-on { background: #8fd46a; color: #101210; }
+@container ks (max-width: 720px) { .ks-period-wrap { width: 100%; } .ks-cal { left: 0; right: auto; width: min(298px, 100%); } }
