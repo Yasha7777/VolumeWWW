@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useReducedMotion } from 'motion/react'
+import { buildSurface } from './surface'
 
 /* 3D-вид обхода: облако точек кучи, крутится само, тянется мышью/пальцем.
 
@@ -31,13 +32,16 @@ function normalizeArkit({ points, cameras }) {
   const n = points.length
   const xs = points.map((p) => p[0]).sort((a, b) => a - b)
   const zs = points.map((p) => p[2]).sort((a, b) => a - b)
-  const ys = points.map((p) => p[1]).sort((a, b) => a - b)
-  const cx = xs[n >> 1], cz = zs[n >> 1], y0 = ys[Math.floor(n * 0.04)]
+  const cx = xs[n >> 1], cz = zs[n >> 1]
   const r = points.map((p) => Math.hypot(p[0] - cx, p[2] - cz)).sort((a, b) => a - b)[Math.floor(n * 0.95)] || 1
+  // поверхность + плоскость земли (метры); высоты точек считаем от этой плоскости
+  const surf = buildSurface(points)
+  const pl = surf?.plane || { a: 0, b: 0, c: points.map((p) => p[1]).sort((a, b) => a - b)[Math.floor(n * 0.04)] }
+  const ground = (x, z) => pl.a * x + pl.b * z + pl.c
   const positions = new Float32Array(n * 3)
   const colors = new Uint8Array(n * 3)
   points.forEach((p, i) => {
-    positions[i * 3] = (p[0] - cx) / r; positions[i * 3 + 1] = (p[1] - y0) / r; positions[i * 3 + 2] = (p[2] - cz) / r
+    positions[i * 3] = (p[0] - cx) / r; positions[i * 3 + 1] = (p[1] - ground(p[0], p[2])) / r; positions[i * 3 + 2] = (p[2] - cz) / r
   })
   let top = 0
   for (let i = 1; i < n * 3; i += 3) top = Math.max(top, positions[i])
@@ -46,8 +50,44 @@ function normalizeArkit({ points, cameras }) {
     const h = Math.min(1, Math.max(0, positions[i * 3 + 1] / (top || 1)))
     colors[i * 3] = 120 + h * 90; colors[i * 3 + 1] = 150 + h * 80; colors[i * 3 + 2] = 110 + h * 40
   }
-  const cams = cameras?.length ? cameras.map((c) => [(c[0] - cx) / r, (c[1] - y0) / r, (c[2] - cz) / r]) : null
-  return { positions, colors, height: top || 0.4, count: n, cameras: cams }
+  const cams = cameras?.length ? cameras.map((c) => [(c[0] - cx) / r, (c[1] - ground(c[0], c[2])) / r, (c[2] - cz) / r]) : null
+  // сетка поверхности в тех же нормированных координатах, что и точки
+  const surface = surf && surf.top > 0 ? {
+    nx: surf.nx, nz: surf.nz, step: surf.cell / r, x0: (surf.x0 - cx) / r, z0: (surf.z0 - cz) / r,
+    h: surf.h.map((v) => v / r), mask: surf.mask,
+    volume: surf.volume, area: surf.area, top: surf.top,
+  } : null
+  return { positions, colors, height: top || 0.4, count: n, cameras: cams, surface }
+}
+
+/* Сетка высот → треугольники. Клетки вне маски (там нет данных) не рисуем,
+   поэтому край поверхности повторяет форму обхода, а не квадрат. */
+function surfaceMesh(THREE, S, dark) {
+  const { nx, nz, step, x0, z0, h, mask } = S
+  const pos = new Float32Array(nx * nz * 3), col = new Float32Array(nx * nz * 3)
+  let top = 0
+  for (const v of h) if (v > top) top = v
+  const low = new THREE.Color(dark ? '#5d6b52' : '#a9b394'), mid = new THREE.Color(dark ? '#b9a98a' : '#cdbf9f'), hi = new THREE.Color(dark ? '#f1e6cc' : '#f5ecd6')
+  const c = new THREE.Color()
+  for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < nx; ix++) {
+    const k = iz * nx + ix, y = h[k]
+    pos[k * 3] = x0 + ix * step; pos[k * 3 + 1] = y; pos[k * 3 + 2] = z0 + iz * step
+    const t = top ? y / top : 0
+    if (y <= 0) c.copy(low); else if (t < 0.35) c.copy(low).lerp(mid, t / 0.35); else c.copy(mid).lerp(hi, (t - 0.35) / 0.65)
+    col[k * 3] = c.r; col[k * 3 + 1] = c.g; col[k * 3 + 2] = c.b
+  }
+  const idx = []
+  for (let iz = 0; iz < nz - 1; iz++) for (let ix = 0; ix < nx - 1; ix++) {
+    const a = iz * nx + ix, b = a + 1, d = a + nx, e = d + 1
+    if (!(mask[a] && mask[b] && mask[d] && mask[e])) continue
+    idx.push(a, d, b, b, d, e)
+  }
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3))
+  g.setIndex(idx)
+  g.computeVertexNormals()
+  return g
 }
 
 const VERT = /* glsl */`
@@ -67,18 +107,20 @@ const VERT = /* glsl */`
     gl_PointSize = uSize * uPixelRatio / -mv.z;
   }`
 const FRAG = /* glsl */`
-  uniform vec3 uAccent; uniform float uIso, uGain;
+  uniform vec3 uAccent, uTint; uniform float uIso, uGain, uTintAmt, uMinH;
   varying vec3 vColor; varying float vBand; varying float vShow; varying float vH;
   void main() {
     vec2 c = gl_PointCoord - 0.5; float r = dot(c, c);
-    if (r > 0.25 || vShow < 0.5) discard;
-    vec3 col = vColor * uGain;
+    if (r > 0.25 || vShow < 0.5 || vH < uMinH) discard;
+    vec3 col = mix(vColor * uGain, uTint, uTintAmt);
     // горизонтали, как на топоплане: тонкие линии через равные высоты
     float f = fract(vH * 9.0); float iso = 1.0 - smoothstep(0.0, 0.05, min(f, 1.0 - f));
     col = mix(col, uAccent, iso * uIso * step(0.04, vH));
     col = mix(col, uAccent, vBand * 0.9);
     gl_FragColor = vec4(col * (1.0 - r * 0.9), 1.0);
   }`
+
+const fmtM = (v, d = 1) => v.toLocaleString('ru-RU', { minimumFractionDigits: d, maximumFractionDigits: d })
 
 export default function ObhodCloud({ src, data, theme = 'light', onReady, variant = 'map', paused = false }) {
   const hero = variant === 'hero'
@@ -88,6 +130,11 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
   const host = useRef(null)
   const [status, setStatus] = useState('loading')
   const [touched, setTouched] = useState(false)
+  const [surf, setSurf] = useState(null)        // { volume, area, top } — есть поверхность
+  const [view, setView] = useState('surface')   // 'surface' | 'points'
+  const viewRef = useRef(view)
+  const applyViewRef = useRef(null)
+  useEffect(() => { viewRef.current = view; applyViewRef.current?.() }, [view])
   const reduce = useReducedMotion()
 
   useEffect(() => {
@@ -95,7 +142,7 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
     if (!el || (!src && !data)) return
     let disposed = false, raf = 0
     const cleanup = []
-    setStatus('loading')
+    setStatus('loading'); setSurf(null)
 
     ;(async () => {
       const THREE = await import('three')
@@ -123,12 +170,40 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
         uniforms: {
           uSize: { value: sparse ? 24 : hero ? 10.5 : 12.5 }, uProgress: { value: reduce ? 1.2 : 0 },
           uHeight: { value: cloud.height || 0.4 }, uPixelRatio: { value: dpr }, uAccent: { value: accent },
-          uSweep: { value: -1 }, uIso: { value: hero ? (dark ? .55 : .4) : 0 }, uGain: { value: hero && dark ? 1.18 : 1 },
+          uSweep: { value: -1 }, uTint: { value: new THREE.Color(dark ? '#e8c25a' : '#d6a536') }, uTintAmt: { value: 0 }, uMinH: { value: -1e3 }, uIso: { value: hero ? (dark ? .55 : .4) : 0 }, uGain: { value: hero && dark ? 1.18 : 1 },
         },
       })
       const pts = new THREE.Points(geo, mat)
       scene.add(pts)
       cleanup.push(() => { geo.dispose(); mat.dispose() })
+
+      // поверхность по точкам VIO (только для ARKit: у плотного облака своя форма)
+      let mesh = null
+      if (cloud.surface && !hero) {
+        const sg = surfaceMesh(THREE, cloud.surface, dark)
+        mesh = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0, side: THREE.DoubleSide }))
+        mesh.scale.y = reduce ? 1 : 0.001
+        scene.add(mesh)
+        const hemi = new THREE.HemisphereLight(dark ? '#cfd8e6' : '#fffaf0', dark ? '#141810' : '#55503f', dark ? 0.7 : 0.9)
+        const sun = new THREE.DirectionalLight('#fff1d6', dark ? 2.4 : 2.6); sun.position.set(1.6, 2.2, 2.4)
+        scene.add(hemi, sun)
+        cleanup.push(() => { sg.dispose(); mesh.material.dispose() })
+        setSurf({ volume: cloud.surface.volume, area: cloud.surface.area, top: cloud.surface.top })
+      }
+      // точки поверх поверхности — мельче и золотом, как на скриншоте анализа
+      const baseSize = mat.uniforms.uSize.value
+      applyViewRef.current = () => {
+        const on = !!mesh && viewRef.current === 'surface'
+        if (mesh) mesh.visible = on
+        mat.uniforms.uSize.value = on ? baseSize * 0.32 : baseSize
+        // на поверхности: точки земли прячем, остальные — мелкое золото
+        mat.uniforms.uTintAmt.value = on ? 1 : 0
+        mat.uniforms.uMinH.value = on ? 0.06 : -1e3
+        mat.uniforms.uSweep.value = -1
+        if (!raf && !disposed) kickRef.current?.()
+      }
+      applyViewRef.current()
+      cleanup.push(() => { applyViewRef.current = null })
 
       // земля: кольца-засечки как у геодезической разметки + мягкая тень
       const lineCol = new THREE.Color(dark ? '#3a3d38' : '#cfc8b8')
@@ -163,11 +238,15 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
       const target = new THREE.Vector3(0, H * (hero ? 0.12 : 0.32), 0)
       let theta = 0.6, phi = hero ? 0.5 : 0.42, vel = 0, lastInput = -1e9, dragging = false, px = 0, py = 0
       const radius = cloud.cameras ? 4.9 : hero ? 4.5 : 4.3
+      let zoom = mesh && viewRef.current === 'surface' ? 0.72 : 1
       // витрина: наклон к курсору (как будто куча поворачивается к взгляду)
       const tilt = { x: 0, y: 0, tx: 0, ty: 0 }
       const place = () => {
         const th = theta + tilt.x * 0.45, ph = Math.min(1.2, Math.max(0.1, phi + tilt.y * 0.12))
-        camera.position.set(target.x + radius * Math.cos(ph) * Math.sin(th), target.y + radius * Math.sin(ph), target.z + radius * Math.cos(ph) * Math.cos(th))
+        // на поверхности подходим ближе: куча, а не весь обход, в центре кадра
+        zoom += ((mesh && viewRef.current === 'surface' ? 0.72 : 1) - zoom) * 0.12
+        const R = radius * zoom
+        camera.position.set(target.x + R * Math.cos(ph) * Math.sin(th), target.y + R * Math.sin(ph), target.z + R * Math.cos(ph) * Math.cos(th))
         camera.lookAt(target)
       }
       if (hero) {
@@ -216,6 +295,10 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
         if (disposed || !visible || document.hidden || pausedRef.current) return
         const dt = Math.min(0.05, (now - prev) / 1000); prev = now
         if (!reduce) mat.uniforms.uProgress.value = Math.min(1.2, (now - t0) / (hero ? 2400 : 1700))
+        if (mesh && !reduce && mesh.scale.y < 1) {
+          const t = Math.min(1, Math.max(0, ((now - t0) - 900) / 1100))
+          mesh.scale.y = Math.max(0.001, 1 - Math.pow(1 - t, 3))
+        }
         if (hero && !reduce) {
           const since = (now - t0) / 1000 - 2.6
           mat.uniforms.uSweep.value = since > 0 ? (since % 4.2) / 3.6 - 0.05 : -1
@@ -248,6 +331,21 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
       {status === 'loading' && !hero && <div className="ks-cloud__msg"><span className="ks-cloud__spin" />Загружаем облако точек…</div>}
       {status === 'error' && !hero && <div className="ks-cloud__msg">Облако не загрузилось. Попробуйте позже.</div>}
       {status === 'ready' && !hero && <div className={'ks-cloud__hint' + (touched ? ' is-gone' : '')}>↻ Потяните, чтобы повернуть</div>}
+      {status === 'ready' && surf && (
+        <div className="ks-cloud__surf">
+          <div className="ks-cloud__seg" role="group" aria-label="Вид модели">
+            <button type="button" className={view === 'surface' ? 'is-on' : ''} aria-pressed={view === 'surface'} onClick={() => setView('surface')}>Поверхность</button>
+            <button type="button" className={view === 'points' ? 'is-on' : ''} aria-pressed={view === 'points'} onClick={() => setView('points')}>Точки</button>
+          </div>
+          {view === 'surface' && (
+            <div className="ks-cloud__vol" title="Предварительно: по разреженным точкам ARKit, без реконструкции">
+              <b>≈ {fmtM(surf.volume)} м³</b>
+              <span>{fmtM(surf.area)} м² · высота {fmtM(surf.top, 2)} м</span>
+              <span>по точкам VIO, предварительно</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

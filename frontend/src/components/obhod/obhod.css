@@ -838,3 +838,11 @@
 :root[data-theme='dark'] .ks-scope .ks-cal { background: #141716; box-shadow: 0 18px 40px -16px rgba(0,0,0,.9); }
 :root[data-theme='dark'] .ks-scope .ks-cal__day.is-edge, :root[data-theme='dark'] .ks-scope .ks-cal__day.is-edge:hover, :root[data-theme='dark'] .ks-scope .ks-cal__preset.is-on { background: #8fd46a; color: #101210; }
 @container ks (max-width: 720px) { .ks-period-wrap { width: 100%; } .ks-cal { left: 0; right: auto; width: min(298px, 100%); } }
+
+/* 3D: переключатель «Поверхность / Точки» и предварительный объём по VIO */
+.ks-cloud__surf { position: absolute; left: 16px; bottom: 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; z-index: 2; }
+.ks-cloud__seg { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--map-chip-bg, rgba(255,255,255,.75)); box-shadow: 0 1px 3px rgba(40,34,20,.15); }
+.ks-cloud__seg button { border: 0; background: transparent; padding: 5px 10px; border-radius: 6px; font: inherit; font-size: 11px; line-height: 14px; color: var(--muted); cursor: pointer; }
+.ks-cloud__seg button.is-on { background: var(--accent); color: #fff; }
+.ks-cloud__vol { display: flex; flex-direction: column; gap: 1px; font-family: var(--font-mono); font-size: 10px; line-height: 14px; color: var(--muted); }
+.ks-cloud__vol b { font-size: 15px; line-height: 20px; font-weight: 600; color: var(--map-ink, inherit); }
