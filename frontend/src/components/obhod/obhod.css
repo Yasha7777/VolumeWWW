@@ -17,14 +17,15 @@
 .ks-scope *, .ks-scope *::before, .ks-scope *::after { box-sizing: border-box; }
 
 .ks-scope {
-  /* заголовок и крупные числа: буквы Jost, цифры Montserrat (fonts-obhod.css).
-     Вернуть прежний вид по макету: --font-display: 'KS Tinos' + вес 700 */
-  --font-display: 'KS Jost', 'KS Inter', system-ui, sans-serif;
+  /* шрифты (fonts-obhod.css): заголовок и интерфейс — IBM Plex Sans с цифрами
+     Golos Text, мелкие подписи — Golos Text. Прежние варианты: --font-display
+     'KS Jost' (300) или 'KS Tinos' (700); --font-sans 'KS Inter'; --font-mono 'KS Plex Mono' */
+  --font-display: 'KS Plex Sans', system-ui, sans-serif;
   --display-w: 300;
   --font-serif: 'KS Tinos', 'Times New Roman', serif;
   --font-serif-italic: 'KS Spectral', Georgia, serif;
-  --font-sans: 'KS Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'KS Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-sans: 'KS Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'KS Golos', system-ui, -apple-system, 'Segoe UI', sans-serif;
 
   --ease-out: cubic-bezier(.2, .8, .2, 1);
   --ease-inout: cubic-bezier(.65, 0, .35, 1);
@@ -331,6 +332,7 @@
   font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .03em; color: var(--ink-3); white-space: nowrap;
 }
 .ks-drip svg { flex: none; color: var(--accent); }
+.ks-drip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* прозрачность, сдвиг и ширину капель пишет liquid.js прямо в style */
 .ks-drip--l { left: 20px; opacity: 0; }
 .ks-drip--r { right: 20px; justify-content: flex-end; opacity: 0; }
@@ -777,7 +779,6 @@
 .ks-show__card--pts { right: 50px; top: 104px; transition-delay: .5s; }
 .ks-show__card--acc { right: 56px; top: 292px; transition-delay: .65s; }
 .ks-show__label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-/* без tabular-nums: у Montserrat в моноширинных цифрах «1» с подставкой */
 .ks-show__big { font-family: var(--font-display); font-size: 46px; line-height: 50px; font-weight: var(--display-w); color: var(--ink); }
 .ks-show__big small { font-size: 22px; font-weight: inherit; }
 :root[data-theme='dark'] .ks-scope .ks-show__big {

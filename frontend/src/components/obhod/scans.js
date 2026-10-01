@@ -51,14 +51,32 @@ export function normalizeScan(r) {
 
 // Периоды по кругу: текущий месяц → последние 30 дней → всё время
 export function makePeriods(now = new Date()) {
+  // «по сегодня»: правая граница — конец текущего дня, а не конец месяца
   const m0 = new Date(now.getFullYear(), now.getMonth(), 1)
-  const m1 = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
-  const d30 = new Date(now.getTime() - 30 * 864e5)
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+  const d30 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30)
   return [
-    { key: 'month', label: `${fmtDay(m0)} — ${fmtDay(m1)}`, from: m0.toISOString(), to: m1.toISOString() },
-    { key: '30d', label: `${fmtDay(d30)} — ${fmtDay(now)}`, from: d30.toISOString(), to: now.toISOString() },
+    { key: 'month', label: `${fmtDay(m0)} — ${fmtDay(now)}`, from: m0.toISOString(), to: end.toISOString() },
+    { key: '30d', label: `${fmtDay(d30)} — ${fmtDay(now)}`, from: d30.toISOString(), to: end.toISOString() },
     { key: 'all', label: 'За всё время', from: null, to: null },
   ]
+}
+
+// периоды пересчитываются, когда сменились сутки (вкладку могли оставить
+// открытой на ночь): проверка при возврате во вкладку и раз в минуту
+export function usePeriods() {
+  const [periods, setPeriods] = useState(() => makePeriods())
+  useEffect(() => {
+    const check = () => {
+      const fresh = makePeriods()
+      setPeriods((old) => (old[0].label === fresh[0].label && old[1].label === fresh[1].label ? old : fresh))
+    }
+    const t = setInterval(check, 60e3)
+    const vis = () => { if (document.visibilityState === 'visible') check() }
+    document.addEventListener('visibilitychange', vis); window.addEventListener('focus', check)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', vis); window.removeEventListener('focus', check) }
+  }, [])
+  return periods
 }
 
 export function useScans(period, demo) {

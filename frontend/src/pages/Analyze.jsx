@@ -17,7 +17,7 @@ import { ObhodHero, ObhodStepper } from '../components/obhod/ObhodHero'
 import ObhodPicker from '../components/obhod/ObhodPicker'
 import ObhodShowcase from '../components/obhod/ObhodShowcase'
 import { useFitZoom } from '../components/obhod/fit'
-import { useScans, useTrack, useCloud, makePeriods } from '../components/obhod/scans'
+import { useScans, useTrack, useCloud, usePeriods } from '../components/obhod/scans'
 import '../components/obhod/obhod.css'
 import CubeSettings, { CUBE_DEFAULT } from '../components/CubeSettings'  // ← настраиваемый калибровочный куб
 import { prepareImage } from '../prepareImage'  // ← оригинал на сервер + превью для UI
@@ -91,7 +91,7 @@ export default function Analyze() {
   ), [])
   const [source, setSource]       = useState('scans')
   const [scanSel, setScanSel]     = useState([])
-  const periods                   = useMemo(() => makePeriods(), [])
+  const periods                   = usePeriods()
   const [periodIdx, setPeriodIdx] = useState(0)
   const scans = useScans(periods[periodIdx], demo)
   const pickedScans = useMemo(
