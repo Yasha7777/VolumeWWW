@@ -242,10 +242,10 @@ export default function Register() {
         <div className="auth-or">или через</div>
         <div className="auth-ext">
           <button type="button" className="auth-ext__btn auth-ext__btn--ya" disabled={loading} onClick={yandex}>
-            <span className="auth-ext__dot" aria-hidden="true" />Яндекс
+            Яндекс
           </button>
           <button type="button" className="auth-ext__btn auth-ext__btn--vk" disabled={loading} onClick={vkLogin}>
-            <span className="auth-ext__dot" aria-hidden="true" />ВКонтакте
+            ВКонтакте
           </button>
         </div>
         <p className="auth-note">Согласие выше нужно и для этих способов.</p>

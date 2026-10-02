@@ -624,54 +624,30 @@ nav { display: flex; gap: var(--sp-1); justify-self: center; }
 .auth-alt:disabled { opacity: .55; cursor: not-allowed; }
 .auth-or { display: flex; align-items: center; gap: var(--sp-3); margin: var(--sp-4) 0 0; font-size: var(--fs-xs); color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
 .auth-or::before, .auth-or::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-/* Вход через внешние сервисы — ряд из двух кнопок-«пилюль».
-   Стилистика: плотная градиентная заливка с мягкими пятнами (два радиальных
-   слоя поверх линейного), блик сверху, мягкая тень, слева — кружок-маркер.
-   ЦВЕТА — В ТОН САЙТУ, а не фирменные: Яндекс — тёплая гамма от терракоты к
-   охре и золоту (--gold и соседи), ВКонтакте — приглушённый сине-стальной,
-   того же «землистого» характера, что лес и охра. Чистые #FC3F1D / #0077FF
-   на кремовой карточке кричали бы. Слои заданы константами, а не токенами
-   темы: кнопка одинакова в светлой и тёмной теме (как цветные плашки).
-   Фирменных знаков нет намеренно: самим их не рисуем, официальные файлы
-   кнопок — в брендбуках Яндекс ID и VK ID. */
-.auth-ext { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); margin-top: var(--sp-3-5); }
+/* Вход через внешние сервисы — две кнопки в ряд, ТОЙ ЖЕ формы, что главная
+   «Войти» (.btn-primary): тот же радиус, тот же лёгкий градиент под 165°,
+   тот же блик сверху и подъём при наведении. Отличие одно — цвет: фирменный
+   красный Яндекса и синий ВКонтакте вместо зелёного. Никаких «пилюль»,
+   пятен и маркеров (пробовали 2026-10-02 — выглядело чужеродно и шаблонно).
+   Чуть ниже главной кнопки, чтобы она оставалась основным действием.
+   Фирменных знаков нет: самим не рисуем, официальные файлы — в брендбуках. */
+.auth-ext { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2-5); margin-top: var(--sp-3); }
 .auth-ext__btn {
-  position: relative; isolation: isolate; overflow: hidden;
-  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2-5);
-  height: 50px; padding: 0 var(--sp-4); border-radius: 999px; border: none;
-  font-family: var(--sans); font-size: var(--fs-lg); font-weight: 600; letter-spacing: .005em;
-  cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 0 rgba(0,0,0,.12), 0 6px 16px -8px var(--ext-shadow);
-  transition: transform .2s var(--ease), box-shadow .2s var(--ease), filter .2s var(--ease);
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: var(--sp-3) var(--sp-3); border-radius: var(--r); border: none;
+  font-family: var(--sans); font-size: var(--fs-lg); font-weight: 500; color: #fff;
+  background: linear-gradient(165deg, var(--ext-hi), var(--ext));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 2px 8px var(--ext-glow);
+  cursor: pointer; transition: all 0.2s var(--ease);
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
-/* блик: светлая полоса в верхней половине, как на стекле */
-.auth-ext__btn::after {
-  content: ''; position: absolute; inset: 1px 1px 50% 1px; z-index: -1; border-radius: 999px 999px 40% 40%;
-  background: linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,0)); pointer-events: none;
-}
-.auth-ext__btn:hover:not(:disabled) { transform: translateY(-1px); filter: saturate(1.08) brightness(1.04); box-shadow: inset 0 1px 0 rgba(255,255,255,.32), inset 0 -1px 0 rgba(0,0,0,.12), 0 12px 22px -10px var(--ext-shadow); }
-.auth-ext__btn:active:not(:disabled) { transform: translateY(0) scale(.99); filter: brightness(.97); }
-.auth-ext__btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.auth-ext__btn:hover:not(:disabled) { background: linear-gradient(165deg, var(--ext), var(--ext-lo)); transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 8px 22px -6px var(--ext-glow-hover); }
+.auth-ext__btn:active:not(:disabled) { transform: translateY(0); box-shadow: inset 0 1px 3px rgba(0,0,0,.18); }
+.auth-ext__btn:focus-visible { outline: 2px solid var(--ext); outline-offset: 3px; }
 .auth-ext__btn:disabled { opacity: .6; cursor: not-allowed; }
-.auth-ext__dot { width: 15px; height: 15px; border-radius: 50%; flex: none; background: var(--ext-dot); box-shadow: inset 0 1px 1px rgba(255,255,255,.45), 0 1px 2px rgba(0,0,0,.22); }
-
-/* Яндекс — терракота → охра → золото */
-.auth-ext__btn--ya {
-  --ext-shadow: rgba(140, 70, 20, .65); --ext-dot: #E2733F; color: #2A1707;
-  background:
-    radial-gradient(85% 150% at 4% 20%, #8E3A22 0%, #8E3A22 30%, rgba(142,58,34,0) 62%),
-    radial-gradient(70% 120% at 96% 118%, #B4601F 0%, rgba(180,96,31,0) 62%),
-    linear-gradient(100deg, #B4502A 0%, #D18A2C 52%, #E6BC5A 100%);
-}
-/* ВКонтакте — глубокий сине-стальной */
-.auth-ext__btn--vk {
-  --ext-shadow: rgba(18, 44, 78, .7); --ext-dot: #6FA3DE; color: #FFFFFF;
-  background:
-    radial-gradient(85% 150% at 4% 20%, #132B48 0%, #132B48 30%, rgba(19,43,72,0) 62%),
-    radial-gradient(70% 120% at 96% 118%, #1B3F6C 0%, rgba(27,63,108,0) 62%),
-    linear-gradient(100deg, #1F4674 0%, #2C6398 55%, #4E93C2 100%);
-}
-@media (max-width: 380px) { .auth-ext__btn { font-size: var(--fs-md); gap: var(--sp-2); padding: 0 var(--sp-3); } }
+.auth-ext__btn--ya { --ext: #FC3F1D; --ext-hi: #FF5A38; --ext-lo: #E03212; --ext-glow: rgba(252,63,29,.18); --ext-glow-hover: rgba(252,63,29,.38); }
+.auth-ext__btn--vk { --ext: #0077FF; --ext-hi: #2A8DFF; --ext-lo: #0066DB; --ext-glow: rgba(0,119,255,.18); --ext-glow-hover: rgba(0,119,255,.38); }
+@media (max-width: 380px) { .auth-ext__btn { font-size: var(--fs-md); } }
 
 /* ─ Подсветка незаполненных полей формы входа/регистрации ─
    Проверяем сами (form noValidate), а не браузерной подсказкой: та показывает

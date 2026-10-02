@@ -165,10 +165,10 @@ export default function Login() {
         <div className="auth-or">или войти через</div>
         <div className="auth-ext">
           <button type="button" className="auth-ext__btn auth-ext__btn--ya" disabled={loading} onClick={yandex}>
-            <span className="auth-ext__dot" aria-hidden="true" />Яндекс
+            Яндекс
           </button>
           <button type="button" className="auth-ext__btn auth-ext__btn--vk" disabled={loading} onClick={vkLogin}>
-            <span className="auth-ext__dot" aria-hidden="true" />ВКонтакте
+            ВКонтакте
           </button>
         </div>
         <p className="auth-note">
