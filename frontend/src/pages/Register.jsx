@@ -6,7 +6,7 @@ import { consentMeta, markConsentPending } from '../legal/consent'
 const NEED_CONSENT = 'Отметьте согласие на обработку персональных данных и с Пользовательским соглашением'
 
 export default function Register() {
-  const { signUp, signInWithYandex } = useAuth()
+  const { signUp, signInWithYandex, signInWithVk } = useAuth()
   const navigate = useNavigate()
   
   const [email, setEmail] = useState('')
@@ -69,17 +69,19 @@ export default function Register() {
     }
   }
 
-  // Регистрация через Яндекс: согласие нужно ДО ухода на Яндекс — учётная
+  // Регистрация через Яндекс или VK ID: согласие нужно ДО ухода туда — учётная
   // запись создаётся на возврате, без этой формы. Отметку переносит
   // markConsentPending (подхватит ConsentGate после входа).
-  const yandex = async () => {
+  const external = (start, label) => async () => {
     setError('')
     if (!consent) { setError(NEED_CONSENT); return }
     markConsentPending()
     setLoading(true)
-    const { error: err } = await signInWithYandex()
-    if (err) { setLoading(false); setError('Не удалось открыть вход через Яндекс. Проверьте связь.') }
+    const { error: err } = await start()
+    if (err) { setLoading(false); setError(`Не удалось открыть вход через ${label}. Проверьте связь.`) }
   }
+  const yandex = external(signInWithYandex, 'Яндекс')
+  const vkLogin = external(signInWithVk, 'VK ID')
 
   if (done) return (
     <main className="auth-wrap">
@@ -218,7 +220,10 @@ export default function Register() {
         <button type="button" className="btn auth-submit auth-alt" disabled={loading} onClick={yandex}>
           Зарегистрироваться через Яндекс
         </button>
-        <p className="auth-note">Сервис получит от Яндекса адрес почты и имя. Согласие выше нужно и для этого способа.</p>
+        <button type="button" className="btn auth-submit auth-alt" disabled={loading} onClick={vkLogin}>
+          Зарегистрироваться через VK ID
+        </button>
+        <p className="auth-note">Сервис получит от Яндекса или VK ID адрес почты и имя. Согласие выше нужно и для этих способов.</p>
 
         <p className="auth-switch">
           Уже есть аккаунт? <Link to="/login">Войти</Link>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
@@ -14,15 +14,30 @@ function oauthErrorFromUrl() {
   return 'Не удалось войти через Яндекс. Попробуйте ещё раз или войдите по почте.'
 }
 
+// Возврат с ВК при сбое: бэкенд (routers/vk_auth.py) кладёт причину в ?vk_error=
+const VK_ERRORS = {
+  denied: 'Вход через VK ID отменён.',
+  noemail: 'VK ID не передал адрес почты. Разрешите доступ к почте на странице входа ВК или войдите другим способом.',
+  off: 'Вход через VK ID сейчас выключен.',
+}
+const VK_FAIL = 'Не удалось войти через VK ID. Попробуйте ещё раз или войдите по почте.'
+function vkFromUrl() {
+  if (typeof window === 'undefined') return { ticket: null, error: '' }
+  const q = new URLSearchParams(window.location.search)
+  const code = q.get('vk_error')
+  return { ticket: q.get('vk_ticket'), error: code ? (VK_ERRORS[code] || VK_FAIL) : '' }
+}
+
 export default function Login() {
-  const { signIn, signInWithYandex, user } = useAuth()
+  const { signIn, signInWithYandex, signInWithVk, finishVkLogin, user } = useAuth()
+  const [vk] = useState(vkFromUrl)
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState(oauthErrorFromUrl)
+  const [error, setError] = useState(() => oauthErrorFromUrl() || vk.error)
   const [loading, setLoading] = useState(false)
   // true, пока в адресе одноразовый ?code=… от Яндекса и клиент меняет его на сессию
-  const [returning, setReturning] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('code'))
+  const [returning, setReturning] = useState(() => typeof window !== 'undefined' && (new URLSearchParams(window.location.search).has('code') || !!vk.ticket))
 
   // Обмен кода не удался (код протух, нет связи) — не держим «Входим…» вечно.
   useEffect(() => {
@@ -36,6 +51,28 @@ export default function Login() {
   useEffect(() => {
     if (user) navigate('/app', { replace: true })
   }, [user, navigate])
+
+  // Возврат с ВК: билет из адреса → сессия. Адрес сразу чистим — билет
+  // одноразовый по смыслу, в истории браузера ему делать нечего. Ref — от
+  // двойного запуска эффекта в StrictMode (второй раз n в sessionStorage уже нет).
+  const vkDone = useRef(false)
+  useEffect(() => {
+    if (!vk.ticket && !vk.error) return
+    window.history.replaceState(null, '', '/login')
+    if (!vk.ticket || vkDone.current) return
+    vkDone.current = true
+    finishVkLogin(vk.ticket).then(({ error: err }) => {
+      if (err) { setReturning(false); setError(VK_FAIL) }
+      // при успехе user появится в контексте, и эффект выше уведёт в /app
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const vkLogin = async () => {
+    setError('')
+    setLoading(true)
+    const { error: err } = await signInWithVk()
+    if (err) { setLoading(false); setError('Не удалось открыть вход через VK ID. Проверьте связь.') }
+  }
 
   const yandex = async () => {
     setError('')
@@ -104,8 +141,11 @@ export default function Login() {
         <button type="button" className="btn auth-submit auth-alt" disabled={loading} onClick={yandex}>
           Войти через Яндекс
         </button>
+        <button type="button" className="btn auth-submit auth-alt" disabled={loading} onClick={vkLogin}>
+          Войти через VK ID
+        </button>
         <p className="auth-note">
-          Первый вход через Яндекс создаёт учётную запись. Сервис получит от Яндекса адрес почты и имя;
+          Первый вход через Яндекс или VK ID создаёт учётную запись. Сервис получит от них адрес почты и имя;
           перед началом работы попросим <Link to="/consent" target="_blank">согласие на обработку данных</Link>.
         </p>
 

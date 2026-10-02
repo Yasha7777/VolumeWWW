@@ -23,11 +23,11 @@ export default function MetrikaTracker() {
       return
     }
     // В Метрику — адрес без #hash и без служебных параметров входа: после
-    // возврата с Яндекса в адресе бывает ?code=… (или токены в hash у старых
+    // возврата с Яндекса или ВК в адресе бывает ?code=… / ?vk_ticket=… (или токены в hash у старых
     // ссылок) — наружу это уходить не должно.
     const clean = new URL(window.location.href)
     clean.hash = ''
-    for (const k of ['code', 'error', 'error_code', 'error_description']) clean.searchParams.delete(k)
+    for (const k of ['code', 'error', 'error_code', 'error_description', 'vk_ticket', 'vk_error']) clean.searchParams.delete(k)
     const url = clean.href
     // тик — дать ленивой странице (404) поставить свой заголовок
     const t = setTimeout(() => {
