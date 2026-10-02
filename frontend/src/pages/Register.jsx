@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { consentMeta, markConsentPending } from '../legal/consent'
@@ -21,35 +21,49 @@ export default function Register() {
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
 
+  // Поля с ошибкой: { email?, password?, password2?, consent? } — текст под
+  // полем. Подсвечиваются ВСЕ сразу (styles.css, .is-invalid), а не первое
+  // попавшееся: человек видит всё, что нужно поправить, за один раз.
+  const [bad, setBad] = useState({})
+  const refs = { email: useRef(null), password: useRef(null), password2: useRef(null), consent: useRef(null) }
+  const clearBad = (key) => { if (bad[key]) setBad((b) => { const n = { ...b }; delete n[key]; return n }) }
+
   // Универсальный обработчик для полей: обновляет значение и сразу гасит ошибку
-  const handleInput = (setter) => (e) => {
+  const handleInput = (setter, key) => (e) => {
     setter(e.target.value)
+    clearBad(key)
     if (error) setError('')
   }
 
   // Обработчик для чекбокса: тоже гасит ошибку при клике
   const handleConsent = (e) => {
     setConsent(e.target.checked)
+    clearBad('consent')
     if (error) setError('')
+  }
+
+  // Показать ошибки и поставить курсор в первое поле с ошибкой (по порядку формы)
+  const reject = (b) => {
+    setBad(b)
+    const first = ['email', 'password', 'password2', 'consent'].find((k) => b[k])
+    if (first) refs[first].current?.focus()
+    return !!first
   }
 
   const submit = async (e) => {
     e.preventDefault()
     setError('')
 
-    // Валидация
-    if (password !== password2) { 
-      setError('Пароли не совпадают')
-      return 
-    }
-    if (password.length < 6) { 
-      setError('Пароль должен быть минимум 6 символов')
-      return 
-    }
-    if (!consent) { 
-      setError(NEED_CONSENT)
-      return 
-    }
+    // Валидация — собираем все ошибки разом
+    const b = {}
+    if (!email.trim()) b.email = 'Введите адрес электронной почты'
+    else if (!/^\S+@\S+\.\S+$/.test(email.trim())) b.email = 'Адрес почты указан с ошибкой'
+    if (!password) b.password = 'Придумайте пароль'
+    else if (password.length < 6) b.password = 'Пароль должен быть не короче 6 символов'
+    if (!password2) b.password2 = 'Повторите пароль'
+    else if (password && password !== password2) b.password2 = 'Пароли не совпадают'
+    if (!consent) b.consent = NEED_CONSENT
+    if (reject(b)) return
 
     setLoading(true)
     // отметка о согласии (редакция + время) уезжает вместе с учётной записью
@@ -69,19 +83,20 @@ export default function Register() {
     }
   }
 
-  // Регистрация через Яндекс или VK ID: согласие нужно ДО ухода туда — учётная
+  // Регистрация через Яндекс или ВКонтакте: согласие нужно ДО ухода туда — учётная
   // запись создаётся на возврате, без этой формы. Отметку переносит
   // markConsentPending (подхватит ConsentGate после входа).
   const external = (start, label) => async () => {
     setError('')
-    if (!consent) { setError(NEED_CONSENT); return }
+    // для входа через внешний сервис из всей формы нужно только согласие
+    if (reject(consent ? {} : { consent: NEED_CONSENT })) return
     markConsentPending()
     setLoading(true)
     const { error: err } = await start()
     if (err) { setLoading(false); setError(`Не удалось открыть вход через ${label}. Проверьте связь.`) }
   }
   const yandex = external(signInWithYandex, 'Яндекс')
-  const vkLogin = external(signInWithVk, 'VK ID')
+  const vkLogin = external(signInWithVk, 'ВКонтакте')
 
   if (done) return (
     <main className="auth-wrap">
@@ -115,22 +130,27 @@ export default function Register() {
         <p className="auth-sub">Карелия Строй — ИИ-анализ материалов</p>
 
         <form onSubmit={submit} noValidate>
-          <div className="auth-field">
-            <label>Эл. почта</label>
+          <div className={`auth-field${bad.email ? ' is-invalid' : ''}`}>
+            <label htmlFor="reg-email">Эл. почта</label>
             <input
+              id="reg-email" ref={refs.email}
               type="email" required autoFocus autoComplete="email"
-              value={email} onChange={handleInput(setEmail)}
+              value={email} onChange={handleInput(setEmail, 'email')}
               placeholder="you@company.ru"
               disabled={loading} // Блокируем при отправке
+              aria-invalid={!!bad.email}
             />
+            {bad.email && <div className="auth-field__err" role="alert">{bad.email}</div>}
           </div>
 
-          <div className="auth-field" style={{ position: 'relative' }}>
-            <label>Пароль</label>
+          <div className={`auth-field${bad.password ? ' is-invalid' : ''}`} style={{ position: 'relative' }}>
+            <label htmlFor="reg-password">Пароль</label>
             <input
+              id="reg-password" ref={refs.password}
               type={showPassword ? "text" : "password"} 
               required autoComplete="new-password"
-              value={password} onChange={handleInput(setPassword)}
+              value={password} onChange={handleInput(setPassword, 'password')}
+              aria-invalid={!!bad.password}
               placeholder="минимум 6 символов"
               disabled={loading}
               style={{ paddingRight: 40 }} // Оставляем место справа, чтобы текст не залезал под иконку
@@ -155,25 +175,27 @@ export default function Register() {
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               )}
             </button>
+            {bad.password && <div className="auth-field__err" role="alert">{bad.password}</div>}
           </div>
 
-          <div className="auth-field">
-            <label>Повторите пароль</label>
+          <div className={`auth-field${bad.password2 ? ' is-invalid' : ''}`}>
+            <label htmlFor="reg-password2">Повторите пароль</label>
             <input
+              id="reg-password2" ref={refs.password2}
               type={showPassword ? "text" : "password"} 
               required autoComplete="new-password"
-              value={password2} onChange={handleInput(setPassword2)}
+              value={password2} onChange={handleInput(setPassword2, 'password2')}
               placeholder="••••••••"
               disabled={loading}
+              aria-invalid={!!bad.password2}
             />
+            {bad.password2 && <div className="auth-field__err" role="alert">{bad.password2}</div>}
           </div>
 
-          <div style={{ 
-            display: 'flex', alignItems: 'flex-start', gap: 12, 
-            marginTop: 20, marginBottom: 4, textAlign: 'left'
-          }}>
+          <div className={`auth-consent${bad.consent ? ' is-invalid' : ''}`}>
             <input 
-              type="checkbox" id="consent" 
+              type="checkbox" id="consent" ref={refs.consent}
+              aria-invalid={!!bad.consent}
               checked={consent} onChange={handleConsent}
               disabled={loading}
               style={{ 
@@ -207,6 +229,7 @@ export default function Register() {
               ознакомлен(а).
             </label>
           </div>
+          {bad.consent && <div className="auth-consent__err" role="alert">{bad.consent}</div>}
 
           {/* Плавающий блок ошибки */}
           {error && <div className="auth-err" style={{ marginTop: 12 }}>{error}</div>}
@@ -218,11 +241,11 @@ export default function Register() {
 
         <div className="auth-or">или через</div>
         <div className="auth-ext">
-          <button type="button" className="auth-ext__btn" style={{ '--c': '#FC3F1D' }} disabled={loading} onClick={yandex}>
+          <button type="button" className="auth-ext__btn auth-ext__btn--ya" disabled={loading} onClick={yandex}>
             <span className="auth-ext__dot" aria-hidden="true" />Яндекс
           </button>
-          <button type="button" className="auth-ext__btn" style={{ '--c': '#0077FF' }} disabled={loading} onClick={vkLogin}>
-            <span className="auth-ext__dot" aria-hidden="true" />VK ID
+          <button type="button" className="auth-ext__btn auth-ext__btn--vk" disabled={loading} onClick={vkLogin}>
+            <span className="auth-ext__dot" aria-hidden="true" />ВКонтакте
           </button>
         </div>
         <p className="auth-note">Согласие выше нужно и для этих способов.</p>

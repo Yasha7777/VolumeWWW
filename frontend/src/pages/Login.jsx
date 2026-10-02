@@ -16,11 +16,11 @@ function oauthErrorFromUrl() {
 
 // Возврат с ВК при сбое: бэкенд (routers/vk_auth.py) кладёт причину в ?vk_error=
 const VK_ERRORS = {
-  denied: 'Вход через VK ID отменён.',
-  noemail: 'VK ID не передал адрес почты. Разрешите доступ к почте на странице входа ВК или войдите другим способом.',
-  off: 'Вход через VK ID сейчас выключен.',
+  denied: 'Вход через ВКонтакте отменён.',
+  noemail: 'ВКонтакте не передал адрес почты. Разрешите доступ к почте на странице входа ВКонтакте или войдите другим способом.',
+  off: 'Вход через ВКонтакте сейчас выключен.',
 }
-const VK_FAIL = 'Не удалось войти через VK ID. Попробуйте ещё раз или войдите по почте.'
+const VK_FAIL = 'Не удалось войти через ВКонтакте. Попробуйте ещё раз или войдите по почте.'
 function vkFromUrl() {
   if (typeof window === 'undefined') return { ticket: null, error: '' }
   const q = new URLSearchParams(window.location.search)
@@ -36,6 +36,16 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState(() => oauthErrorFromUrl() || vk.error)
   const [loading, setLoading] = useState(false)
+  // Поля с ошибкой: { email?: текст, password?: текст }. Подсвечиваются все
+  // сразу (styles.css, .auth-field.is-invalid), подпись — под каждым.
+  const [bad, setBad] = useState({})
+  const emailRef = useRef(null)
+  const passwordRef = useRef(null)
+  const edit = (setter, key) => (e) => {
+    setter(e.target.value)
+    if (bad[key]) setBad((b) => { const n = { ...b }; delete n[key]; return n })
+    if (error) setError('')
+  }
   // true, пока в адресе одноразовый ?code=… от Яндекса и клиент меняет его на сессию
   const [returning, setReturning] = useState(() => typeof window !== 'undefined' && (new URLSearchParams(window.location.search).has('code') || !!vk.ticket))
 
@@ -71,7 +81,7 @@ export default function Login() {
     setError('')
     setLoading(true)
     const { error: err } = await signInWithVk()
-    if (err) { setLoading(false); setError('Не удалось открыть вход через VK ID. Проверьте связь.') }
+    if (err) { setLoading(false); setError('Не удалось открыть вход через ВКонтакте. Проверьте связь.') }
   }
 
   const yandex = async () => {
@@ -85,6 +95,15 @@ export default function Login() {
   const submit = async (e) => {
     e.preventDefault()
     setError('')
+    const b = {}
+    if (!email.trim()) b.email = 'Введите адрес электронной почты'
+    else if (!/^\S+@\S+\.\S+$/.test(email.trim())) b.email = 'Адрес почты указан с ошибкой'
+    if (!password) b.password = 'Введите пароль'
+    setBad(b)
+    if (b.email || b.password) {
+      (b.email ? emailRef : passwordRef).current?.focus()   // курсор — в первое поле с ошибкой
+      return
+    }
     setLoading(true)
     const { error: err } = await signIn(email, password)
     setLoading(false)
@@ -112,22 +131,28 @@ export default function Login() {
         <h1 className="auth-h1">Вход в сервис</h1>
         <p className="auth-sub">Карелия Строй — ИИ-анализ материалов</p>
 
-        <form onSubmit={submit}>
-          <div className="auth-field">
-            <label>Эл. почта</label>
+        <form onSubmit={submit} noValidate>
+          <div className={`auth-field${bad.email ? ' is-invalid' : ''}`}>
+            <label htmlFor="login-email">Эл. почта</label>
             <input
+              id="login-email" ref={emailRef}
               type="email" required autoFocus autoComplete="email"
-              value={email} onChange={e => setEmail(e.target.value)}
+              value={email} onChange={edit(setEmail, 'email')}
               placeholder="you@company.ru"
+              aria-invalid={!!bad.email} aria-describedby={bad.email ? 'login-email-err' : undefined}
             />
+            {bad.email && <div className="auth-field__err" id="login-email-err" role="alert">{bad.email}</div>}
           </div>
-          <div className="auth-field">
-            <label>Пароль</label>
+          <div className={`auth-field${bad.password ? ' is-invalid' : ''}`}>
+            <label htmlFor="login-password">Пароль</label>
             <input
+              id="login-password" ref={passwordRef}
               type="password" required autoComplete="current-password"
-              value={password} onChange={e => setPassword(e.target.value)}
+              value={password} onChange={edit(setPassword, 'password')}
               placeholder="••••••••"
+              aria-invalid={!!bad.password} aria-describedby={bad.password ? 'login-password-err' : undefined}
             />
+            {bad.password && <div className="auth-field__err" id="login-password-err" role="alert">{bad.password}</div>}
           </div>
 
           {error && <div className="auth-err">{error}</div>}
@@ -139,11 +164,11 @@ export default function Login() {
 
         <div className="auth-or">или войти через</div>
         <div className="auth-ext">
-          <button type="button" className="auth-ext__btn" style={{ '--c': '#FC3F1D' }} disabled={loading} onClick={yandex}>
+          <button type="button" className="auth-ext__btn auth-ext__btn--ya" disabled={loading} onClick={yandex}>
             <span className="auth-ext__dot" aria-hidden="true" />Яндекс
           </button>
-          <button type="button" className="auth-ext__btn" style={{ '--c': '#0077FF' }} disabled={loading} onClick={vkLogin}>
-            <span className="auth-ext__dot" aria-hidden="true" />VK ID
+          <button type="button" className="auth-ext__btn auth-ext__btn--vk" disabled={loading} onClick={vkLogin}>
+            <span className="auth-ext__dot" aria-hidden="true" />ВКонтакте
           </button>
         </div>
         <p className="auth-note">
