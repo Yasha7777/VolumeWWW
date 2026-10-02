@@ -10,6 +10,8 @@
      страницы → в dist лежит HTML с текстом, H1 и метой без выполнения JS:
        index.html   — лендинг (/)
        privacy.html — /privacy
+       consent.html — /consent
+       terms.html   — /terms
        404.html     — страница 404 (nginx отдаёт её со статусом 404)
      В <head> лендинга — JSON-LD из landingJsonLd() (routes.js).
        shell.html   — ПУСТАЯ оболочка с noindex для непубличных роутов
@@ -49,6 +51,8 @@ import { PUBLIC_ROUTES, PRIVATE_ROUTES, NOT_FOUND, BRAND, canonicalUrl, headSpec
 const PAGE_SRC = {
   landing: 'src/pages/Landing.jsx',
   privacy: 'src/pages/Privacy.jsx',
+  consent: 'src/pages/Consent.jsx',
+  terms: 'src/pages/Terms.jsx',
   notfound: 'src/pages/NotFound.jsx',
 }
 // Оболочка непубличных роутов: title — бренд (настоящий ставит RouteMeta

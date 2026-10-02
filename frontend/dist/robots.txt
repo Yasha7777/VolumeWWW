@@ -1,6 +1,6 @@
 # volumetric.gottland.ru
 #
-# Публичные страницы — / и /privacy (они же в sitemap.xml). Всё остальное —
+# Публичные страницы — /, /privacy, /consent, /terms (они же в sitemap.xml). Всё остальное —
 # вход, регистрация и приложение за авторизацией — в индекс не нужно: там
 # либо форма, либо данные пользователя. Те же адреса отдают X-Robots-Tag:
 # noindex (frontend/nginx.conf) и мета robots — это страховка на случай, если
@@ -24,6 +24,8 @@ Disallow: /register$
 # технические копии страниц: пререндер кладёт их файлами, канон — без .html
 Disallow: /index.html$
 Disallow: /privacy.html$
+Disallow: /consent.html$
+Disallow: /terms.html$
 Disallow: /shell.html$
 Disallow: /404.html$
 

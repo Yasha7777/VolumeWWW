@@ -254,6 +254,7 @@ export default function ArchiveChrome({ user, profile, onSignOut, children }) {
         <span>© 2026 КАРЕЛИЯ СТРОЙ — СИСТЕМА ПОЛЕВОГО АНАЛИЗА · ПЕТРОЗАВОДСК</span>
         <span className="arc-foot__right">
           <Link to="/privacy" className="arc-foot__link">ПОЛИТИКА ДАННЫХ</Link>
+          <Link to="/terms" className="arc-foot__link">СОГЛАШЕНИЕ</Link>
           <a href={`mailto:${EMAIL}`} className="arc-foot__link">ПОЧТА</a>
           <span className={`arc-foot__state${online ? '' : ' is-off'}`}>
             ● {online ? 'НА СВЯЗИ' : 'НЕТ СВЯЗИ'}

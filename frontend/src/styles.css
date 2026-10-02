@@ -617,6 +617,15 @@ nav { display: flex; gap: var(--sp-1); justify-self: center; }
 .auth-field input { width: 100%; padding: var(--control-pad); border: 1px solid var(--border); border-radius: var(--control-radius); font-family: var(--sans); font-size: var(--control-font); font-weight: var(--control-weight); color: var(--text); background: var(--bg); outline: none; transition: border-color .2s, box-shadow .2s; -webkit-appearance: none; }
 .auth-field input:focus { border-color: var(--green-ink); box-shadow: var(--control-focus); }
 .auth-submit { width: 100%; margin-top: var(--sp-2); padding: var(--sp-3-5); }
+/* Вторая кнопка формы входа (Яндекс, «Выйти» в окне согласия): контурная,
+   чтобы главным действием оставалась зелёная. Цвета — токены, работает в обеих темах. */
+.auth-alt { background: transparent; color: var(--text); border: 1px solid var(--border); margin-top: var(--sp-2-5); }
+.auth-alt:hover:not(:disabled) { border-color: var(--green-ink); background: var(--bg); }
+.auth-alt:disabled { opacity: .55; cursor: not-allowed; }
+.auth-or { display: flex; align-items: center; gap: var(--sp-3); margin: var(--sp-4) 0 0; font-size: var(--fs-xs); color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.auth-or::before, .auth-or::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.auth-note { margin-top: var(--sp-2-5); font-size: var(--fs-xs); line-height: 1.45; color: var(--muted); text-align: center; }
+.auth-note a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
 .auth-switch { text-align: center; margin-top: var(--sp-5); font-size: var(--fs-sm); color: var(--muted); }
 .auth-switch a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; font-weight: 500; }
 .auth-err { margin-top: var(--sp-3-5); padding: var(--sp-2-5) var(--sp-3-5); border-radius: var(--r-xs); background: var(--red-bg); color: var(--red); border: 1px solid var(--err-border); font-size: var(--fs-sm); animation: fadeIn .3s; }

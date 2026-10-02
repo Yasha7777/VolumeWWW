@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import ConsentGate from './ConsentGate'
 
 export default function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
@@ -14,5 +15,6 @@ export default function PrivateRoute({ children }) {
     )
   }
 
-  return user ? children : <Navigate to="/login" replace />
+  // Вошедший без отметки о согласии сначала видит окно согласия (152-ФЗ)
+  return user ? <ConsentGate>{children}</ConsentGate> : <Navigate to="/login" replace />
 }

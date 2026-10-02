@@ -44,7 +44,23 @@ export const PUBLIC_ROUTES = [
     page: 'privacy',
     title: 'Политика обработки персональных данных — Volumetric Gottland',
     description: 'Политика обработки персональных данных сервиса «Карелия Строй»: какие данные мы собираем, для чего, как их защищаем и как отозвать согласие на обработку.',
-    sources: ['src/pages/Privacy.jsx'],
+    sources: ['src/pages/Privacy.jsx', 'src/legal/LegalPage.jsx'],
+  },
+  {
+    path: '/consent',
+    file: 'consent.html',
+    page: 'consent',
+    title: 'Согласие на обработку персональных данных — Volumetric Gottland',
+    description: 'Текст согласия на обработку персональных данных в сервисе «Карелия Строй»: какие данные, для каких целей, кому передаются, срок действия и порядок отзыва.',
+    sources: ['src/pages/Consent.jsx', 'src/legal/LegalPage.jsx'],
+  },
+  {
+    path: '/terms',
+    file: 'terms.html',
+    page: 'terms',
+    title: 'Пользовательское соглашение — Volumetric Gottland',
+    description: 'Условия использования сервиса «Карелия Строй»: регистрация, материалы пользователя, точность расчёта объёма и массы, ответственность сторон, порядок споров.',
+    sources: ['src/pages/Terms.jsx', 'src/legal/LegalPage.jsx'],
   },
 ]
 

@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { consentMeta, markConsentPending } from '../legal/consent'
+
+const NEED_CONSENT = 'Отметьте согласие на обработку персональных данных и с Пользовательским соглашением'
 
 export default function Register() {
-  const { signUp } = useAuth()
+  const { signUp, signInWithYandex } = useAuth()
   const navigate = useNavigate()
   
   const [email, setEmail] = useState('')
@@ -44,20 +47,38 @@ export default function Register() {
       return 
     }
     if (!consent) { 
-      setError('Необходимо согласиться с Политикой конфиденциальности')
+      setError(NEED_CONSENT)
       return 
     }
 
     setLoading(true)
-    const { error: err } = await signUp(email, password)
+    // отметка о согласии (редакция + время) уезжает вместе с учётной записью
+    const { data, error: err } = await signUp(email, password, consentMeta())
     setLoading(false)
     
     if (err) {
       setError(err.message)
+    } else if (data?.session) {
+      // Подтверждение почты на сервере выключено — учётная запись уже рабочая
+      // и вход выполнен. Экран «проверьте почту» здесь был бы неправдой:
+      // письма никто не отправлял.
+      navigate('/app', { replace: true })
     } else {
       setDone(true)
       setTimeout(() => navigate('/login'), 3000)
     }
+  }
+
+  // Регистрация через Яндекс: согласие нужно ДО ухода на Яндекс — учётная
+  // запись создаётся на возврате, без этой формы. Отметку переносит
+  // markConsentPending (подхватит ConsentGate после входа).
+  const yandex = async () => {
+    setError('')
+    if (!consent) { setError(NEED_CONSENT); return }
+    markConsentPending()
+    setLoading(true)
+    const { error: err } = await signInWithYandex()
+    if (err) { setLoading(false); setError('Не удалось открыть вход через Яндекс. Проверьте связь.') }
   }
 
   if (done) return (
@@ -164,12 +185,24 @@ export default function Register() {
               fontSize: 13, lineHeight: 1.4, color: 'var(--muted)', 
               cursor: loading ? 'default' : 'pointer', fontWeight: 'normal', textTransform: 'none' 
             }}>
-              Я даю согласие на обработку моих персональных данных в соответствии с{' '}
-              {/* было '#243816' хардкодом — тёмно-зелёное на тёмном фоне
-                  в dark-теме читалось как чёрное на чёрном */}
-              <Link to="/privacy" target="_blank" style={{ color: 'var(--text)', textDecoration: 'underline', fontWeight: '500' }}>
-                Политикой конфиденциальности
+              {/* 152-ФЗ (ред. с 01.09.2025): согласие — отдельный документ, а не
+                  «согласен с политикой». Поэтому ссылка ведёт на /consent, а
+                  политика и соглашение — рядом, каждая своим адресом.
+                  Цвет ссылок — токен: '#243816' хардкодом в тёмной теме
+                  читался как чёрное на чёрном. */}
+              Я даю{' '}
+              <Link to="/consent" target="_blank" style={{ color: 'var(--text)', textDecoration: 'underline', fontWeight: '500' }}>
+                согласие на обработку персональных данных
+              </Link>{' '}
+              и принимаю{' '}
+              <Link to="/terms" target="_blank" style={{ color: 'var(--text)', textDecoration: 'underline', fontWeight: '500' }}>
+                Пользовательское соглашение
               </Link>
+              . С{' '}
+              <Link to="/privacy" target="_blank" style={{ color: 'var(--text)', textDecoration: 'underline', fontWeight: '500' }}>
+                Политикой обработки персональных данных
+              </Link>{' '}
+              ознакомлен(а).
             </label>
           </div>
 
@@ -180,6 +213,12 @@ export default function Register() {
             {loading ? <><div className="spinner" /> Регистрируем...</> : 'Зарегистрироваться'}
           </button>
         </form>
+
+        <div className="auth-or">или</div>
+        <button type="button" className="btn auth-submit auth-alt" disabled={loading} onClick={yandex}>
+          Зарегистрироваться через Яндекс
+        </button>
+        <p className="auth-note">Сервис получит от Яндекса адрес почты и имя. Согласие выше нужно и для этого способа.</p>
 
         <p className="auth-switch">
           Уже есть аккаунт? <Link to="/login">Войти</Link>

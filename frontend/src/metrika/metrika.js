@@ -6,7 +6,8 @@
    2. Счётчик грузится ТОЛЬКО после «Принять» в баннере (152-ФЗ: cookie и
       данные посетителя уходят в Метрику лишь с согласия). Выбор хранится в
       localStorage; «Отклонить» → счётчика нет.
-   3. Вебвизор — только на публичных страницах (/, /privacy — isPublicPath).
+   3. Вебвизор — только на публичных страницах (/, /privacy, /consent, /terms —
+      isPublicPath).
       Он пишет содержимое страницы, а в /app, /history, /profile, /reports —
       замеры и фото клиентов, в /login и /register — формы. Параметр webvisor
       задаётся один раз при init, выключить его на ходу нельзя, поэтому
@@ -38,6 +39,28 @@ export function readConsent() {
 }
 export function saveConsent(value) {
   try { localStorage.setItem(CONSENT_KEY, value) } catch {}
+}
+
+// Отзыв/пересмотр согласия на cookie (ссылка «Настройки cookie» в подвалах,
+// metrika/CookieSettingsLink.jsx). Забываем выбор, стираем cookie Метрики и
+// перезагружаем страницу: уже загруженный счётчик выключить на ходу нельзя,
+// а после перезагрузки он не поднимется, пока в баннере снова не нажмут
+// «Принять». Cookie Метрика ставит на домен сайта и на родительский
+// (.gottland.ru) — чистим оба варианта.
+export function resetConsent() {
+  try { localStorage.removeItem(CONSENT_KEY) } catch {}
+  try {
+    const host = location.hostname
+    const parent = host.split('.').slice(-2).join('.')
+    for (const pair of document.cookie.split(';')) {
+      const name = pair.split('=')[0].trim()
+      if (!/^(_ym|yandexuid|yuidss|ymex|mdd$)/.test(name)) continue
+      for (const domain of ['', `; domain=${host}`, `; domain=.${host}`, `; domain=.${parent}`]) {
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/${domain}`
+      }
+    }
+  } catch {}
+  location.reload()
 }
 
 let started = false

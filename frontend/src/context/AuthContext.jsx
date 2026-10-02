@@ -139,8 +139,25 @@ export function AuthProvider({ children }) {
   const signIn = (email, password) =>
     supabase.auth.signInWithPassword({ email, password })
 
-  const signUp = (email, password) =>
-    supabase.auth.signUp({ email, password })
+  // meta — отметка о согласии на обработку ПДн (legal/consent.js), уезжает
+  // в user_metadata вместе с созданием учётной записи.
+  const signUp = (email, password, meta) =>
+    supabase.auth.signUp({ email, password, options: meta ? { data: meta } : undefined })
+
+  // Вход через Яндекс ID. Провайдер custom:yandex заведён в GoTrue на сервере
+  // (профиль — через прослойку backend/app/routers/yandex_auth.py). Возврат —
+  // на /login: страница дожидается обмена кода на сессию и уводит в /app.
+  // Не на /app: PrivateRoute на плохой связи не дождался бы обмена и сам
+  // увёл бы на /login, потеряв ?code=.
+  const signInWithYandex = () =>
+    supabase.auth.signInWithOAuth({
+      provider: 'custom:yandex',
+      options: { redirectTo: `${window.location.origin}/login` },
+    })
+
+  // Отметка о согласии для уже вошедшего (окно согласия). USER_UPDATED
+  // прилетит в onAuthStateChange выше и обновит user сам.
+  const recordConsent = (meta) => supabase.auth.updateUser({ data: meta })
 
   // Явный выход чистим сразу и локально: если signOut не долетел до сервера
   // (нет сети), пользователь всё равно должен увидеть форму входа.
@@ -152,7 +169,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, degraded, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, loading, degraded, signIn, signUp, signOut, signInWithYandex, recordConsent }}>
       {children}
     </AuthContext.Provider>
   )

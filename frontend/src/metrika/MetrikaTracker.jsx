@@ -22,7 +22,13 @@ export default function MetrikaTracker() {
       window.location.reload()
       return
     }
-    const url = window.location.href
+    // В Метрику — адрес без #hash и без служебных параметров входа: после
+    // возврата с Яндекса в адресе бывает ?code=… (или токены в hash у старых
+    // ссылок) — наружу это уходить не должно.
+    const clean = new URL(window.location.href)
+    clean.hash = ''
+    for (const k of ['code', 'error', 'error_code', 'error_description']) clean.searchParams.delete(k)
+    const url = clean.href
     // тик — дать ленивой странице (404) поставить свой заголовок
     const t = setTimeout(() => {
       hit(url, { title: document.title, referer: prevUrl.current ?? document.referrer })

@@ -15,7 +15,8 @@ precacheAndRoute(self.__WB_MANIFEST || [])   // ← ОДИН раз (было п
 // SPA-навигация → закешированная ПУСТАЯ оболочка shell.html (кроме /api/ и
 // ФАЙЛОВ). Не index.html: там теперь пререндер лендинга, и на /app до старта
 // JS мелькал бы лендинг. Сами публичные страницы сюда не доходят — их раньше
-// отдаёт precacheAndRoute: / → index.html, /privacy → privacy.html (cleanURLs).
+// отдаёт precacheAndRoute: / → index.html, /privacy → privacy.html, так же
+// /consent и /terms (cleanURLs).
 // Путь с расширением — это настоящий файл из public/ (robots.txt, llms.txt,
 // yandex_*.html для Вебмастера), а не роут SPA: у роутов точек нет. Без этого
 // исключения SW отдавал на такие адреса оболочку → в браузере рисовалась

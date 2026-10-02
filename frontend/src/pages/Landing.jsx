@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import CookieSettingsLink from '../metrika/CookieSettingsLink'   // ← «Настройки cookie» в подвале
 import {
   motion,
   useScroll,
@@ -515,6 +516,8 @@ function Footer() {
           <Link to="/register">Регистрация</Link>
           <Link to="/login">Вход</Link>
           <Link to="/privacy">Конфиденциальность</Link>
+          <Link to="/terms">Соглашение</Link>
+          <CookieSettingsLink />
           <button type="button" onClick={copyEmail}>yakov.kachalin@mail.ru</button>
         </nav>
       </div>

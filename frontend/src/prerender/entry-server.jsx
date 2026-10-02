@@ -17,9 +17,11 @@ import { renderToString } from 'react-dom/server'
 import { StaticRouter } from 'react-router-dom/server'
 import Landing from '../pages/Landing'
 import Privacy from '../pages/Privacy'
+import Consent from '../pages/Consent'
+import Terms from '../pages/Terms'
 import NotFound from '../pages/NotFound'
 
-const PAGES = { landing: Landing, privacy: Privacy, notfound: NotFound }
+const PAGES = { landing: Landing, privacy: Privacy, consent: Consent, terms: Terms, notfound: NotFound }
 
 export function render(page, url) {
   const Page = PAGES[page]

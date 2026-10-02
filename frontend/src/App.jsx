@@ -36,10 +36,12 @@ const History  = lazy(() => import('./pages/History'))
 const Profile  = lazy(() => import('./pages/Profile'))
 const Reports  = lazy(() => import('./pages/Reports'))   // ← раздел «04 ОТЧЁТЫ»
 const Privacy  = preloadable(() => import('./pages/Privacy'))
+const Consent  = preloadable(() => import('./pages/Consent'))   // ← согласие на обработку ПДн (отдельный документ, 152-ФЗ)
+const Terms    = preloadable(() => import('./pages/Terms'))     // ← пользовательское соглашение
 const NotFound = preloadable(() => import('./pages/NotFound'))
 
 // data-page у #root (ставит пререндер) → какую страницу догрузить до рендера
-export const PRERENDERED = { landing: Landing, privacy: Privacy, notfound: NotFound }
+export const PRERENDERED = { landing: Landing, privacy: Privacy, consent: Consent, terms: Terms, notfound: NotFound }
 
 // Баннер согласия — отдельным чанком и только при заданном VITE_YM_ID:
 // без счётчика ни его код, ни стили в сборку первого экрана не попадают.
@@ -83,6 +85,8 @@ function App() {
               <Route path="/login"    element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/privacy"  element={<Privacy />} />
+              <Route path="/consent"  element={<Consent />} />
+              <Route path="/terms"    element={<Terms />} />
 
               {/* Приватные — приложение переехало с / на /app,
                   чтобы корень был публичным лендингом для любого гостя */}

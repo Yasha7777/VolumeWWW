@@ -2,6 +2,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import CookieSettingsLink from '../metrika/CookieSettingsLink'  // ← «Настройки cookie» в подвале
+import { METRIKA_ENABLED } from '../metrika/metrika'
 import ThemeToggle from './ThemeToggle'        // ← сегментный переключатель тем
 import ScrollProgress from './ScrollProgress'  // ← золотая полоса прогресса чтения
 import { useTheme } from '../theme/ThemeProvider'
@@ -150,6 +152,12 @@ export default function Layout({ children }) {
             Политика конфиденциальности
           </Link>
           <span aria-hidden="true">·</span>
+          <Link to="/terms" className="app-foot__link">
+            Соглашение
+          </Link>
+          <span aria-hidden="true">·</span>
+          <CookieSettingsLink className="app-foot__link" />
+          {METRIKA_ENABLED && <span aria-hidden="true">·</span>}
           <button
             type="button"
             className={`app-foot__link${copied ? ' app-foot__copied' : ''}`}
