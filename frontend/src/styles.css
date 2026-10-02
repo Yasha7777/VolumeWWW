@@ -624,6 +624,23 @@ nav { display: flex; gap: var(--sp-1); justify-self: center; }
 .auth-alt:disabled { opacity: .55; cursor: not-allowed; }
 .auth-or { display: flex; align-items: center; gap: var(--sp-3); margin: var(--sp-4) 0 0; font-size: var(--fs-xs); color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
 .auth-or::before, .auth-or::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+/* Вход через внешние сервисы — компактный ряд из двух кнопок вместо двух
+   больших (те утяжеляли форму: три кнопки подряд + абзац). Цвет сервиса —
+   точкой слева (--c задаётся на кнопке), подпись текстом. Фирменных знаков
+   здесь нет намеренно: рисовать их самим нельзя, официальные файлы кнопок
+   берутся из брендбуков Яндекс ID и VK ID — появятся, ставь их вместо точки. */
+.auth-ext { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2-5); margin-top: var(--sp-3); }
+.auth-ext__btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  height: 44px; padding: 0 var(--sp-3); border-radius: var(--r); border: 1px solid var(--border);
+  background: transparent; color: var(--text); font-family: var(--sans); font-size: var(--fs-md); font-weight: 500;
+  cursor: pointer; transition: border-color .2s var(--ease), background .2s var(--ease);
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.auth-ext__btn:hover:not(:disabled) { border-color: var(--c); background: color-mix(in srgb, var(--c) 7%, transparent); }
+.auth-ext__btn:focus-visible { outline: 2px solid var(--c); outline-offset: 2px; }
+.auth-ext__btn:disabled { opacity: .55; cursor: not-allowed; }
+.auth-ext__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); flex: none; }
 .auth-note { margin-top: var(--sp-2-5); font-size: var(--fs-xs); line-height: 1.45; color: var(--muted); text-align: center; }
 .auth-note a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
 .auth-switch { text-align: center; margin-top: var(--sp-5); font-size: var(--fs-sm); color: var(--muted); }

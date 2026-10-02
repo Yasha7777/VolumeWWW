@@ -216,14 +216,16 @@ export default function Register() {
           </button>
         </form>
 
-        <div className="auth-or">или</div>
-        <button type="button" className="btn auth-submit auth-alt" disabled={loading} onClick={yandex}>
-          Зарегистрироваться через Яндекс
-        </button>
-        <button type="button" className="btn auth-submit auth-alt" disabled={loading} onClick={vkLogin}>
-          Зарегистрироваться через VK ID
-        </button>
-        <p className="auth-note">Сервис получит от Яндекса или VK ID адрес почты и имя. Согласие выше нужно и для этих способов.</p>
+        <div className="auth-or">или через</div>
+        <div className="auth-ext">
+          <button type="button" className="auth-ext__btn" style={{ '--c': '#FC3F1D' }} disabled={loading} onClick={yandex}>
+            <span className="auth-ext__dot" aria-hidden="true" />Яндекс
+          </button>
+          <button type="button" className="auth-ext__btn" style={{ '--c': '#0077FF' }} disabled={loading} onClick={vkLogin}>
+            <span className="auth-ext__dot" aria-hidden="true" />VK ID
+          </button>
+        </div>
+        <p className="auth-note">Согласие выше нужно и для этих способов.</p>
 
         <p className="auth-switch">
           Уже есть аккаунт? <Link to="/login">Войти</Link>

@@ -137,16 +137,17 @@ export default function Login() {
           </button>
         </form>
 
-        <div className="auth-or">или</div>
-        <button type="button" className="btn auth-submit auth-alt" disabled={loading} onClick={yandex}>
-          Войти через Яндекс
-        </button>
-        <button type="button" className="btn auth-submit auth-alt" disabled={loading} onClick={vkLogin}>
-          Войти через VK ID
-        </button>
+        <div className="auth-or">или войти через</div>
+        <div className="auth-ext">
+          <button type="button" className="auth-ext__btn" style={{ '--c': '#FC3F1D' }} disabled={loading} onClick={yandex}>
+            <span className="auth-ext__dot" aria-hidden="true" />Яндекс
+          </button>
+          <button type="button" className="auth-ext__btn" style={{ '--c': '#0077FF' }} disabled={loading} onClick={vkLogin}>
+            <span className="auth-ext__dot" aria-hidden="true" />VK ID
+          </button>
+        </div>
         <p className="auth-note">
-          Первый вход через Яндекс или VK ID создаёт учётную запись. Сервис получит от них адрес почты и имя;
-          перед началом работы попросим <Link to="/consent" target="_blank">согласие на обработку данных</Link>.
+          Первый вход создаёт учётную запись — попросим <Link to="/consent" target="_blank">согласие на обработку данных</Link>.
         </p>
 
         <p className="auth-switch">
