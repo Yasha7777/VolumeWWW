@@ -45,6 +45,38 @@ function formatPhoneRu(input) {
   return out
 }
 
+/* ── Проверка телефона и почты ────────────────────────────────────────────
+   Оба поля необязательные: пустое — не ошибка. Заполненное — проверяем.
+   Телефон: маска выше всегда даёт «+7» и до 10 цифр, поэтому ошибок две:
+   номер недописан либо код начинается не с 3/4/8/9 (других в России нет:
+   9 — мобильные, 3/4/8 — городские по регионам).
+   Почта: один «@», без пробелов, точка в домене, домен первого уровня от
+   2 букв. Строже нет смысла — настоящую проверку даёт только письмо.
+   Те же правила продублированы на бэкенде (routers/profile.py): форму можно
+   обойти запросом, а на эти адреса уходят отчёты. */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@.]{2,}$/
+function phoneError(value) {
+  const d = String(value || '').replace(/\D/g, '')
+  if (d.length <= 1) return ''                       // пусто (или одна «7» от маски)
+  if (d.length < 11) return `Номер введён не полностью: не хватает ${11 - d.length} ${plural(11 - d.length, 'цифры', 'цифр', 'цифр')}`
+  if (!/^7[3489]/.test(d)) return 'Код после +7 должен начинаться с 9, 8, 4 или 3'
+  return ''
+}
+function emailError(value, idx, all) {
+  const v = String(value || '').trim()
+  if (!v) return ''
+  if (/\s/.test(v)) return 'В адресе не должно быть пробелов'
+  if (!v.includes('@')) return 'В адресе нет знака @'
+  if (!EMAIL_RE.test(v)) return 'Адрес указан с ошибкой — проверьте часть после @'
+  const low = v.toLowerCase()
+  if (all.findIndex((e) => String(e || '').trim().toLowerCase() === low) !== idx) return 'Этот адрес уже указан выше'
+  return ''
+}
+function plural(n, one, few, many) {
+  const a = n % 10, b = n % 100
+  return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 10 || b >= 20) ? few : many
+}
+
 // нормализация для сравнения «изменилось ли»
 const normForm = (o) => JSON.stringify({
   company:  (o.company  || '').trim(),
@@ -270,14 +302,40 @@ export default function Profile() {
 
   const setEmail    = (idx, val) => setEmails(prev => prev.map((e, i) => i === idx ? val : e))
   const addEmail    = () => setEmails(prev => [...prev, ''])
-  const removeEmail = (idx) => setEmails(prev => prev.filter((_, i) => i !== idx))
+  const removeEmail = (idx) => {
+    setEmails(prev => prev.filter((_, i) => i !== idx))
+    setTouched(t => ({ ...t, emails: {} }))   // индексы сдвинулись — отметки «трогал» больше не к тем строкам
+  }
+
+  // Ошибки считаются всегда, а ПОКАЗЫВАЮТСЯ, когда человек ушёл из поля
+  // (touched) или нажал «Сохранить» (showAll) — пока он печатает номер,
+  // красным не мигаем. При «Сохранить» подсвечиваются сразу все поля с ошибкой.
+  const [touched, setTouched] = useState({ phone: false, emails: {} })
+  const [showAll, setShowAll] = useState(false)
+  const phoneRef = useRef(null)
+  const emailRefs = useRef([])
+  const phoneErr = phoneError(phone)
+  const emailErrs = emails.map((e, i) => emailError(e, i, emails))
+  const showPhoneErr = (showAll || touched.phone) ? phoneErr : ''
+  const showEmailErr = (i) => (showAll || touched.emails[i]) ? emailErrs[i] : ''
+  const hasErrors = !!phoneErr || emailErrs.some(Boolean)
 
   const save = async () => {
     setError('')
+    if (hasErrors) {
+      setShowAll(true)
+      // курсор — в первое поле с ошибкой, по порядку формы
+      if (phoneErr) phoneRef.current?.focus()
+      else emailRefs.current[emailErrs.findIndex(Boolean)]?.focus()
+      return
+    }
     setSaving(true)
     try {
       const cleanEmails = emails.map(e => e.trim()).filter(Boolean)
-      await api.updateProfile({ name, company, position, city, phone, emails: cleanEmails })
+      // номер из одной «7» (маска подставила код страны, цифр не ввели) — это «не указан»
+      const cleanPhone = phone.replace(/\D/g, '').length > 1 ? phone : ''
+      await api.updateProfile({ name, company, position, city, phone: cleanPhone, emails: cleanEmails })
+      setShowAll(false)
       // фиксируем новый снимок → карточка/процент обновятся, кнопка скроется
       setSnap({ name, company, position, city, phone, emails })
       setSaved(true)
@@ -379,27 +437,41 @@ export default function Profile() {
               <label>Город</label>
               <input type="text" value={city} onChange={e => setCity(e.target.value)} placeholder="Петрозаводск" />
             </div>
-            <div className="kb-field">
-              <label>Телефон</label>
-              <input type="tel" inputMode="tel" value={phone}
+            <div className={`kb-field${showPhoneErr ? ' is-invalid' : ''}`}>
+              <label htmlFor="pf-phone">Телефон</label>
+              <input id="pf-phone" ref={phoneRef} type="tel" inputMode="tel" autoComplete="tel" value={phone}
                      onChange={e => setPhone(formatPhoneRu(e.target.value))}
+                     onBlur={() => setTouched(t => ({ ...t, phone: true }))}
+                     aria-invalid={!!showPhoneErr} aria-describedby={showPhoneErr ? 'pf-phone-err' : undefined}
                      placeholder="+7 (___) ___-__-__" />
+              {showPhoneErr && <div className="kb-field-err" id="pf-phone-err" role="alert">{showPhoneErr}</div>}
             </div>
           </div>
 
           <div className="kb-field kb-field--full">
             <label>Email для получения результатов</label>
 
-            {emails.map((em, idx) => (
-              <div key={idx} className="kb-email-row">
-                <input type="email" value={em} onChange={e => setEmail(idx, e.target.value)} placeholder="example@mail.ru" />
-                {emails.length > 1 && (
-                  <button type="button" className="kb-icon-btn" aria-label="Удалить email" onClick={() => removeEmail(idx)}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-                  </button>
-                )}
-              </div>
-            ))}
+            {emails.map((em, idx) => {
+              const err = showEmailErr(idx)
+              return (
+                <div key={idx} className={`kb-email-item${err ? ' is-invalid' : ''}`}>
+                  <div className="kb-email-row">
+                    <input type="email" inputMode="email" autoComplete="email" value={em}
+                           ref={el => { emailRefs.current[idx] = el }}
+                           onChange={e => setEmail(idx, e.target.value)}
+                           onBlur={() => setTouched(t => ({ ...t, emails: { ...t.emails, [idx]: true } }))}
+                           aria-invalid={!!err} aria-label={`Адрес для результатов ${idx + 1}`}
+                           placeholder="example@mail.ru" />
+                    {emails.length > 1 && (
+                      <button type="button" className="kb-icon-btn" aria-label="Удалить email" onClick={() => removeEmail(idx)}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                      </button>
+                    )}
+                  </div>
+                  {err && <div className="kb-field-err" role="alert">{err}</div>}
+                </div>
+              )
+            })}
 
             {emails.length < 5 && (
               <button type="button" className="kb-add-email" onClick={addEmail}>

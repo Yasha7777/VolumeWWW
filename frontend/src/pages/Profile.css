@@ -206,6 +206,15 @@
 }
 .kb-add-email:hover { border-color: var(--green-ink); color: var(--green-ink); background: color-mix(in srgb, var(--green-ink) 4%, transparent); }
 .kb-add-plus { font-size: var(--fs-xl); line-height: 1; }
+/* Ошибка в поле: красная рамка + подпись под ним. Показывается после ухода из
+   поля или по «Сохранить» (Profile.jsx) — тот же вид, что на входе/регистрации. */
+.kb-field.is-invalid input,
+.kb-email-item.is-invalid input { border-color: var(--red); box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 16%, transparent); }
+.kb-field.is-invalid > label { color: var(--red); }
+.kb-field-err { margin-top: var(--sp-1-5); font-size: var(--fs-xs); line-height: 1.35; color: var(--red); animation: fadeIn .2s; }
+.kb-email-item { margin-bottom: var(--sp-2-5); }
+.kb-email-item .kb-email-row { margin-bottom: 0; }
+.kb-email-item .kb-field-err { margin: var(--sp-1-5) 0 0; }
 .kb-hint { margin: var(--sp-3) 0 0; font-size: var(--fs-xs); color: var(--muted); }
 
 /* кнопка/статусы — из styles.css (.btn .btn-primary, .spinner, .status).
