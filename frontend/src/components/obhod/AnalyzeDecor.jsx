@@ -223,7 +223,7 @@ export default function AnalyzeDecor({ theme = 'light' }) {
                   <span className="ks-mark__tri">▸</span>
                   <span>Фотограмметрия<br />3D-реконструкция<br />Объём / вес</span>
                 </div>
-                <div className="ks-mark ks-mark--foot" style={{ left: M.foot[0], top: M.foot[1] }}><span className="ks-mark__brand">Карелия Строй</span><br />Точные данные. Реальные объекты.</div>
+                <div className="ks-mark ks-mark--foot" style={{ left: M.foot[0], top: M.foot[1] }}><span className="ks-mark__brand">Volumetric Gottland</span><br />Точные данные. Реальные объекты.</div>
               </>
             ) : (
               <>

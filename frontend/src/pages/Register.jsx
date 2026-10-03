@@ -127,7 +127,7 @@ export default function Register() {
         </div>
 
         <h1 className="auth-h1">Создать аккаунт</h1>
-        <p className="auth-sub">Карелия Строй — ИИ-анализ материалов</p>
+        <p className="auth-sub">Volumetric Gottland — объём и масса по фото</p>
 
         <form onSubmit={submit} noValidate>
           <div className={`auth-field${bad.email ? ' is-invalid' : ''}`}>

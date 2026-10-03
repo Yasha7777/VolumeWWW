@@ -427,7 +427,7 @@ export default function Profile() {
           <div className="kb-fields">
             <div className="kb-field">
               <label>Название фирмы</label>
-              <input type="text" value={company} onChange={e => setCompany(e.target.value)} placeholder={'ООО "Карелия Строй"'} />
+              <input type="text" value={company} onChange={e => setCompany(e.target.value)} placeholder={'ООО «Название компании»'} />
             </div>
             <div className="kb-field">
               <label>Должность</label>

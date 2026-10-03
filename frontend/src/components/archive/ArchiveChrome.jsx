@@ -170,7 +170,7 @@ export default function ArchiveChrome({ user, profile, onSignOut, children }) {
       <header className="arc-sys">
         <Link to="/app" className="arc-sys__brand">
           <span className="arc-ico-check" aria-hidden="true" />
-          <b>КАРЕЛИЯ СТРОЙ</b>
+          <b>VOLUMETRIC GOTTLAND</b>
           <span className="arc-sys__sub">/ СИСТЕМА ПОЛЕВОГО АНАЛИЗА</span>
         </Link>
 
@@ -251,7 +251,7 @@ export default function ArchiveChrome({ user, profile, onSignOut, children }) {
 
       {/* ── ПОДВАЛ (под панелью задач) ──────────────────────── */}
       <footer className="arc-foot">
-        <span>© 2026 КАРЕЛИЯ СТРОЙ — СИСТЕМА ПОЛЕВОГО АНАЛИЗА · ПЕТРОЗАВОДСК</span>
+        <span>© 2026 VOLUMETRIC GOTTLAND — СИСТЕМА ПОЛЕВОГО АНАЛИЗА · ПЕТРОЗАВОДСК</span>
         <span className="arc-foot__right">
           <Link to="/privacy" className="arc-foot__link">ПОЛИТИКА ДАННЫХ</Link>
           <Link to="/terms" className="arc-foot__link">СОГЛАШЕНИЕ</Link>

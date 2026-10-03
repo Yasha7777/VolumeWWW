@@ -1,4 +1,4 @@
-/* Service Worker — Karelia Build AI PWA.
+/* Service Worker — Volumetric Gottland PWA.
    injectManifest: workbox прекэширует оболочку (self.__WB_MANIFEST
    подставляется на сборке). /api/* НЕ кэшируем — приложение всегда идёт в сеть. */
 import { precacheAndRoute, createHandlerBoundToURL } from 'workbox-precaching'
@@ -38,7 +38,7 @@ async function flushViaClients() {
   const cls = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
   if (cls.length) { for (const c of cls) c.postMessage('kb-flush'); return }
   try {
-    await self.registration.showNotification('Karelia Build AI', {
+    await self.registration.showNotification('Volumetric Gottland', {
       body: 'Появилась связь — откройте приложение, чтобы отправить замеры из очереди.',
       icon: '/pwa-192.png', badge: '/pwa-192.png', tag: 'kb-flush-hint',
     })
@@ -49,7 +49,7 @@ async function flushViaClients() {
 // ── Phase 3 (заготовка): Web Push ────────────────────────────────────────────
 self.addEventListener('push', (event) => {
   let data = {}; try { data = event.data?.json() ?? {} } catch {}
-  event.waitUntil(self.registration.showNotification(data.title || 'Karelia Build AI', {
+  event.waitUntil(self.registration.showNotification(data.title || 'Volumetric Gottland', {
     body: data.body || 'Замер обработан.',
     icon: '/pwa-192.png', badge: '/pwa-192.png',
     data: { url: data.url || '/history' },

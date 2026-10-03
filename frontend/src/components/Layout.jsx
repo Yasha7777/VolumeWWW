@@ -110,7 +110,7 @@ export default function Layout({ children }) {
             </svg>
           </div>
           <div>
-            <div className="logo-name">Карелия Строй</div>
+            <div className="logo-name">Volumetric Gottland</div>
             <div className="logo-sub">AI Анализ Фото</div>
           </div>
         </Link>
@@ -144,7 +144,7 @@ export default function Layout({ children }) {
 
       <footer className="app-foot">
         <div className="app-foot__row">
-          <span>© 2026 Карелия Строй — AI сервис</span>
+          <span>© 2026 Volumetric Gottland</span>
           <span>Петрозаводск · Карелия</span>
         </div>
         <div className="app-foot__row">

@@ -20,7 +20,11 @@
 
 export const SITE_URL = 'https://volumetric.gottland.ru'
 export const BRAND = 'Volumetric Gottland'
-export const SITE_NAME = 'Карелия Строй'
+// ОДНО НАЗВАНИЕ (решение владельца, 2026-10-03): везде «Volumetric Gottland».
+// Прежние «Карелия Строй» и «Karelia Build AI» убраны из интерфейса, меты и
+// JSON-LD: три имени размывали узнаваемость и мешали поиску по названию.
+// SITE_NAME оставлен как синоним BRAND, чтобы не ломать импорты.
+export const SITE_NAME = BRAND
 
 // 1200×630, JPEG — webp понимают не все, кто строит превью ссылок.
 // Кадр 0.5 c из public/landing/video.mp4 (hero.webp не годится: полоса 1512×240).
@@ -43,7 +47,7 @@ export const PUBLIC_ROUTES = [
     file: 'privacy.html',
     page: 'privacy',
     title: 'Политика обработки персональных данных — Volumetric Gottland',
-    description: 'Политика обработки персональных данных сервиса «Карелия Строй»: какие данные мы собираем, для чего, как их защищаем и как отозвать согласие на обработку.',
+    description: 'Политика обработки персональных данных сервиса Volumetric Gottland: какие данные мы собираем, для чего, как их защищаем и как отозвать согласие на обработку.',
     sources: ['src/pages/Privacy.jsx', 'src/legal/LegalPage.jsx'],
   },
   {
@@ -51,7 +55,7 @@ export const PUBLIC_ROUTES = [
     file: 'consent.html',
     page: 'consent',
     title: 'Согласие на обработку персональных данных — Volumetric Gottland',
-    description: 'Текст согласия на обработку персональных данных в сервисе «Карелия Строй»: какие данные, для каких целей, кому передаются, срок действия и порядок отзыва.',
+    description: 'Текст согласия на обработку персональных данных в сервисе Volumetric Gottland: какие данные, для каких целей, кому передаются, срок действия и порядок отзыва.',
     sources: ['src/pages/Consent.jsx', 'src/legal/LegalPage.jsx'],
   },
   {
@@ -59,7 +63,7 @@ export const PUBLIC_ROUTES = [
     file: 'terms.html',
     page: 'terms',
     title: 'Пользовательское соглашение — Volumetric Gottland',
-    description: 'Условия использования сервиса «Карелия Строй»: регистрация, материалы пользователя, точность расчёта объёма и массы, ответственность сторон, порядок споров.',
+    description: 'Условия использования сервиса Volumetric Gottland: регистрация, материалы пользователя, точность расчёта объёма и массы, ответственность сторон, порядок споров.',
     sources: ['src/pages/Terms.jsx', 'src/legal/LegalPage.jsx'],
   },
 ]
@@ -104,7 +108,6 @@ export function landingJsonLd() {
         '@id': `${SITE_URL}/#website`,
         url: home,
         name: BRAND,
-        alternateName: SITE_NAME,
         inLanguage: 'ru-RU',
         publisher: { '@id': org },
       },
@@ -132,7 +135,7 @@ export function landingJsonLd() {
 
 // Несуществующий адрес. Заголовок ставит сама NotFound.jsx (держи строки
 // одинаковыми) — здесь он для пререндера 404.html.
-export const NOT_FOUND = { path: '/404', file: '404.html', page: 'notfound', title: '404 · страница утеряна — Карелия Строй' }
+export const NOT_FOUND = { path: '/404', file: '404.html', page: 'notfound', title: '404 · страница утеряна — Volumetric Gottland' }
 
 export const findRoute = (pathname) =>
   PUBLIC_ROUTES.find((r) => r.path === pathname) ||

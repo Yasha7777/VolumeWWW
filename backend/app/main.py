@@ -7,7 +7,7 @@ from .routers import analyses, profile, scans, vk_auth, yandex_auth
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 app = FastAPI(
-    title="Karelia Build AI",
+    title="Volumetric Gottland",
     version="1.0.0",
     docs_url="/api/docs",
     redoc_url=None,

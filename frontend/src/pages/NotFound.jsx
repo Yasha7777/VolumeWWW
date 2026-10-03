@@ -94,7 +94,7 @@ export default function NotFound() {
 
   useEffect(() => {
     const prev = document.title
-    document.title = '404 · страница утеряна — Карелия Строй'
+    document.title = '404 · страница утеряна — Volumetric Gottland'
     return () => { document.title = prev }
   }, [])
 
@@ -151,7 +151,7 @@ export default function NotFound() {
       <Link to="/" className="kb-404__mark">
         <House strokeWidth={1.75} aria-hidden="true" />
         <span className="kb-404__mark-txt">
-          <b>Карелия Строй</b>
+          <b>Volumetric Gottland</b>
           <span>ИИ · объём и масса</span>
         </span>
       </Link>

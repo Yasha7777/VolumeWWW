@@ -132,7 +132,7 @@ const Mark = () => (
   <Link to="/" className="kb-l-mark">
     <span className="kb-l-mark__icon"><HouseMark /></span>
     <span className="kb-l-mark__text">
-      <span className="kb-l-mark__name">Карелия Строй</span>
+      <span className="kb-l-mark__name">Volumetric Gottland</span>
       <span className="kb-l-mark__sub">ИИ · объём и масса</span>
     </span>
   </Link>
@@ -522,7 +522,7 @@ function Footer() {
         </nav>
       </div>
       <div className="kb-l-foot__bottom">
-        <span>© 2026 Карелия Строй — ИИ-сервис</span>
+        <span>© 2026 Volumetric Gottland</span>
         <span>Петрозаводск · Карелия</span>
       </div>
     </footer>
