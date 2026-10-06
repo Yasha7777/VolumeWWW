@@ -7,6 +7,7 @@ import PlyViewer from '../components/PlyViewer'
 import ViewerErrorBoundary from '../components/ViewerErrorBoundary'
 import { DiagnosticsBlock, pickDiagnostics } from '../components/Diagnostics'  // ← карты высот + облака точек
 import ReportPanel from '../components/ReportPanel'   // ← выдвижное окно отчёта
+import ResultSummary from '../components/ResultSummary'  // ← плашка-сводка: материал / объём / плотность / масса
 import { parseWebhookResult } from '../components/RaschetDownloadButton' // ← общий парсер (объём DUSt3R, масса = V×ρ)
 import { enqueue, flushItem } from '../queue/queue'  // ← офлайн-очередь (PWA)
 import Reveal from '../components/Reveal'  // ← лёгкое scroll/stagger-проявление
@@ -67,7 +68,6 @@ export default function Analyze() {
   const [busy, setBusy]         = useState(false)
   const [isProd, setIsProd]     = useState(false)  // по умолчанию TEST
   const [reportOpen, setReportOpen] = useState(false)  // выдвижное окно отчёта
-  const [showRaw, setShowRaw]   = useState(false)      // сырой ответ пайплайна (для отладки)
   const [online, setOnline]     = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
   // Блок cube для payload + валидность параметров куба (из CubeSettings).
   const [cube, setCube]         = useState(CUBE_DEFAULT)
@@ -157,14 +157,13 @@ export default function Analyze() {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
   }, [])
 
-  // Структурированная сводка из текстового ответа n8n.
-  // Сырой дамп с эмодзи и служебными полями (conf/sim/ratio) пользователю
-  // не показываем — он доступен под тогглом «Технические данные».
+  // Числа для сводки и отчёта — из текста результата.
+  // Сам текст (эмодзи, служебные строки) пользователю не показываем —
+  // он под тогглом «Технические данные» в плашке-сводке (ResultSummary).
   const parsed = useMemo(
     () => (result ? parseWebhookResult(result) : null),
     [result],
   )
-  const hasSummary = !!(parsed && (parsed._volumeNum != null || parsed.material))
 
   // ─── Файлы ─────────────────────────────────────────────────────────────────
   const handleFiles = useCallback(async (fileList) => {
@@ -606,57 +605,11 @@ export default function Analyze() {
           )}
         </div>
 
-        {/* Структурированная сводка — вместо сырого дампа пайплайна.
-            Метрики в ячейках, материал засечками, масса с золотым
-            акцентом. Служебные поля пайплайна — под тогглом. */}
-        {result && hasSummary && (
-          <div className="rs">
-            <div className="rs-grid">
-              <div className="rs-cell">
-                <span>Материал</span>
-                <b className="rs-mat">{parsed.material || '—'}</b>
-              </div>
-              <div className="rs-cell">
-                <span>Объём, м³</span>
-                <b>{parsed.volume}</b>
-              </div>
-              <div className="rs-cell">
-                <span>Плотность, кг/м³</span>
-                <b>{parsed.density}</b>
-              </div>
-              <div className="rs-cell rs-cell--accent">
-                <span>Масса, т</span>
-                <b>{parsed.mass}</b>
-              </div>
-            </div>
-            <div className="rs-meta">
-              Исходных кадров: {parsed.framesUsed ?? '—'}
-            </div>
-            <button
-              type="button"
-              className="rs-raw-toggle"
-              onClick={() => setShowRaw(v => !v)}
-            >
-              <svg
-                width="12" height="12" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                style={{ transform: showRaw ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}
-              >
-                <path d="m6 9 6 6 6-6"/>
-              </svg>
-              {showRaw ? 'Скрыть технические данные' : 'Технические данные'}
-            </button>
-            {showRaw && (
-              <div className="rs-raw">{result}</div>
-            )}
-          </div>
-        )}
-
-        {/* Фоллбэк: если из текста не вытащились ни объём, ни материал —
-            показываем как раньше, чтобы ничего не потерять */}
-        {result && !hasSummary && (
-          <div className="result-body">{result}</div>
-        )}
+        {/* Плашка-сводка, как п. 2 отчёта: материал, объём, плотность, масса.
+            Показывается при любом завершённом расчёте — чего сервер не
+            определил, там прочерк. Сырой текст пайплайна — под тогглом
+            «Технические данные» внутри неё. */}
+        {result && <ResultSummary parsed={parsed} result={result} />}
 
         {/* 3D-модель — показывается по наличию модели, а не по тексту */}
         {has3d && (

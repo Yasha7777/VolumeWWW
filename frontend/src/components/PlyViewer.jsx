@@ -14,30 +14,13 @@ import { lazy, Suspense } from 'react'
 
 const PlyViewerImpl = lazy(() => import('./PlyViewerImpl'))
 
+/* Заглушка на время загрузки чанка с three — тот же блок .pv, что и у
+   самого обозревателя (styles.css), чтобы картинка не прыгала. */
 const Placeholder = ({ height }) => (
-  <div style={{
-    position: 'relative',
-    width: '100%',
-    height,
-    backgroundColor: '#1a1a1a',
-    borderRadius: '12px',
-    overflow: 'hidden',
-    border: '1px solid rgba(255,255,255,0.07)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  }}>
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-      <div style={{
-        width: '28px', height: '28px',
-        border: '2px solid rgba(255,255,255,0.1)',
-        borderTopColor: '#6fcf97',
-        borderRadius: '50%',
-        animation: 'spin 0.8s linear infinite',
-      }} />
-      <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', fontFamily: 'system-ui' }}>
-        Загрузка 3D-просмотра...
-      </span>
+  <div className="pv" style={{ height }}>
+    <div className="pv__busy pv__busy--cover">
+      <div className="pv__spin" />
+      <span>Загрузка 3D-просмотра...</span>
     </div>
   </div>
 )

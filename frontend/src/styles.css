@@ -1674,11 +1674,13 @@ body.kh-bulk-open .content { padding-bottom: 120px; }
 }
 .rs-cell span {
   display: block;
-  font: 600 var(--fs-3xs)/1 var(--sans);
+  /* высота строки 1.4, а не 1: при overflow:hidden строка высотой в кегль
+     срезала точки над «Ё» — «ОБЪЁМ» читалось как «ОБЪЕМ» */
+  font: 600 var(--fs-3xs)/1.4 var(--sans);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
-  margin-bottom: var(--sp-1-5);
+  margin-bottom: var(--sp-1);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1699,6 +1701,26 @@ body.kh-bulk-open .content { padding-bottom: 120px; }
   font-weight: 600;
   font-size: var(--fs-2xl);
   text-transform: capitalize;
+}
+
+/* единица измерения рядом с цифрой — мелко и тихо, как в отчёте */
+.rs-unit {
+  margin-left: 0.4em;
+  font: 500 var(--fs-sm)/1 var(--sans);
+  font-style: normal;
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* значения нет: прочерк / «Не определён» — приглушённо, чтобы не
+   читалось как результат */
+.rs-cell b.is-empty { color: var(--muted); font-weight: 500; }
+.rs-mat.is-empty { text-transform: none; }
+
+/* пояснение под карточками: почему прочерк, можно ли верить цифре */
+.rs-note {
+  margin-top: var(--sp-3);
+  font: 400 var(--fs-sm)/1.5 var(--sans);
+  color: var(--text);
 }
 
 /* метастрока: кадры, погрешность */
@@ -2054,3 +2076,70 @@ body.kh-bulk-open .content { padding-bottom: 120px; }
 }
 .kb-crash__title { font-family: var(--serif); font-size: var(--fs-5xl); font-weight: 600; }
 .kb-crash__text  { max-width: 44ch; font-size: var(--fs-lg); line-height: 1.6; color: var(--muted); }
+
+/* ============================================================
+   3D-ОБОЗРЕВАТЕЛЬ (.pv*) — PlyViewer / PlyViewerImpl.
+   Тёмный во всех темах: облако точек с собственными цветами на
+   светлом фоне не читается. Цвета заданы числами, а не токенами —
+   блок не должен перекрашиваться вместе со страницей.
+   ============================================================ */
+.pv {
+  position: relative;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .08);
+  /* мягкий свет из-за модели вместо ровной чёрной заливки */
+  background: radial-gradient(120% 95% at 50% 40%, #2d332f 0%, #1c201e 50%, #121514 100%);
+  font-family: var(--sans, system-ui, sans-serif);
+  -webkit-user-select: none; user-select: none;
+}
+/* Холст всегда во весь блок. Библиотека ставит ему ширину и высоту в px
+   по своим замерам; если замер разошёлся с вёрсткой (страница ужата
+   zoom-ом), холст получался меньше блока. Эти две строки — страховка. */
+.pv canvas { display: block; width: 100% !important; height: 100% !important; }
+
+.pv__seg, .pv__reset, .pv__hint {
+  position: absolute; z-index: 10;
+  background: rgba(14, 17, 16, .62);
+  border: 1px solid rgba(255, 255, 255, .09);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.pv__seg { top: 12px; left: 12px; display: flex; gap: 2px; padding: 3px; border-radius: 9px; }
+.pv__seg button {
+  padding: 5px 12px; border: 0; border-radius: 6px; cursor: pointer;
+  background: transparent; color: rgba(255, 255, 255, .55);
+  font: 600 12px/1.2 inherit; font-family: inherit;
+  transition: background .15s ease, color .15s ease;
+}
+.pv__seg button:hover { color: rgba(255, 255, 255, .85); }
+.pv__seg button.is-on { background: rgba(126, 204, 158, .2); color: #8fd6ac; }
+
+.pv__reset {
+  top: 12px; right: 12px;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 11px; border-radius: 8px; cursor: pointer;
+  color: rgba(255, 255, 255, .72);
+  font: 500 12px/1.2 inherit; font-family: inherit;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.pv__reset:hover { color: #fff; background: rgba(34, 40, 37, .8); border-color: rgba(255, 255, 255, .2); }
+.pv__reset:focus-visible, .pv__seg button:focus-visible { outline: 2px solid #8fd6ac; outline-offset: 2px; }
+
+.pv__hint {
+  right: 12px; bottom: 12px;
+  padding: 5px 10px; border-radius: 7px;
+  font-size: 11px; line-height: 1.3; color: rgba(255, 255, 255, .5);
+  pointer-events: none;
+}
+
+.pv__busy { display: flex; flex-direction: column; align-items: center; gap: 12px; font-size: 13px; color: rgba(255, 255, 255, .45); white-space: nowrap; }
+.pv__busy--cover { position: absolute; inset: 0; z-index: 5; justify-content: center; background: inherit; }
+.pv__busy--chip { padding: 14px 20px; border-radius: 10px; background: rgba(22, 26, 24, .85); border: 1px solid rgba(255, 255, 255, .08); font-size: 12px; color: rgba(255, 255, 255, .7); }
+.pv__spin { width: 26px; height: 26px; border: 2px solid rgba(255, 255, 255, .12); border-top-color: #7ecc9e; border-radius: 50%; animation: spin .8s linear infinite; }
+
+@media (max-width: 560px) {
+  .pv__reset span { display: none; }          /* на телефоне — только значок */
+  .pv__reset { padding: 8px; }
+  .pv__hint { left: 12px; right: 12px; text-align: center; font-size: 10.5px; }
+}

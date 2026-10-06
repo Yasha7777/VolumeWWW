@@ -1,4 +1,4 @@
-import React, { Suspense, useState, useRef, useCallback } from 'react';
+import React, { Suspense, useState, useCallback } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Html, GizmoHelper, GizmoViewport, Grid } from '@react-three/drei';
 import { useLoader } from '@react-three/fiber';
@@ -6,61 +6,69 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import * as THREE from 'three';
 import { levelGeometry, levelObject } from './plyAlign';
+import { robustBounds, fitDistance, pointSizeFor, niceStep } from './viewerFit';
 
 // ============================================================
 // PlyViewerImpl — реализация 3D-просмотра (бывший PlyViewer.jsx).
 // ТЯЖЁЛЫЙ модуль: тянет весь three-стек. Импортируется ТОЛЬКО
 // через React.lazy из PlyViewer.jsx — не импортируй напрямую!
+//
+// Оформление (фон, кнопки, подсказка) — классы .pv* в styles.css.
 // ============================================================
 
-// === 1. АВТО-ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ ПО BOUNDING BOX ===
-const CameraFit = ({ target, size }) => {
-  const { camera, controls } = useThree();
-  React.useEffect(() => {
-    if (!target || !size) return;
-    const maxDim  = Math.max(size.x, size.y, size.z);
-    const dist    = maxDim * 1.8;
-    const fov     = (camera.fov * Math.PI) / 180;
-    const camDist = dist / (2 * Math.tan(fov / 2));
+// Откуда смотрим по умолчанию: три четверти сверху, ~28° над горизонтом.
+const VIEW_DIR = new THREE.Vector3(0.75, 0.56, 0.75).normalize();
+// Поля вокруг модели: 1 — впритык к краям кадра.
+const FIT_MARGIN = 1.16;
 
-    camera.position.set(
-      target.x + camDist * 0.7,
-      target.y + camDist * 0.7,
-      target.z + camDist * 0.7
-    );
-    camera.near = camDist * 0.001;
-    camera.far  = camDist * 20;
+// === 1. КАМЕРА ПО ГРАНИЦАМ ОСНОВНОЙ МАССЫ ТОЧЕК ===
+// nonce меняется по кнопке «Сбросить вид» — эффект отрабатывает заново.
+const CameraFit = ({ size, radius, nonce }) => {
+  const camera = useThree((s) => s.camera);
+  const controls = useThree((s) => s.controls);
+  React.useEffect(() => {
+    if (!size) return;
+    const dist = fitDistance(
+      radius, size.y, VIEW_DIR.toArray(), camera.fov, camera.aspect,
+    ) * FIT_MARGIN;
+
+    camera.position.copy(VIEW_DIR).multiplyScalar(dist);
+    camera.near = dist * 0.01;
+    camera.far = dist * 60;
     camera.updateProjectionMatrix();
-    camera.lookAt(target.x, target.y, target.z);
+    camera.lookAt(0, 0, 0);
 
     if (controls) {
-      controls.target.set(target.x, target.y, target.z);
-      controls.minDistance = camDist * 0.05;
-      controls.maxDistance = camDist * 8;
+      controls.target.set(0, 0, 0);
+      controls.minDistance = dist * 0.08;
+      controls.maxDistance = dist * 6;
       controls.update();
     }
-  }, [target, size, camera, controls]);
+  }, [size, radius, nonce, camera, controls]);
   return null;
 };
 
 // === 2А. ОБЛАКО ТОЧЕК (PLY) ===
 const PlyModel = ({ url, up, onReady }) => {
   const geometry = useLoader(PLYLoader, url);
+  const [pointSize, setPointSize] = useState(0.006);
 
   React.useEffect(() => {
     if (!geometry) return;
-    // Выравниваем «вверх» → +Y ДО расчёта bbox, чтобы центрирование,
-    // размеры и грид-пол были в исправленной системе. up из пайплайна;
+    // Выравниваем «вверх» → +Y ДО расчёта границ, чтобы центрирование,
+    // размеры и сетка-пол были в исправленной системе. up из пайплайна;
     // если его нет — фолбэк по доминирующей плоскости (только крен).
     levelGeometry(geometry, up);
-    geometry.computeBoundingBox();
-    const box    = geometry.boundingBox;
-    const center = new THREE.Vector3();
-    const size   = new THREE.Vector3();
-    box.getCenter(center);
-    box.getSize(size);
-    geometry.translate(-center.x, -center.y, -center.z);
-    onReady({ center: new THREE.Vector3(0, 0, 0), size });
+
+    const pos = geometry.attributes.position;
+    // Границы — по основной массе точек, а не по улётам (см. viewerFit.js).
+    const b = robustBounds(pos.array);
+    if (!b) return;
+    geometry.translate(-b.center[0], -b.center[1], -b.center[2]);
+    geometry.computeBoundingSphere();
+
+    setPointSize(pointSizeFor(2 * b.radius, pos.count));
+    onReady({ size: new THREE.Vector3(b.size[0], b.size[1], b.size[2]), radius: b.radius });
   }, [geometry, up, onReady]);
 
   const hasColors = geometry.attributes.color != null;
@@ -68,16 +76,36 @@ const PlyModel = ({ url, up, onReady }) => {
   return (
     <points geometry={geometry}>
       <pointsMaterial
-        size={0.006}
+        size={pointSize}
         vertexColors={hasColors}
-        color={hasColors ? undefined : '#4a9e6b'}
+        color={hasColors ? undefined : '#9fc7a8'}
         sizeAttenuation
         transparent
-        opacity={0.92}
+        opacity={0.95}
       />
     </points>
   );
 };
+
+// Вершины всех мешей сцены в мировых координатах — плоским массивом
+// (с прореживанием: для границ хватает нескольких десятков тысяч).
+function sampleWorldPositions(root, maxSamples = 40000) {
+  root.updateMatrixWorld(true);
+  let total = 0;
+  root.traverse((c) => { if (c.isMesh && c.geometry?.attributes?.position) total += c.geometry.attributes.position.count; });
+  const step = Math.max(1, Math.ceil(total / maxSamples));
+  const out = [];
+  const v = new THREE.Vector3();
+  root.traverse((c) => {
+    const pos = c.isMesh && c.geometry?.attributes?.position;
+    if (!pos) return;
+    for (let i = 0; i < pos.count; i += step) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(c.matrixWorld);
+      out.push(v.x, v.y, v.z);
+    }
+  });
+  return out;
+}
 
 // === 2Б. ТВЕРДОТЕЛЬНАЯ МОДЕЛЬ (GLB) ===
 // DUSt3R генерирует меш с вертекс-цветами без KHR_materials_unlit.
@@ -105,14 +133,16 @@ const GlbModel = ({ url, up, onReady }) => {
     // и облако были ориентированы согласованно.
     levelObject(gltf.scene, up);
 
-    const box    = new THREE.Box3().setFromObject(gltf.scene);
-    const center = new THREE.Vector3();
-    const size   = new THREE.Vector3();
-    box.getCenter(center);
-    box.getSize(size);
-    gltf.scene.position.set(-center.x, -center.y, -center.z);
+    // Сцена кешируется загрузчиком: при возврате «Облако → Меш» эффект
+    // идёт по той же сцене второй раз. Сдвиг сначала обнуляем — иначе
+    // второй проход мерил уже сдвинутую модель и возвращал её в исходное
+    // место, и меш уезжал из центра.
+    gltf.scene.position.set(0, 0, 0);
+    const b = robustBounds(sampleWorldPositions(gltf.scene));
+    if (!b) return;
+    gltf.scene.position.set(-b.center[0], -b.center[1], -b.center[2]);
 
-    onReady({ center: new THREE.Vector3(0, 0, 0), size });
+    onReady({ size: new THREE.Vector3(b.size[0], b.size[1], b.size[2]), radius: b.radius });
   }, [gltf, url, up, onReady]);
 
   return <primitive object={gltf.scene} />;
@@ -121,39 +151,32 @@ const GlbModel = ({ url, up, onReady }) => {
 // === 3. ЛОАДЕР ===
 const StyledLoader = () => (
   <Html center>
-    <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px',
-      background: 'rgba(30,30,30,0.85)', padding: '14px 20px', borderRadius: '10px',
-      border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(8px)',
-    }}>
-      <div style={{
-        width: '22px', height: '22px',
-        border: '2px solid rgba(255,255,255,0.15)',
-        borderTopColor: '#6fcf97',
-        borderRadius: '50%',
-        animation: 'spin 0.8s linear infinite',
-      }} />
-      <span style={{ fontFamily: 'system-ui', fontSize: '12px', color: 'rgba(255,255,255,0.7)', whiteSpace: 'nowrap' }}>
-        Загрузка 3D модели...
-      </span>
+    <div className="pv__busy pv__busy--chip">
+      <div className="pv__spin" />
+      <span>Загрузка 3D модели...</span>
     </div>
   </Html>
 );
 
 // === 4. СЦЕНА (внутри Canvas) ===
-const Scene = ({ url, mode, up, upGlb, yaw180, onLoaded }) => {
+const Scene = ({ url, mode, up, upGlb, yaw180, onLoaded, autoRotate, onInteract, fitNonce }) => {
   // PLY и GLB экспортируются пайплайном в РАЗНЫХ системах координат
   // (меш дополнительно повёрнут), поэтому up-вектор у них свой. Если
   // отдельного up для GLB нет — используем общий (лучше, чем ничего).
   const activeUp = mode === 'glb' ? (upGlb || up) : up;
 
   const [modelInfo, setModelInfo] = useState(null);
-  const controlsRef = useRef();
 
   const handleReady = useCallback((info) => {
     setModelInfo(info);
     onLoaded();
   }, [onLoaded]);
+
+  // Сетка-пол: шаг — «круглое» число около 1/10 поперечника модели.
+  const span = modelInfo ? (2 * modelInfo.radius) || 1 : 1;
+  const cell = niceStep(span / 10);
+  // На узком холсте (телефон) подсказка занимает весь низ — оси поднимаем над ней.
+  const narrow = useThree((s) => s.size.width) < 480;
 
   return (
     <>
@@ -168,39 +191,54 @@ const Scene = ({ url, mode, up, upGlb, yaw180, onLoaded }) => {
             : <PlyModel url={url} up={activeUp} onReady={handleReady} />
           }
         </group>
-        {modelInfo && <CameraFit target={modelInfo.center} size={modelInfo.size} />}
+        {modelInfo && <CameraFit size={modelInfo.size} radius={modelInfo.radius} nonce={fitNonce} />}
       </Suspense>
 
       {modelInfo && (
         <Grid
-          position={[0, -(modelInfo.size.y / 2) - 0.01, 0]}
-          args={[modelInfo.size.x * 6, modelInfo.size.z * 6]}
-          cellSize={modelInfo.size.x * 0.15}
-          cellColor="rgba(255,255,255,0.06)"
-          sectionSize={modelInfo.size.x * 0.6}
-          sectionColor="rgba(255,255,255,0.12)"
-          fadeDistance={modelInfo.size.x * 8}
-          fadeStrength={2}
+          position={[0, -(modelInfo.size.y / 2) - span * 0.004, 0]}
+          args={[span * 10, span * 10]}
+          cellSize={cell}
+          cellThickness={0.6}
+          cellColor="#39413c"
+          sectionSize={cell * 5}
+          sectionThickness={1}
+          sectionColor="#5b665f"
+          fadeDistance={span * 5.5}
+          fadeStrength={1.8}
+          followCamera={false}
           infiniteGrid
         />
       )}
 
-      <GizmoHelper alignment="bottom-left" margin={[40, 40]}>
-        <GizmoViewport axisColors={['#e05252', '#6fcf97', '#c09b3a']} labelColor="white" />
+      <GizmoHelper alignment="bottom-left" margin={narrow ? [54, 96] : [58, 58]}>
+        <GizmoViewport axisColors={['#d9655f', '#7bc79a', '#c9a24a']} labelColor="#101211" />
       </GizmoHelper>
 
       <OrbitControls
-        ref={controlsRef}
         makeDefault
-        autoRotate={!!modelInfo}
-        autoRotateSpeed={0.4}
+        autoRotate={autoRotate && !!modelInfo}
+        autoRotateSpeed={0.45}
         enableDamping
         dampingFactor={0.07}
         maxPolarAngle={Math.PI * 0.85}
+        onStart={onInteract}
       />
     </>
   );
 };
+
+// На телефоне мыши нет — подсказка про пальцы.
+const TOUCH = typeof window !== 'undefined'
+  && typeof window.matchMedia === 'function'
+  && window.matchMedia('(pointer: coarse)').matches;
+
+const ResetIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" />
+  </svg>
+);
 
 // === 5. ГЛАВНЫЙ КОМПОНЕНТ ===
 // Принимает plyUrl и glbUrl отдельно, показывает свитч если есть оба.
@@ -211,55 +249,42 @@ const PlyViewerImpl = ({ plyUrl, glbUrl, up = null, upGlb = null, yaw180 = false
 
   const [mode, setMode] = useState(hasGlb ? 'glb' : 'ply');
   const [loaded, setLoaded] = useState(false);
+  // Модель медленно вращается сама, пока человек её не тронул: дальше
+  // вид принадлежит ему. «Сбросить вид» возвращает и ракурс, и вращение.
+  const [autoRotate, setAutoRotate] = useState(true);
+  const [fitNonce, setFitNonce] = useState(0);
 
   const activeUrl = mode === 'glb' ? glbUrl : plyUrl;
 
   const handleModeSwitch = (newMode) => {
     if (newMode === mode) return;
     setLoaded(false);
+    setAutoRotate(true);
     setMode(newMode);
   };
+
+  const handleLoaded = useCallback(() => setLoaded(true), []);
+  const handleInteract = useCallback(() => setAutoRotate(false), []);
+  const resetView = () => { setFitNonce((n) => n + 1); setAutoRotate(true); };
 
   if (!activeUrl) return null;
 
   return (
-    <div style={{
-      position: 'relative',
-      width: '100%',
-      height,
-      backgroundColor: '#1a1a1a',
-      borderRadius: '12px',
-      overflow: 'hidden',
-      border: '1px solid rgba(255,255,255,0.07)',
-    }}>
+    <div className="pv" style={{ height }}>
 
       {/* СВИТЧ GLB / PLY */}
       {hasGlb && hasPly && (
-        <div style={{
-          position: 'absolute', top: '12px', left: '12px', zIndex: 20,
-          display: 'flex', gap: '4px',
-          background: 'rgba(0,0,0,0.6)', padding: '4px', borderRadius: '8px',
-          border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(8px)',
-        }}>
+        <div className="pv__seg" role="group" aria-label="Вид модели">
           {[
-            { key: 'glb', label: '🧊 Меш' },
-            { key: 'ply', label: '✦ Облако' },
+            { key: 'glb', label: 'Меш' },
+            { key: 'ply', label: 'Облако' },
           ].map(({ key, label }) => (
             <button
               key={key}
+              type="button"
+              className={mode === key ? 'is-on' : ''}
+              aria-pressed={mode === key}
               onClick={() => handleModeSwitch(key)}
-              style={{
-                padding: '4px 12px',
-                borderRadius: '5px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '12px',
-                fontWeight: 600,
-                fontFamily: 'system-ui',
-                background: mode === key ? 'rgba(111,207,151,0.25)' : 'transparent',
-                color: mode === key ? '#6fcf97' : 'rgba(255,255,255,0.4)',
-                transition: 'all 0.15s ease',
-              }}
             >
               {label}
             </button>
@@ -267,49 +292,45 @@ const PlyViewerImpl = ({ plyUrl, glbUrl, up = null, upGlb = null, yaw180 = false
         </div>
       )}
 
+      {loaded && (
+        <button type="button" className="pv__reset" onClick={resetView} title="Вернуть исходный вид">
+          <ResetIcon />
+          <span>Сбросить вид</span>
+        </button>
+      )}
+
       {/* Подсказка управления */}
       {loaded && (
-        <div style={{
-          position: 'absolute', top: '12px', right: '12px', zIndex: 10,
-          background: 'rgba(0,0,0,0.5)', padding: '4px 10px', borderRadius: '6px',
-          fontSize: '11px', color: 'rgba(255,255,255,0.5)',
-          backdropFilter: 'blur(4px)', pointerEvents: 'none',
-          border: '1px solid rgba(255,255,255,0.06)',
-          fontFamily: 'system-ui',
-        }}>
-          ЛКМ — вращение · Колесико — зум
+        <div className="pv__hint">
+          {TOUCH ? 'Палец — вращение · Два пальца — масштаб' : 'ЛКМ — вращение · Колесо — масштаб · ПКМ — сдвиг'}
         </div>
       )}
 
       {/* Плашка загрузки */}
       {!loaded && (
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 5,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#1a1a1a',
-        }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '28px', height: '28px',
-              border: '2px solid rgba(255,255,255,0.1)',
-              borderTopColor: '#6fcf97',
-              borderRadius: '50%',
-              animation: 'spin 0.8s linear infinite',
-            }} />
-            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', fontFamily: 'system-ui' }}>
-              Построение 3D модели...
-            </span>
-          </div>
+        <div className="pv__busy pv__busy--cover">
+          <div className="pv__spin" />
+          <span>Построение 3D модели...</span>
         </div>
       )}
 
+      {/* resize.offsetSize: размер холста берём из вёрстки (offsetWidth),
+          а не из getBoundingClientRect. Страница «Анализ» на невысоких
+          ноутбуках ужата CSS-zoom (obhod/fit.js): прямоугольник приходил
+          уже ужатым, холсту ставилась эта ширина в px, и zoom ужимал его
+          второй раз — холст занимал 0.8 блока, справа и снизу оставалась
+          пустая полоса. */}
       <Canvas
         key={activeUrl}
-        gl={{ antialias: true, alpha: false }}
-        camera={{ fov: 45, near: 0.01, far: 10000 }}
-        style={{ background: '#1a1a1a' }}
+        gl={{ antialias: true, alpha: true }}
+        camera={{ fov: 40, near: 0.01, far: 10000 }}
+        resize={{ offsetSize: true }}
       >
-        <Scene url={activeUrl} mode={mode} up={up} upGlb={upGlb} yaw180={yaw180} onLoaded={() => setLoaded(true)} />
+        <Scene
+          url={activeUrl} mode={mode} up={up} upGlb={upGlb} yaw180={yaw180}
+          onLoaded={handleLoaded}
+          autoRotate={autoRotate} onInteract={handleInteract} fitNonce={fitNonce}
+        />
       </Canvas>
     </div>
   );

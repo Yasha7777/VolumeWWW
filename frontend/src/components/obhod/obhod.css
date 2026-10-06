@@ -646,6 +646,11 @@
 .ks-result { position: relative; z-index: 2; width: min(1342px, calc(100% - 48px)); margin: 18px 0 0 max(24px, calc(50% - 668px)); }
 .ks-result > .status { display: block; margin-bottom: 14px; }
 .ks-result > .status a { color: inherit; font-weight: 500; }
+/* Карточка результата свёрстана на общих токенах сайта, где --green-ink — тёмно-зелёный
+   текст. В .ks-scope тот же токен значит «светлый текст на зелёной кнопке», поэтому
+   заголовок «Результат» и кнопки «Копировать» / «Открыть отчёт» сливались с фоном. */
+.ks-result .result-card { --green-ink: #3d4833; }
+:root[data-theme='dark'] .ks-result .result-card { --green-ink: #b5d69c; }
 @media (prefers-reduced-motion: reduce) { .ks-run__pulse, .ks-run__bar::after { animation: none; } }
 .ks-chip {
   display: flex; align-items: center; width: 236px; height: 42px; padding: 0 8px 0 11px; border-radius: 8px;
