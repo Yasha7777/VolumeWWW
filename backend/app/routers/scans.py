@@ -9,7 +9,9 @@
                                  + до 12 кадров с миниатюрами для проигрывания
   GET  /api/scans/{id}/cloud     разреженное облако ARKit + позиции камеры (3D)
   POST /api/scans/{id}/analyze   анализ обхода: строка analyses (scan_id) из
-                                 кадров обхода + прогон в n8n, как у «Повторить»
+                                 кадров обхода + расчёт на GPU-сервере (gpu.py);
+                                 вместе с кадрами уходят данные ARKit по каждому
+                                 кадру и путь к scan.json
 
 Загрузка обхода из приложения (VolmetricARKit ≥ 5), всё идемпотентно —
 телефон на плохой связи повторяет запросы, дублей не бывает:
@@ -33,19 +35,16 @@ import json
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
+from .. import gpu
 from ..auth import get_current_user
 from ..config import settings
 from ..supabase_client import supabase
 from ..imaging import make_thumbnail
 from .analyses import (
     COLMAP_BUCKET,
-    _b64_data_url,
-    _call_n8n_and_save,
     _cube_block,
-    _download_photo,
     _is_superadmin,
     _photo_block,
-    _pick_best_photos,
 )
 
 logger = logging.getLogger(__name__)
@@ -352,18 +351,16 @@ class ScanAnalyzeRequest(BaseModel):
     client_id: Optional[str] = None   # идемпотентность, как у POST /analyses/
 
 
-async def _run_scan_analysis(analysis_id, frames, title, notes, user_info, cube, webhook_url):
+async def _run_scan_analysis(analysis_id, scan, frames, cube):
+    """Обход целиком — на расчётный сервер: все кадры (без прореживания) и всё,
+    что записал телефон: поза и intrinsics ARKit по каждому кадру, сведения об
+    обходе, путь к scan.json. Байты кадров не шлём — сервер качает оригиналы сам."""
     photos = [
         _photo_block(i, f.get("id"), f["public_url"], f.get("thumb_url"),
                      f.get("filename") or f"{i:03d}.jpg", f.get("exif"))
         for i, f in enumerate(frames)
     ]
-    # байты — только двум лучшим кадрам (нода «b64 → items»), остальные по ссылке
-    for photo in _pick_best_photos(photos):
-        content = await asyncio.to_thread(_download_photo, frames[photo["index"]])
-        if content is not None:
-            photo["b64"] = await asyncio.to_thread(_b64_data_url, content, "image/jpeg")
-    await _call_n8n_and_save(analysis_id, photos, title, notes, user_info, cube, webhook_url)
+    await gpu.run_and_save(analysis_id, photos, cube, scan, frames)
 
 
 @router.post("/{scan_id}/analyze", status_code=202)
@@ -373,15 +370,17 @@ def analyze_scan(
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
 ):
-    webhook_url = settings.n8n_webhook_url_prod if body.is_prod else settings.n8n_webhook_url
-    if not webhook_url:
-        raise HTTPException(500, "Конфигурация n8n URL не найдена")
+    # is_prod принят для совместимости со старым фронтом, но ни на что не
+    # влияет: адрес расчётного сервера один, его задаёт суперадмин в «Профиле».
+    gpu_cfg = gpu.load_gpu_settings()
+    if not gpu_cfg["url"]:
+        raise HTTPException(503, "Расчётный сервер не настроен. Обратитесь к администратору.")
 
-    scan = _get_scan(scan_id, current_user)
+    scan = _get_scan(scan_id, current_user, cols=SCAN_COLS + ", storage_prefix")
     if scan.get("status") != "ready":
         raise HTTPException(409, "Обход ещё не загружен полностью")
 
-    frames = [f for f in _scan_frames(scan_id) if f.get("public_url")]
+    frames = [f for f in _scan_frames(scan_id, with_arkit=True) if f.get("public_url")]
     if len(frames) < 2:
         raise HTTPException(409, "У обхода нет кадров в хранилище")
 
@@ -417,36 +416,15 @@ def analyze_scan(
         }
     ).execute()
 
-    # профиль ВЛАДЕЛЬЦА обхода (админ может запускать чужие) — как в rerun
-    try:
-        profile = (
-            supabase.table("profiles").select("emails, name, company").eq("id", owner_id).single().execute()
-        ).data or {}
-    except Exception:
-        profile = {}
-    emails: list[str] = list(profile.get("emails") or [])
-    owner_email = current_user["email"] if owner_id == current_user["id"] else None
-    if owner_email and owner_email not in emails:
-        emails = [owner_email] + emails
-
     background_tasks.add_task(
         _run_scan_analysis,
         analysis_id,
+        scan,
         frames,
-        title,
-        notes,
-        {
-            "id":      owner_id,
-            "email":   owner_email or (emails[0] if emails else ""),
-            "emails":  emails,
-            "name":    profile.get("name", ""),
-            "company": profile.get("company", ""),
-        },
         _cube_block(body.cube),
-        webhook_url,
     )
     return {"id": analysis_id, "status": "pending", "scan_id": scan_id,
-            "mode": "prod" if body.is_prod else "test"}
+            "mode": gpu_cfg["mode"]}
 
 
 # ─── облако ARKit для 3D ─────────────────────────────────────────────────────

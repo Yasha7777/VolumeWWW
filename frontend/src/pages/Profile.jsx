@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { useAuth } from '../context/AuthContext'
+import GpuAdminPanel from '../components/GpuAdminPanel'
 import './Profile.css'
 
 /* ───────────────────────── helpers ───────────────────────── */
@@ -272,6 +273,10 @@ export default function Profile() {
   // снимок последнего сохранения — от него зависят карточка, процент и кнопка
   const [snap,     setSnap]     = useState(null)
 
+  // суперадмин (profiles.is_superadmin): показываем панель расчётного сервера.
+  // Это только видимость блока — права проверяет бэкенд на каждом запросе.
+  const [isAdmin,  setIsAdmin]  = useState(false)
+
   const [stats,    setStats]    = useState({ total: null, success: null })
   const [saved,    setSaved]    = useState(false)
   const [saving,   setSaving]   = useState(false)
@@ -288,6 +293,7 @@ export default function Profile() {
       setCity(p.city || '')
       setPhone(ph)
       setEmails(em)
+      setIsAdmin(p.is_superadmin === true)
       setSnap({ name: p.name || '', company: p.company || '', position: p.position || '', city: p.city || '', phone: ph, emails: em })
     }).catch(() => {})
 
@@ -504,6 +510,8 @@ export default function Profile() {
             <div className="kb-account-title">Аккаунт</div>
             <p>Чтобы сменить пароль, воспользуйтесь ссылкой «Забыли пароль?» на странице входа.</p>
           </div>
+
+          {isAdmin && <GpuAdminPanel />}
         </section>
       </div>
     </div>

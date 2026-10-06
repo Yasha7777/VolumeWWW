@@ -187,9 +187,10 @@ export const api = {
 
   deleteAnalysis: (id) => req(`/analyses/${id}`, { method: 'DELETE' }),
 
-  // Повторный прогон существующего замера: бэкенд сам достаёт фото из Storage
-  // и заново дёргает n8n (TEST или PROD — по isProd). Прежний результат
-  // затирается, статус возвращается в pending.
+  // Повторный прогон существующего замера: бэкенд заново отправляет его на
+  // расчётный сервер (фото тот качает из Storage сам). Прежний результат
+  // затирается, статус возвращается в pending. isProd с 06.10.2026 ни на что
+  // не влияет: адрес сервера один, его задаёт суперадмин в «Профиле».
   rerunAnalysis: (id, { isProd = false, cube = null } = {}) =>
     req(`/analyses/${id}/rerun`, {
       method: 'POST',
@@ -216,7 +217,8 @@ export const api = {
   getScanCloud: (id) => req(`/scans/${id}/cloud`),
 
   // Анализ обхода: бэкенд заводит строку analyses (scan_id) из кадров обхода
-  // и ставит прогон в n8n. POST не ретраится (см. req) — двойного запуска нет.
+  // и отправляет его на расчётный сервер вместе с данными ARKit по кадрам.
+  // POST не ретраится (см. req) — двойного запуска нет.
   analyzeScan: (id, { is_prod = false, cube = null, title, notes, client_id } = {}) =>
     req(`/scans/${id}/analyze`, {
       method: 'POST',
@@ -227,4 +229,26 @@ export const api = {
   // ─── Admin (суперадмин) ──────────────────────────────────
   // 200 + список профилей — ты админ; 403 — обычный пользователь.
   adminListUsers: () => req('/analyses/admin/users'),
+
+  // Расчётный сервер (панель в «Профиле»): { url, mode: 'cube'|'vio',
+  // token_set, token_hint, updated_at, source, storage_ready }. Сам ключ
+  // доступа сервер не возвращает никогда.
+  adminGetGpu: () => req('/admin/gpu'),
+
+  // token: строка — заменить ключ, '' — стереть, undefined — не трогать.
+  adminSaveGpu: ({ url, mode, token }) =>
+    req('/admin/gpu', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, mode, token }),
+    }),
+
+  // Проверка связи с приёмником; расчёт не запускает. Без url/token проверяет
+  // сохранённые настройки, с ними — введённые в форму, ещё не сохранённые.
+  adminCheckGpu: ({ url, token } = {}) =>
+    req('/admin/gpu/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, token }),
+    }),
 }

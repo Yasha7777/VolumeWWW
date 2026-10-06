@@ -20,6 +20,7 @@ from fastapi import (
 )
 from pydantic import BaseModel
 
+from .. import gpu                    # прямой вызов расчётного сервера (без n8n)
 from ..auth import get_current_user
 from ..config import settings
 from ..supabase_client import supabase
@@ -33,6 +34,13 @@ MAX_FILE_BYTES = 20 * 1024 * 1024  # 20 МБ
 COLMAP_BUCKET = "colmap"
 
 # ─── ОТБОР КАДРОВ ДЛЯ ЗРИТЕЛЬНОЙ МОДЕЛИ ──────────────────────────────────────
+#
+# ‼ С 06.10.2026 НЕ ИСПОЛЬЗУЕТСЯ: n8n убран, бэкенд ходит на расчётный сервер
+# напрямую (gpu.py), а зрительная модель (LLaVA) в воркфлоу и так была
+# выключена. Байты кадров больше никуда не едут — сервер сам качает оригиналы
+# по id строк colmap_photos. Оценка качества кадра и отбор двух лучших
+# оставлены как есть: они понадобятся, когда определение материала вернётся.
+# Ниже — описание прежнего контракта, для истории.
 #
 # В n8n УХОДЯТ БАЙТЫ ТОЛЬКО ДВУХ ЛУЧШИХ КАДРОВ (photos_b64, data-URL, как и
 # раньше) — их ждёт нода «b64 → items». Вся пачка байтами больше не едет:
@@ -254,129 +262,10 @@ def _is_superadmin(user_id: str) -> bool:
         return False
 
 
-# ─── BACKGROUND TASK ─────────────────────────────────────────────────────────
-
-async def _call_n8n_and_save(
-    analysis_id: str,
-    photos: list[dict],          # блоки кадров в порядке загрузки (см. _photo_block)
-    title: str,
-    notes: str,
-    user_info: dict,
-    cube: dict,                  # параметры калибровочного куба {squares_per_side, square_size_m}
-    webhook_url: str,
-):
-    """Дёргает вебхук n8n и кладёт ответ в analyses.
-
-    Контракт с воркфлоу (менялся 2026-08-23): `photos_b64` на месте и формат
-    прежний (data-URL), но в нём ТОЛЬКО 2 ЛУЧШИХ КАДРА, а не вся пачка —
-    нода «b64 → items» мапит массив один-в-один и получает ровно два item'а.
-    Остальные кадры представлены метаданными: id строки colmap_photos, ссылка
-    на оригинал в бакете и EXIF; байты по ним воркфлоу при необходимости
-    забирает сам.
-
-    `exif` остаётся массивом по ВСЕЙ пачке (нода «EXIF → parse» нумерует его
-    как photo_index) — сопоставить его с photos_b64 можно через
-    meta.best_photo_indexes или best_photos[k].index.
-    """
-    best = _pick_best_photos(photos)
-
-    # Байты — только у отобранных кадров. Порядок photos_b64 = порядок
-    # best_photos (порядок съёмки), это и есть контракт с «b64 → items».
-    photos_b64 = [p["b64"] for p in best if p.get("b64")]
-    if len(photos_b64) != len(best):
-        logger.warning(
-            "n8n payload для %s: base64 собран для %d из %d лучших кадров",
-            analysis_id, len(photos_b64), len(best),
-        )
-
-    # В метаданных байтов быть не должно — иначе те же 2 кадра уедут дважды.
-    strip_b64 = lambda p: {k: v for k, v in p.items() if k != "b64"}
-
-    payload = {
-        "title": title,
-        "notes": notes,
-        # Параллельные массивы «как раньше»: ноды, читающие body.exif[i] и
-        # body.photo_urls[i], продолжают работать без переписывания.
-        "exif":       [p["exif"] for p in photos],
-        "photo_urls": [p["url"] for p in photos],
-        # Два лучших кадра байтами, data-URL — как и ждёт «b64 → items».
-        "photos_b64": photos_b64,
-        # Всё про кадры одним списком: id строки colmap_photos, ссылка на
-        # ОРИГИНАЛ в бакете, EXIF и оценка качества. Без байтов.
-        "photos": [strip_b64(p) for p in photos],
-        # Те же два кадра, что в photos_b64, но с index/id/EXIF/оценкой —
-        # чтобы воркфлоу знал, ЧТО именно он показывает модели.
-        "best_photos": [strip_b64(p) for p in best],
-        "user": user_info,
-        "cube": cube,
-        "meta": {
-            "analysis_id":         analysis_id,
-            "photo_ids":           [p["id"] for p in photos],
-            "photo_count":         len(photos),
-            "best_photo_ids":      [p["id"] for p in best],
-            # Позиции лучших в общей пачке = индексы в exif[]/photo_urls[].
-            "best_photo_indexes":  [p["index"] for p in best],
-            "timestamp":           datetime.now(timezone.utc).isoformat(),
-        },
-    }
-
-    # Раньше здесь мерили ДЕСЯТКИ И СОТНИ МЕГАБАЙТ: base64 всей пачки. Теперь
-    # это два кадра, но потолок n8n (N8N_PAYLOAD_SIZE_MAX) всё равно рядом —
-    # два 20-мегабайтных оригинала дают ~53 МБ. Меряем, чтобы упор в потолок
-    # было видно в логах, а не только по факту 413.
-    b64_mb = sum(len(s) for s in photos_b64) / (1024 * 1024)
-    payload_mb = len(json.dumps(payload, ensure_ascii=False).encode("utf-8")) / (1024 * 1024)
-    log_size = logger.warning if payload_mb > 32 else logger.info
-    log_size(
-        "n8n payload для %s: %d фото, из них %d байтами (~%.1f МБ base64), всего ~%.1f МБ",
-        analysis_id, len(photos), len(photos_b64), b64_mb, payload_mb,
-    )
-
-    now = lambda: datetime.now(timezone.utc).isoformat()
-
-    try:
-        async with httpx.AsyncClient(timeout=settings.n8n_timeout) as client:
-            resp = await client.post(webhook_url, json=payload)
-            resp.raise_for_status()
-
-        ct = resp.headers.get("content-type", "")
-        if "application/json" in ct:
-            data = resp.json()
-            result = (
-                data.get("result")
-                or data.get("output")
-                or data.get("message")
-                or data.get("text")
-                or str(data)
-            )
-        else:
-            result = resp.text
-
-        supabase.table("analyses").update(
-            {"status": "completed", "result": result, "completed_at": now()}
-        ).eq("id", analysis_id).execute()
-
-    except httpx.TimeoutException:
-        supabase.table("analyses").update(
-            {
-                "status": "error",
-                "result": "Ошибка: превышено время ожидания. Сервер n8n не ответил.",
-                "completed_at": now(),
-            }
-        ).eq("id", analysis_id).execute()
-
-    except Exception as exc:
-        logger.exception("n8n error for analysis %s", analysis_id)
-        supabase.table("analyses").update(
-            {"status": "error", "result": f"Ошибка: {exc}", "completed_at": now()}
-        ).eq("id", analysis_id).execute()
-
-
 # ─── RERUN (повторный прогон уже загруженного замера) ────────────────────────
 #
-# Фото повторно НЕ загружаются — они уже лежат в Storage. Скачиваются РОВНО ДВА
-# лучших кадра (раньше — вся пачка, чтобы перегнать её в base64): остальным в
-# payload хватает id/ссылки/EXIF.
+# Фото повторно НЕ загружаются — они уже лежат в Storage, и расчётный сервер
+# качает их сам по id строк colmap_photos. Бэкенд байты не трогает вовсе.
 # EXIF берём из colmap_photos.exif (migration_photo_exif.sql) — у замеров,
 # загруженных до этой миграции, он пуст, и все кадры получают нейтральные 0.5.
 # Куб в БД не хранится: тот, что прислал клиент, иначе стандартный.
@@ -464,34 +353,66 @@ def _fetch_photo_rows(analysis_id: str) -> list[dict]:
     ).data or []
 
 
+def _fetch_scan_for_rerun(scan_id: str) -> tuple[Optional[dict], list[dict]]:
+    """Обход и его кадры (с данными ARKit) — для повтора замера, сделанного по обходу.
+
+    Кадры обхода привязаны к `scan_id`, а не к `analyze_id`, поэтому
+    `_fetch_photo_rows` их не находит: без этой ветки повтор такого замера
+    уходил на сервер без единого id кадра.
+    """
+    try:
+        scan = (
+            supabase.table("scans").select("*").eq("id", scan_id).limit(1).execute()
+        ).data
+    except Exception:
+        scan = None
+    cols = "id, storage_path, public_url, thumb_url, filename, frame_index"
+    for extra in (", exif, arkit", ""):          # старая БД без колонок — без них
+        try:
+            frames = (
+                supabase.table("colmap_photos").select(cols + extra)
+                .eq("scan_id", scan_id).order("frame_index").execute()
+            ).data or []
+            break
+        except Exception:
+            frames = []
+    return (scan[0] if scan else None), frames
+
+
 async def _rerun_and_save(
     analysis_id: str,
     photo_urls: list[str],
-    title: str,
-    notes: str,
-    user_info: dict,
     cube: dict,
-    webhook_url: str,
+    scan_id: Optional[str] = None,
 ):
     now = lambda: datetime.now(timezone.utc).isoformat()
 
-    # Порядок фото берём из analyses.photo_urls (это порядок загрузки), а
-    # строки colmap_photos подтягиваем по public_url — id самих строк нужны
-    # n8n в meta.photo_ids.
-    try:
-        rows = await asyncio.to_thread(_fetch_photo_rows, analysis_id)
-    except Exception:
-        logger.warning("colmap_photos недоступна для %s — работаем по ссылкам", analysis_id)
-        rows = []
+    scan, frames = None, None
+    if scan_id:
+        scan, frames = await asyncio.to_thread(_fetch_scan_for_rerun, scan_id)
+        frames = [f for f in frames if f.get("public_url")]
 
-    by_url = {r.get("public_url"): r for r in rows if r.get("public_url")}
-    # Кадра нет в colmap_photos (старая запись) — не теряем его: id будет None,
-    # но ссылка на оригинал есть, и n8n заберёт пиксели по ней.
-    ordered = [by_url.get(u) or {"public_url": u} for u in photo_urls]
-    if not ordered:                      # старая запись без photo_urls
-        ordered = rows
+    if frames:
+        # Замер по обходу: кадры и их порядок — из самого обхода.
+        ordered = frames
+    else:
+        # Порядок фото берём из analyses.photo_urls (это порядок загрузки), а
+        # строки colmap_photos подтягиваем по public_url — id самих строк нужны
+        # расчётному серверу: по ним он качает оригиналы.
+        try:
+            rows = await asyncio.to_thread(_fetch_photo_rows, analysis_id)
+        except Exception:
+            logger.warning("colmap_photos недоступна для %s — работаем по ссылкам", analysis_id)
+            rows = []
 
-    ordered = [r for r in ordered if r.get("public_url")]
+        by_url = {r.get("public_url"): r for r in rows if r.get("public_url")}
+        # Кадра нет в colmap_photos (старая запись) — id будет None, и такой
+        # кадр сервер скачать не сможет: gpu.run_and_save его отбросит.
+        ordered = [by_url.get(u) or {"public_url": u} for u in photo_urls]
+        if not ordered:                      # старая запись без photo_urls
+            ordered = rows
+
+        ordered = [r for r in ordered if r.get("public_url")]
 
     photos = [
         _photo_block(
@@ -515,24 +436,7 @@ async def _rerun_and_save(
         ).eq("id", analysis_id).execute()
         return
 
-    # Байты качаем ТОЛЬКО для двух лучших — их ждёт нода «b64 → items».
-    # Не скачалось (битый путь, дырка в Storage) — не валим повтор: у n8n
-    # остаются ссылки на оригиналы, а в лог уйдёт warning из _download_photo.
-    for photo in _pick_best_photos(photos):
-        row = ordered[photo["index"]]
-        content = await asyncio.to_thread(_download_photo, row)
-        if content is not None:
-            photo["b64"] = await asyncio.to_thread(_b64_data_url, content, "image/jpeg")
-
-    await _call_n8n_and_save(
-        analysis_id,
-        photos,
-        title,
-        notes,
-        user_info,
-        cube,
-        webhook_url,
-    )
+    await gpu.run_and_save(analysis_id, photos, cube, scan, frames)
 
 
 class RerunRequest(BaseModel):
@@ -559,9 +463,12 @@ async def create_analysis(
     if len(files) > MAX_FILES:
         raise HTTPException(400, f"Максимум {MAX_FILES} фото")
 
-    webhook_url = settings.n8n_webhook_url_prod if is_prod else settings.n8n_webhook_url
-    if not webhook_url:
-        raise HTTPException(500, "Конфигурация n8n URL не найдена")
+    # Адрес расчётного сервера проверяем ДО загрузки: без него замер всё равно
+    # не посчитается, и грузить сотни мегабайт фото незачем. `is_prod` принят
+    # для совместимости со старым фронтом и очередью, но больше ни на что не
+    # влияет — адрес один, его задаёт суперадмин в «Профиле».
+    if not (await asyncio.to_thread(gpu.load_gpu_settings))["url"]:
+        raise HTTPException(503, "Расчётный сервер не настроен. Обратитесь к администратору.")
 
     # Массив EXIF, параллельный files (см. queue.js). Раньше он просто
     # пересылался в n8n, теперь по нему считается качество кадра и он же едет
@@ -671,12 +578,7 @@ async def create_analysis(
     photo_urls: list[str] = []
     thumbnail_urls: list[str] = []
 
-    # Лучшие кадры выбираем ДО цикла: EXIF для этого достаточно, а знать их
-    # заранее нужно, чтобы держать в памяти base64 ровно двух фото. Копить
-    # байты всей пачки нельзя — 50 оригиналов это ~150 МБ в RAM на КАЖДЫЙ
-    # параллельный запрос, ровно та беда, из-за которой ложился n8n.
     photo_exifs = [_exif_at(exif_list, i) for i in range(len(files))]
-    best_indexes = set(_best_photo_indexes(photo_exifs))
 
     for i, file in enumerate(files):
         if not (file.content_type or "").startswith("image/"):
@@ -747,54 +649,18 @@ async def create_analysis(
         photo_urls.append(public_url)
         thumbnail_urls.append(thumb_url)
 
-        block = _photo_block(i, row["id"], public_url, thumb_url, safe_filename, photo_exif)
-        if i in best_indexes:
-            # Один из двух кадров для зрительной модели — только его байты и
-            # уедут в n8n (photos_b64). Оригинал, байт в байт, как загружен.
-            block["b64"] = await asyncio.to_thread(
-                _b64_data_url, content, file.content_type or "image/jpeg"
-            )
-        photos.append(block)
+        photos.append(_photo_block(i, row["id"], public_url, thumb_url, safe_filename, photo_exif))
 
     # ── 3. Обновляем analyses.photo_urls + thumbnail_urls ───────────────────
     supabase.table("analyses").update(
         {"photo_urls": photo_urls, "thumbnail_urls": thumbnail_urls}
     ).eq("id", analysis_id).execute()
 
-    # ── 4. Профиль пользователя для n8n ──────────────────────────────────────
-    try:
-        profile_res = (
-            supabase.table("profiles")
-            .select("emails, name, company")
-            .eq("id", current_user["id"])
-            .single()
-            .execute()
-        )
-        profile = profile_res.data or {}
-    except Exception:
-        profile = {}
-
-    result_emails: list[str] = list(profile.get("emails") or [])
-    if current_user["email"] and current_user["email"] not in result_emails:
-        result_emails = [current_user["email"]] + result_emails
-
-    # ── 5. Запускаем n8n в фоне ───────────────────────────────────────────────
-    background_tasks.add_task(
-        _call_n8n_and_save,
-        analysis_id,
-        photos,
-        title or "Без названия",
-        notes,
-        {
-            "id":      current_user["id"],
-            "email":   current_user["email"],
-            "emails":  result_emails,
-            "name":    profile.get("name", ""),
-            "company": profile.get("company", ""),
-        },
-        cube_block,
-        webhook_url,
-    )
+    # ── 4. Запускаем расчёт в фоне ────────────────────────────────────────────
+    #   На расчётный сервер уходят только id кадров, EXIF и параметры куба:
+    #   ни почта, ни имя пользователя ему не нужны (письма слал n8n, и та нода
+    #   была выключена).
+    background_tasks.add_task(gpu.run_and_save, analysis_id, photos, cube_block)
 
     return {"id": analysis_id, "status": "pending"}
 
@@ -911,13 +777,14 @@ def rerun_analysis(
     перезапустить МОЖНО намеренно: фоновая задача умирает вместе с процессом
     uvicorn, и это единственный способ раскачать зависшую запись.
     """
-    webhook_url = settings.n8n_webhook_url_prod if body.is_prod else settings.n8n_webhook_url
-    if not webhook_url:
-        raise HTTPException(500, "Конфигурация n8n URL не найдена")
+    if not gpu.load_gpu_settings()["url"]:
+        raise HTTPException(503, "Расчётный сервер не настроен. Обратитесь к администратору.")
 
+    # select("*"), а не список колонок: scan_id есть только в базах с обходами,
+    # и явное имя несуществующей колонки уронило бы повтор целиком.
     q = (
         supabase.table("analyses")
-        .select("id, user_id, title, notes, photo_urls")
+        .select("*")
         .eq("id", analysis_id)
     )
     if not _is_superadmin(current_user["id"]):
@@ -930,25 +797,6 @@ def rerun_analysis(
     if not rec:
         raise HTTPException(404, "Анализ не найден")
 
-    # Профиль ВЛАДЕЛЬЦА замера, а не того, кто нажал (админ может перезапускать
-    # чужие) — иначе n8n отправит письмо не тому человеку.
-    owner_id = rec["user_id"]
-    try:
-        profile = (
-            supabase.table("profiles")
-            .select("emails, name, company")
-            .eq("id", owner_id)
-            .single()
-            .execute()
-        ).data or {}
-    except Exception:
-        profile = {}
-
-    emails: list[str] = list(profile.get("emails") or [])
-    owner_email = current_user["email"] if owner_id == current_user["id"] else None
-    if owner_email and owner_email not in emails:
-        emails = [owner_email] + emails
-
     supabase.table("analyses").update(
         {"status": "pending", "result": None, "completed_at": None}
     ).eq("id", analysis_id).execute()
@@ -957,17 +805,8 @@ def rerun_analysis(
         _rerun_and_save,
         analysis_id,
         list(rec.get("photo_urls") or []),
-        rec.get("title") or "Без названия",
-        rec.get("notes") or "",
-        {
-            "id":      owner_id,
-            "email":   owner_email or (emails[0] if emails else ""),
-            "emails":  emails,
-            "name":    profile.get("name", ""),
-            "company": profile.get("company", ""),
-        },
         _cube_block(body.cube),
-        webhook_url,
+        rec.get("scan_id"),
     )
 
     return {"id": analysis_id, "status": "pending", "mode": "prod" if body.is_prod else "test"}

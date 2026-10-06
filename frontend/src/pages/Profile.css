@@ -228,6 +228,34 @@
 .kb-account p { margin: 0; font-size: var(--fs-sm); color: var(--muted); line-height: 1.7; }
 .kb-account strong { color: var(--text); }
 
+/* ─── расчётный сервер: панель суперадмина (components/GpuAdminPanel.jsx) ───
+   Тот же «врезной» блок, что .kb-account, — рамка на фоне страницы внутри
+   карточки формы. Поля и кнопки — общие (.kb-field, .btn, .status). */
+.kb-admin { margin-top: var(--sp-5); padding: var(--sp-5) var(--sp-6) var(--sp-6); background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); }
+.kb-admin-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+.kb-admin-head .kb-account-title { margin-bottom: 0; }
+.kb-admin-badge { font-size: var(--fs-2xs); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--green-ink); padding: 2px var(--sp-2); border: 1px solid color-mix(in srgb, var(--green-ink) 35%, transparent); border-radius: var(--r-xs); white-space: nowrap; }
+.kb-admin-field { margin-top: var(--sp-4); }
+/* в блоке фон полей — карточный: на --bg (фон самого блока) они бы сливались */
+.kb-admin .kb-field input { background: var(--bg-card); }
+.kb-admin .kb-field input:disabled { opacity: .6; cursor: not-allowed; }
+.kb-admin .kb-hint { margin-top: var(--sp-2); line-height: 1.5; }
+.kb-admin code { font-size: .95em; padding: 1px 5px; border-radius: 4px; background: color-mix(in srgb, var(--text) 7%, transparent); overflow-wrap: anywhere; }
+.kb-admin-warn { color: var(--text); padding-left: var(--sp-3); border-left: 2px solid var(--gold); }
+/* переключатель Cube / VIO — по образцу .mode-toggle (styles.css) */
+.kb-seg { display: inline-flex; align-self: flex-start; gap: var(--sp-1); padding: var(--sp-1); background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-sm); }
+.kb-seg button { min-width: 84px; padding: var(--sp-2) var(--sp-5); border: none; border-radius: var(--r-xs); font-family: var(--sans); font-size: var(--fs-sm); font-weight: 600; background: transparent; color: var(--muted); cursor: pointer; transition: background .2s var(--ease), color .2s var(--ease); }
+.kb-seg button:hover:not(.is-on) { color: var(--text); }
+.kb-seg button.is-on { background: var(--text); color: var(--bg); box-shadow: 0 2px 4px rgba(0,0,0,.12); }
+.kb-seg button:focus-visible { outline: 2px solid var(--green-ink); outline-offset: 2px; }
+.kb-link-btn { padding: 0; border: none; background: none; font: inherit; color: var(--green-ink); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.kb-admin-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-3); margin-top: var(--sp-5); }
+.kb-admin-actions .btn { padding: var(--sp-3) var(--sp-5); font-size: var(--fs-sm); }
+@media (max-width: 560px) {
+  .kb-admin { padding: var(--sp-4); }
+  .kb-admin-actions .btn { flex: 1 1 auto; }
+}
+
 @keyframes kb-breathe { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.06); opacity: .92; } }
 @keyframes kb-drift   { 0%,100% { transform: translateX(0); } 50% { transform: translateX(6px); } }
 
