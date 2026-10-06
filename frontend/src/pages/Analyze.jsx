@@ -94,7 +94,21 @@ export default function Analyze() {
   const [scanSel, setScanSel]     = useState([])
   const [period, setPeriod]       = useState(null)   // null — за всё время
   const periodQ                   = useMemo(() => periodQuery(period), [period])
-  const scans = useScans(periodQ, demo)
+  // ── Суперадмин: обходы чужих пользователей ──
+  // adminUsers === null → обычный пользователь, селектора нет (как в History.jsx)
+  // userFilter: 'mine' | 'all' | <uuid пользователя>
+  const [adminUsers, setAdminUsers] = useState(null)
+  const [userFilter, setUserFilter] = useState('mine')
+  useEffect(() => {
+    if (demo) return
+    api.adminListUsers()
+      .then((list) => setAdminUsers(Array.isArray(list) ? list : []))
+      .catch(() => setAdminUsers(null))
+  }, [demo])
+  const scans = useScans(periodQ, demo, userFilter === 'mine' ? null : userFilter)
+  // смена «чей обход показывать» — снимаем выбор (старый обход из другого
+  // списка не исчезает сам: pickedScans его не найдёт, но лучше явно сбросить)
+  useEffect(() => { setScanSel([]); setQueueNote('') }, [userFilter])
   const pickedScans = useMemo(
     () => scans.items.filter(o => scanSel.includes(o.id)),
     [scans.items, scanSel],
@@ -744,6 +758,9 @@ export default function Analyze() {
               zoomed={ksZoom !== 1}
               period={period}
               onPeriod={setPeriod}
+              adminUsers={adminUsers}
+              userFilter={userFilter}
+              onUserFilter={setUserFilter}
             />
             {(status || resultCard) && (
               <div className="ks-result" ref={resultRef}>

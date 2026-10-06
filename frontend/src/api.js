@@ -199,10 +199,12 @@ export const api = {
 
   // ─── Обходы (сканы из приложения VolmetricARKit, таблица scans) ─────────
   // from/to — ISO-даты по captured_at; без них — все обходы.
-  listScans: ({ from, to } = {}) => {
+  // userId — только для суперадмина: uuid пользователя или 'all' (как в listAnalyses).
+  listScans: ({ from, to, userId } = {}) => {
     const q = new URLSearchParams()
     if (from) q.set('from', from)
     if (to) q.set('to', to)
+    if (userId) q.set('user_id', userId)
     const qs = q.toString()
     return req(`/scans/${qs ? `?${qs}` : ''}`)
   },

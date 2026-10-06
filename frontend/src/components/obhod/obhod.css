@@ -378,6 +378,10 @@
 .ks-panel__list { grid-row: 1; grid-column: 2; min-width: 0; display: flex; flex-direction: column; }
 .ks-panel__head { display: flex; align-items: center; justify-content: space-between; height: 38px; margin-top: 5px; }
 .ks-panel__title { margin: 0 0 0 5px; font-size: 16px; line-height: 22px; font-weight: 500; letter-spacing: -.005em; color: var(--ink); }
+.ks-panel__head-right { display: flex; align-items: center; gap: 8px; }
+/* суперадмин: селектор «чьи обходы» рядом с периодом — та же высота 38px,
+   .kh-userpick (styles.css) задаёт тему-корректные цвета, здесь только размер */
+.ks-userpick { height: 38px; max-width: 180px; }
 .ks-period {
   display: flex; align-items: center; height: 38px; width: 298px; margin-right: 5px; padding: 0 12px 0 18px; border-radius: 8px;
   background: var(--field-bg); border: 1px solid var(--line-2); color: var(--ink-3); cursor: pointer;
@@ -711,7 +715,9 @@
   .ks-bar__thumbs { display: none; }
   .ks-bar__chev { margin-left: 8px; }
   .ks-panel__head { flex-wrap: wrap; height: auto; gap: 8px; }
+  .ks-panel__head-right { flex-wrap: wrap; width: 100%; }
   .ks-period { width: 100%; }
+  .ks-userpick { max-width: none; flex: 1 1 100%; }
   .ks-grid { grid-template-columns: minmax(0, 1fr); }
   .ks-card__photo { width: 112px; height: 118px; }
   .ks-card__body { left: 136px; }

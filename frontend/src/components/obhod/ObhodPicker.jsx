@@ -47,11 +47,18 @@ const EASE = [0.5, 0, 0.2, 1]
    и «Запустить анализ»; пока анализ считается, панель показывает ход и таймер.
    На тач-экранах наведения нет — тап раскрывает сразу. Esc и клик мимо —
    сворачивают (кроме времени, пока идёт анализ). */
+// Чей список обходов показывать — подпись пункта селектора (как в History.jsx)
+const userLabel = (u) =>
+  (u.name || '').trim() ||
+  (u.company || '').trim() ||
+  `${u.id.slice(0, 8)}…`
+
 export default function ObhodPicker({
   items, selected, onToggle,
   loading = false, error = null, demo = false,
   track = null, trackLoading = false, cloud = null, theme = 'light',
   period, onPeriod,
+  adminUsers = null, userFilter = 'mine', onUserFilter,
   initialState = 'rest', zoomed = false,
   run = {}, collapseSignal = 0,
 }) {
@@ -251,7 +258,25 @@ export default function ObhodPicker({
                 <div className="ks-panel__list">
                   <div className="ks-panel__head">
                     <h2 className="ks-panel__title">Выберите обход</h2>
-                    <PeriodPicker value={period} onChange={onPeriod} disabled={locked} />
+                    <div className="ks-panel__head-right">
+                      {adminUsers && (
+                        <select
+                          className="kh-userpick ks-userpick"
+                          value={userFilter}
+                          onChange={(e) => onUserFilter?.(e.target.value)}
+                          disabled={locked}
+                          title="Чьи обходы показывать"
+                          aria-label="Чьи обходы показывать"
+                        >
+                          <option value="mine">Мои обходы</option>
+                          <option value="all">Все пользователи</option>
+                          {adminUsers.map((u) => (
+                            <option key={u.id} value={u.id}>{userLabel(u)}</option>
+                          ))}
+                        </select>
+                      )}
+                      <PeriodPicker value={period} onChange={onPeriod} disabled={locked} />
+                    </div>
                   </div>
                   <div className="ks-grid" role="radiogroup" aria-label="Обходы">
                     {loading && [0, 1, 2, 3].map((i) => <div key={i} className="ks-skel" />)}

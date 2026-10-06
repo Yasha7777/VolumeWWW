@@ -38,7 +38,7 @@ export function normalizeScan(r) {
     date: fmtDate(d), dateShort: fmtShort(d),
     photos: r.frame_count,
     duration: fmtDur(r.duration_s), durationS: r.duration_s,
-    // в «Анализе» — только свои обходы; имя не заполнено в профиле → «Вы»
+    // суперадмин видит и чужие обходы (?user_id=); имя не заполнено в профиле → «Вы»
     author: r.author_name || 'Вы',
     place,
     device: ['ARKit', r.device_model].filter(Boolean).join(' · '),
@@ -62,18 +62,20 @@ export function makePeriods(now = new Date()) {
   ]
 }
 
-export function useScans(period, demo) {
+// userId — только для суперадмина: uuid пользователя или 'all' (чьи обходы грузить
+// вместо своих). Обычный пользователь это не передаёт, бэкенд всё равно его игнорирует.
+export function useScans(period, demo, userId) {
   const [state, setState] = useState({ items: demo ? DEMO_OBHODS : [], loading: !demo, error: null })
   const load = useCallback(async () => {
     if (demo) { setState({ items: DEMO_OBHODS, loading: false, error: null }); return }
     setState((s) => ({ ...s, loading: true, error: null }))
     try {
-      const rows = await api.listScans({ from: period?.from, to: period?.to })
+      const rows = await api.listScans({ from: period?.from, to: period?.to, userId })
       setState({ items: (rows || []).map(normalizeScan), loading: false, error: null })
     } catch (e) {
       setState({ items: [], loading: false, error: e?.message || 'Ошибка сервера' })
     }
-  }, [demo, period?.from, period?.to])
+  }, [demo, period?.from, period?.to, userId])
   useEffect(() => { load() }, [load])
   // обход, отправленный с телефона, пока страница открыта, — подтягиваем при
   // возвращении во вкладку и раз в минуту (без мигания: loading не включаем)
@@ -82,7 +84,7 @@ export function useScans(period, demo) {
     const quiet = async () => {
       if (document.hidden) return
       try {
-        const rows = await api.listScans({ from: period?.from, to: period?.to })
+        const rows = await api.listScans({ from: period?.from, to: period?.to, userId })
         setState((s) => ({ ...s, items: (rows || []).map(normalizeScan), error: null }))
       } catch (_) { /* тихий опрос: ошибку покажет следующий явный запрос */ }
     }
@@ -90,7 +92,7 @@ export function useScans(period, demo) {
     document.addEventListener('visibilitychange', onVis)
     const id = setInterval(quiet, 60000)
     return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(id) }
-  }, [demo, period?.from, period?.to])
+  }, [demo, period?.from, period?.to, userId])
   return { ...state, reload: load }
 }
 
