@@ -44,6 +44,16 @@ COLMAP_BUCKET = "colmap"
 TOKEN_HEADER = "X-Volmetric-Token"    # его же ждёт receiver_dust3r.py
 RECEIVER_SERVICE = "volmetric-receiver"
 
+# ОЖИДАНИЕ РЕЗУЛЬТАТА. Расчёт идёт минуты, а между сайтом и GPU-сервером —
+# интернет: одно HTTP-соединение, открытое на всё это время, по дороге рвётся,
+# и готовый ответ до бэкенда не доходит (прогон 06.10 21:55: сервер досчитал,
+# сайт результата не получил). Поэтому бэкенд просит приёмник ответить сразу
+# («принято», поле "wait": false), а результат забирает короткими запросами
+# GET /result/<analysis_id>, пока не получит.
+POLL_EVERY = 5.0          # с между запросами результата
+POLL_FAIL_LIMIT = 300.0   # столько секунд подряд без связи — сдаёмся
+JOB_LOST_AFTER = 3        # столько ответов 404 подряд — сервер задачу потерял
+
 MIGRATION_HINT = (
     "Таблица настроек не создана. Выполните supabase/migration_app_settings.sql "
     "в SQL-редакторе Supabase."
@@ -107,6 +117,12 @@ def clean_token(raw) -> str:
     if len(token) > 200 or not all(33 <= ord(ch) <= 126 for ch in token):
         raise ValueError("Ключ доступа: только латиница, цифры и знаки без пробелов, до 200 символов")
     return token
+
+
+def result_url(run_url: str, analysis_id: str) -> str:
+    """Адрес результата задачи: тот же сервер, путь /result/<analysis_id>."""
+    parts = urlsplit(run_url)
+    return urlunsplit((parts.scheme, parts.netloc, f"/result/{analysis_id}", "", ""))
 
 
 def health_url(run_url: str) -> str:
@@ -417,16 +433,110 @@ def _first_line(text, limit: int = 300) -> str:
     return line[:limit]
 
 
+# ─── отправка и ожидание ─────────────────────────────────────────────────────
+
+class GpuFailure(Exception):
+    """Расчёт не получен. Текст исключения — готовая фраза для пользователя."""
+
+
+async def _submit_and_wait(run_url: str, payload: dict, headers: dict, analysis_id: str) -> dict:
+    """Отдаёт замер приёмнику и возвращает его итоговый ответ (dict со status).
+
+    Три исхода отправки:
+      • 202 «принято» — приёмник считает в фоне, дальше опрос /result;
+      • 200 с итогом — старый приёмник без режима «принято»: он держит
+        соединение, пока считает, и ответ уже готов;
+      • соединение оборвалось ПОСЛЕ отправки — запрос мог дойти, поэтому не
+        сдаёмся, а идём в опрос: приёмник запоминает исход любого расчёта.
+    Технические подробности — только в лог; пользователю уходит фраза без
+    адресов и кодов возврата раннера.
+    """
+    deadline = time.monotonic() + settings.gpu_timeout
+    target = result_url(run_url, analysis_id)
+    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=20.0)) as client:
+        resp = None
+        try:
+            # read-таймаут длинный ради старого приёмника; новый отвечает за доли секунды
+            resp = await client.post(run_url, json=payload, headers=headers,
+                                     timeout=httpx.Timeout(settings.gpu_timeout, connect=20.0))
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            logger.error("GPU %s: нет соединения с %s (%s)", analysis_id, run_url, exc)
+            raise GpuFailure("Ошибка: расчётный сервер недоступен — возможно, он выключен. "
+                             "Попробуйте позже или сообщите администратору.")
+        except httpx.HTTPError as exc:
+            logger.warning("GPU %s: соединение оборвалось после отправки (%s: %s) — "
+                           "проверяю, принял ли приёмник задачу",
+                           analysis_id, type(exc).__name__, exc)
+
+        if resp is not None:
+            if resp.status_code == 401:
+                logger.error("GPU %s: приёмник отклонил ключ доступа", analysis_id)
+                raise GpuFailure("Ошибка: расчётный сервер отклонил ключ доступа. Нужна проверка "
+                                 "настроек администратором («Профиль» → расчётный сервер).")
+            if resp.status_code >= 400:
+                logger.error("GPU %s: HTTP %s: %s", analysis_id, resp.status_code, resp.text[:500])
+                raise GpuFailure(f"Ошибка: расчётный сервер ответил с ошибкой (код {resp.status_code}).")
+            try:
+                first = resp.json()
+            except ValueError:
+                first = None
+            if not isinstance(first, dict):
+                logger.error("GPU %s: ответ не JSON: %s", analysis_id, resp.text[:300])
+                raise GpuFailure("Ошибка: расчётный сервер вернул непонятный ответ.")
+            if first.get("status") != "accepted":
+                return first                          # старый приёмник: итог пришёл сразу
+            logger.info("GPU %s: принято приёмником, жду результат", analysis_id)
+
+        # ── опрос результата ──
+        lost, silent_since, pause = 0, None, min(1.0, POLL_EVERY)
+        while True:
+            if time.monotonic() > deadline:
+                raise GpuFailure(f"Ошибка: превышено время ожидания ({settings.gpu_timeout // 60} мин). "
+                                 "Расчётный сервер не ответил.")
+            await asyncio.sleep(pause)
+            pause = POLL_EVERY
+            try:
+                r = await client.get(target, headers=headers)
+                if r.status_code >= 500:
+                    raise httpx.HTTPError(f"HTTP {r.status_code}")
+            except httpx.HTTPError as exc:
+                # Связь пропала — расчёт на сервере при этом идёт. Ждём, пока вернётся.
+                silent_since = silent_since or time.monotonic()
+                if time.monotonic() - silent_since > POLL_FAIL_LIMIT:
+                    logger.error("GPU %s: нет связи %d с подряд (%s)", analysis_id, POLL_FAIL_LIMIT, exc)
+                    raise GpuFailure("Ошибка: связь с расчётным сервером потеряна во время расчёта. "
+                                     "Запустите анализ ещё раз.")
+                continue
+            silent_since = None
+            if r.status_code == 401:
+                raise GpuFailure("Ошибка: расчётный сервер отклонил ключ доступа. Нужна проверка "
+                                 "настроек администратором («Профиль» → расчётный сервер).")
+            if r.status_code == 404:
+                lost += 1
+                if lost >= JOB_LOST_AFTER:
+                    logger.error("GPU %s: приёмник не знает о задаче (перезапущен? старая версия?)", analysis_id)
+                    raise GpuFailure("Ошибка: расчётный сервер потерял задачу — возможно, он был "
+                                     "перезапущен во время расчёта. Запустите анализ ещё раз.")
+                continue
+            lost = 0
+            try:
+                state = r.json()
+            except ValueError:
+                state = None
+            if isinstance(state, dict) and state.get("state") == "done" and isinstance(state.get("result"), dict):
+                return state["result"]
+
+
 # ─── фоновая задача: посчитать и записать результат ──────────────────────────
 
 async def run_and_save(analysis_id: str, photos: list[dict], cube: dict,
                        scan: Optional[dict] = None, frames: Optional[list] = None):
     """Отправляет замер на расчётный сервер и кладёт ответ в `analyses`.
 
-    Запрос синхронный, как и был у n8n: приёмник отвечает, когда посчитал
-    (минуты; очередь у него своя, по одному прогону за раз). Ошибки связи и
-    ошибки расчёта дают статус error с человеческой причиной в `result`;
-    технические подробности (адрес, тело ответа) — только в лог бэкенда.
+    Приёмник принимает задачу сразу и считает в фоне (очередь у него своя, по
+    одному прогону за раз); результат забираем опросом — см. `_submit_and_wait`.
+    Ошибки связи и ошибки расчёта дают статус error с человеческой причиной в
+    `result`; технические подробности (адрес, тело ответа) — только в лог.
     """
     now = lambda: datetime.now(timezone.utc).isoformat()
 
@@ -471,45 +581,11 @@ async def run_and_save(analysis_id: str, photos: list[dict], cube: dict,
                     analysis_id, len(usable), payload["mode"],
                     "да" if payload.get("scan") else "нет", run_url)
 
+        payload["wait"] = False       # приёмник ответит сразу, результат заберём опросом
         try:
-            timeout = httpx.Timeout(settings.gpu_timeout, connect=20.0)
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.post(run_url, json=payload, headers=headers)
-        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
-            logger.error("GPU %s: нет соединения с %s (%s)", analysis_id, run_url, exc)
-            await asyncio.to_thread(
-                finish, "error",
-                "Ошибка: расчётный сервер недоступен — возможно, он выключен. "
-                "Попробуйте позже или сообщите администратору.")
-            return
-        except httpx.TimeoutException:
-            await asyncio.to_thread(
-                finish, "error",
-                f"Ошибка: превышено время ожидания ({settings.gpu_timeout // 60} мин). "
-                "Расчётный сервер не ответил.")
-            return
-
-        if resp.status_code == 401:
-            logger.error("GPU %s: приёмник отклонил ключ доступа", analysis_id)
-            await asyncio.to_thread(
-                finish, "error",
-                "Ошибка: расчётный сервер отклонил ключ доступа. Нужна проверка "
-                "настроек администратором («Профиль» → расчётный сервер).")
-            return
-        if resp.status_code >= 400:
-            logger.error("GPU %s: HTTP %s: %s", analysis_id, resp.status_code, resp.text[:500])
-            await asyncio.to_thread(
-                finish, "error",
-                f"Ошибка: расчётный сервер ответил с ошибкой (код {resp.status_code}).")
-            return
-
-        try:
-            data = resp.json()
-        except ValueError:
-            data = None
-        if not isinstance(data, dict):
-            logger.error("GPU %s: ответ не JSON: %s", analysis_id, resp.text[:300])
-            await asyncio.to_thread(finish, "error", "Ошибка: расчётный сервер вернул непонятный ответ.")
+            data = await _submit_and_wait(run_url, payload, headers, analysis_id)
+        except GpuFailure as failure:
+            await asyncio.to_thread(finish, "error", str(failure))
             return
 
         if data.get("status") == "error":
