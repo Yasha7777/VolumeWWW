@@ -19,14 +19,8 @@ import { supabase } from '../supabase'
    это вход того же пользователя, что смотрит на страницу.
    ───────────────────────────────────────────────────────────────────────── */
 
-function fmtTime(ms) {
-  if (!ms) return ''
-  return new Date(ms).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-}
-
 export default function ApiTokenPanel() {
   const [token, setToken] = useState('')
-  const [expiresAt, setExpiresAt] = useState(null)   // мс
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')               // подсказка, если буфер обмена недоступен
@@ -34,10 +28,7 @@ export default function ApiTokenPanel() {
   const inputRef = useRef(null)
   const copiedTimer = useRef(null)
 
-  const take = (session) => {
-    setToken(session?.access_token || '')
-    setExpiresAt(session?.expires_at ? session.expires_at * 1000 : null)
-  }
+  const take = (session) => setToken(session?.access_token || '')
 
   useEffect(() => {
     let alive = true
@@ -84,18 +75,11 @@ export default function ApiTokenPanel() {
       </div>
 
       <div className="kb-field kb-admin-field" style={{ marginTop: 0 }}>
-        <label htmlFor="api-token">Токен сессии (Bearer)</label>
         <input id="api-token" ref={inputRef} className="kb-token" type="text" readOnly
+               aria-label="Токен для Swagger"
                spellCheck={false} autoComplete="off"
                value={token} placeholder="сессия не найдена — войдите заново"
                onFocus={e => e.target.select()} />
-        <p className="kb-hint">
-          Та же строка, что уходит в запросах к <code>/api</code> в заголовке <code>Authorization: Bearer …</code>.
-          В <a href="/api/docs" target="_blank" rel="noopener" className="kb-link-btn">Swagger</a>:
-          кнопка «Authorize» → поле <code>userJWT</code>.
-          {expiresAt && <> Действует до {fmtTime(expiresAt)}, потом сменится сам — возьмите новый здесь же.</>}
-          {' '}Запросы с ним выполняются от вашего имени: не передавайте его другим.
-        </p>
       </div>
 
       <div className="kb-admin-actions">
