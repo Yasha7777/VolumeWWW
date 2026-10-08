@@ -24,16 +24,6 @@ class Settings(BaseSettings):
     n8n_timeout: int = 3600
     storage_bucket: str = "analysis-photos"
 
-    # Вход через VK ID (routers/vk_auth.py). ID приложения публичный — он и так
-    # виден в адресе страницы входа ВК, поэтому лежит здесь значением по
-    # умолчанию. Приложение ВК «публичное»: обмен кода защищён PKCE, секрет
-    # не нужен. Пустой VK_CLIENT_ID в .env выключает вход через ВК.
-    vk_client_id: str = "54801219"
-    vk_redirect_uri: str = "https://volumetric.gottland.ru/api/auth/vk/callback"
-    vk_id_host: str = "https://id.vk.ru"
-    # Куда возвращать браузер после входа (страница /login сайта).
-    site_url: str = "https://volumetric.gottland.ru"
-
     class Config:
         env_file = ".env"
         case_sensitive = False

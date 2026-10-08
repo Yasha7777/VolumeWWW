@@ -256,6 +256,10 @@
   .kb-admin-actions .btn { flex: 1 1 auto; }
 }
 
+/* токен для Swagger (components/ApiTokenPanel.jsx): длинная строка без пробелов —
+   моноширинно и мельче, чтобы в поле помещалось начало и было видно, что это он */
+.kb-admin .kb-field input.kb-token { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: var(--fs-xs); text-overflow: ellipsis; }
+
 @keyframes kb-breathe { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.06); opacity: .92; } }
 @keyframes kb-drift   { 0%,100% { transform: translateX(0); } 50% { transform: translateX(6px); } }
 

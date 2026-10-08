@@ -5,8 +5,6 @@ import PrivateRoute from './components/PrivateRoute'
 import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
 import RouteMeta from './seo/RouteMeta'
-import MetrikaTracker from './metrika/MetrikaTracker'
-import { METRIKA_ENABLED } from './metrika/metrika'
 // ── Login грузим статически: это входная точка и LCP-страница,
 //    она должна отрисоваться из начального бандла без лишнего запроса ──
 import Login from './pages/Login'
@@ -43,10 +41,6 @@ const NotFound = preloadable(() => import('./pages/NotFound'))
 // data-page у #root (ставит пререндер) → какую страницу догрузить до рендера
 export const PRERENDERED = { landing: Landing, privacy: Privacy, consent: Consent, terms: Terms, notfound: NotFound }
 
-// Баннер согласия — отдельным чанком и только при заданном VITE_YM_ID:
-// без счётчика ни его код, ни стили в сборку первого экрана не попадают.
-const CookieBanner = METRIKA_ENABLED ? lazy(() => import('./metrika/CookieBanner')) : null
-
 /* заглушка на время докачки чанка страницы (обычно доли секунды) */
 const PageLoader = () => (
   <div style={{
@@ -68,14 +62,6 @@ function App() {
       <BrowserRouter>
         {/* title / description / canonical / robots при переходах без перезагрузки */}
         <RouteMeta />
-        {/* Яндекс Метрика: только при VITE_YM_ID и только после «Принять».
-            Трекер — после RouteMeta (в hit уходит уже новый title). */}
-        {METRIKA_ENABLED && (
-          <>
-            <MetrikaTracker />
-            <Suspense fallback={null}><CookieBanner /></Suspense>
-          </>
-        )}
         {/* .app-shell — общая обёртка всех роутов. Переключатель тем — в шапке (Layout). */}
         <div className="app-shell">
           <Suspense fallback={<PageLoader />}>

@@ -32,6 +32,10 @@ preload.catch(() => {}).then(() => {
 // Очередь: слушатели сети/видимости, персистентное хранилище, первичный флаш.
 initQueue()
 
+// Яндекс Метрика и окно о cookie убраны 08.10.2026. У прежних посетителей в
+// браузере осталась отметка их выбора в том окне — она больше ничему не служит.
+try { localStorage.removeItem('kb-cookie-consent') } catch {}
+
 // Service Worker — только прод-сборка (в dev SW выключен, чтобы не ломать /api-прокси).
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {

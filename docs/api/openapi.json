@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Volumetric Gottland API",
-    "version": "2026-10-06",
-    "description": "Одна спецификация на два сервиса: **бэкенд сайта** (пути `/api/…`, домен volumetric.gottland.ru) и **приёмник на GPU-сервере** (`/health`, `/run`, `/result/…`). У каждого метода в описании указано, какой сервис его выполняет, кто может вызвать и куда метод обращается внутри.\n\nСоставлено по коду: сайт, коммит `6848790` от 06.10.2026; приёмник `receiver_dust3r.py`, штамп правки 06.10.2026 22:32 МСК.\n\n## Куда обращаются методы\n\n| Система | Что это | Кто туда ходит |\n|---|---|---|\n| **БД** | Postgres в Supabase (supabase.gottland.ru), доступ service-ключом. Таблицы: `analyses` (замеры), `colmap_photos` (кадры), `scans` (обходы из приложения), `profiles`, `app_settings` (настройки GPU), `dust3r_results` (итоги расчётов) | бэкенд и приёмник |\n| **Storage** | файловое хранилище Supabase. Бакет `colmap`: фото, миниатюры, `scan.json`. Бакет `dust3r-ply`: модель и картинки расчёта | бэкенд (`colmap`), приёмник (читает `colmap`, пишет `dust3r-ply`) |\n| **GPU-сервер** | приёмник `receiver_dust3r.py` и раннер `dust3r_gpu.py` на арендованном сервере | только бэкенд, с ключом `X-Volmetric-Token` |\n| **Supabase Auth** | учётные записи и сессии | фронт напрямую; бэкенд только при входе через VK |\n| **Яндекс ID, VK ID** | внешние сервисы входа | бэкенд, только методы `/api/auth/…` |\n\nn8n с 06.10.2026 в цепочке нет: бэкенд вызывает GPU-сервер напрямую.\n\n## Как проходит замер\n\n1. Браузер шлёт фото: `POST /api/analyses/`. Для обхода из приложения: `POST /api/scans/{scan_id}/analyze`.\n2. Бэкенд кладёт фото в Storage, заводит строки в БД, отвечает `202` и в фоне вызывает `POST /run` на GPU-сервере с `wait: false`.\n3. GPU-сервер отвечает `202`, сам качает кадры из Storage и считает.\n4. Бэкенд раз в 5 с спрашивает `GET /result/{analysis_id}`.\n5. По окончании GPU-сервер пишет модель в Storage, строку в `dust3r_results` и ссылки на картинки в `analyses`. Бэкенд пишет в `analyses` статус и текст результата.\n6. Браузер видит результат через `GET /api/analyses/{analysis_id}` или в истории.\n\n## Что идёт мимо этих методов\n\nВход по почте и паролю, регистрацию, вход через Яндекс, обновление сессии и выход фронт делает напрямую в Supabase Auth библиотекой supabase-js. К таблицам браузер напрямую не обращается, только через бэкенд. Файлы (фото, миниатюры, модель, картинки расчёта) он скачивает по публичным ссылкам Storage, которые приходят в ответах методов."
+    "version": "2026-10-08.2",
+    "description": "## Куда обращаются методы\n\n| Система | Что это | Кто туда ходит |\n|---|---|---|\n| **БД** | Postgres в Supabase (supabase.gottland.ru), доступ service-ключом. Таблицы: `analyses` (замеры), `colmap_photos` (кадры), `scans` (обходы из приложения), `profiles`, `app_settings` (настройки GPU), `dust3r_results` (итоги расчётов) | бэкенд и приёмник |\n| **Storage** | файловое хранилище Supabase. Бакет `colmap`: фото, миниатюры, `scan.json`. Бакет `dust3r-ply`: модель и картинки расчёта | бэкенд (`colmap`), приёмник (читает `colmap`, пишет `dust3r-ply`) |\n| **GPU-сервер** | приёмник `receiver_dust3r.py` и раннер `dust3r_gpu.py` на арендованном сервере | только бэкенд, с ключом `X-Volmetric-Token` |\n| **Supabase Auth** | учётные записи и сессии: вход по почте и паролю, регистрация | только фронт, напрямую |\n\nn8n с 06.10.2026 в цепочке нет: бэкенд вызывает GPU-сервер напрямую."
   },
   "servers": [
     {
@@ -27,10 +27,6 @@
     {
       "name": "Сайт · настройки GPU-сервера",
       "description": "Бэкенд сайта. Панель суперадмина в «Профиле»: адрес, режим Cube/VIO, ключ."
-    },
-    {
-      "name": "Сайт · вход через Яндекс и VK",
-      "description": "Бэкенд сайта. Служебные шаги входа через внешние сервисы."
     },
     {
       "name": "Сайт · служебное",
@@ -2448,300 +2444,6 @@
         }
       }
     },
-    "/api/auth/yandex-userinfo": {
-      "get": {
-        "tags": [
-          "Сайт · вход через Яндекс и VK"
-        ],
-        "summary": "Профиль Яндекса в формате OIDC · Яндекс ID",
-        "operationId": "yandexUserinfo",
-        "x-calls": [
-          "yandex"
-        ],
-        "security": [
-          {
-            "yandexToken": []
-          }
-        ],
-        "description": "**Сервис:** Бэкенд сайта  \n**Доступ:** токен Яндекса (`Authorization: Bearer` или `OAuth`), не JWT сайта\n\n| Куда обращается | Что делает |\n|---|---|\n| Яндекс ID | `GET https://login.yandex.ru/info?format=json` с присланным токеном |\n\nЭтот метод вызывает не браузер, а Supabase Auth во время входа через Яндекс: он указан у провайдера как `userinfo_url`. Бэкенд переименовывает поля Яндекса (`id`, `default_email`, `real_name`) в стандартные `sub`, `email`, `name`. Токен нигде не сохраняется.",
-        "responses": {
-          "200": {
-            "description": "Профиль",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/YandexUserinfo"
-                },
-                "example": {
-                  "sub": "1130000012345678",
-                  "email": "user@yandex.ru",
-                  "email_verified": true,
-                  "name": "Иван Иванов"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Токена нет или Яндекс его не принял",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "examples": {
-                  "e1": {
-                    "summary": "Нет токена",
-                    "value": {
-                      "detail": "Нет токена"
-                    }
-                  },
-                  "e2": {
-                    "summary": "Яндекс не подтвердил токен",
-                    "value": {
-                      "detail": "Яндекс не подтвердил токен"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Тело или параметры не прошли проверку типов (FastAPI)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ValidationError"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Сбой на стороне Яндекса",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "examples": {
-                  "e1": {
-                    "summary": "Яндекс не ответил",
-                    "value": {
-                      "detail": "Яндекс не ответил"
-                    }
-                  },
-                  "e2": {
-                    "summary": "В ответе Яндекса нет id",
-                    "value": {
-                      "detail": "В ответе Яндекса нет id"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/auth/vk/start": {
-      "get": {
-        "tags": [
-          "Сайт · вход через Яндекс и VK"
-        ],
-        "summary": "Шаг 1 входа через VK: уйти на страницу VK ID · никуда не ходит",
-        "operationId": "vkStart",
-        "x-calls": [],
-        "security": [],
-        "description": "**Сервис:** Бэкенд сайта  \n**Доступ:** открыт, ключ не нужен\n\n| Куда обращается | Что делает |\n|---|---|\n| — | никуда не обращается |\n\nСам бэкенд никуда не обращается: он собирает подписанный `state` (живёт 10 минут) и PKCE-challenge и отвечает редиректом на `https://id.vk.ru/authorize`.\n\nЕсли вход через VK выключен (`VK_CLIENT_ID` пуст), редирект ведёт обратно на `/login?vk_error=off`.",
-        "parameters": [
-          {
-            "name": "h",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 43,
-              "maxLength": 43,
-              "pattern": "^[A-Za-z0-9_-]+$"
-            },
-            "description": "base64url от SHA-256 случайной строки `n`, которую фронт хранит в sessionStorage."
-          }
-        ],
-        "responses": {
-          "302": {
-            "description": "Редирект на страницу входа VK ID либо на `/login?vk_error=off`",
-            "headers": {
-              "Location": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Тело или параметры не прошли проверку типов (FastAPI)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/auth/vk/callback": {
-      "get": {
-        "tags": [
-          "Сайт · вход через Яндекс и VK"
-        ],
-        "summary": "Шаг 2 входа через VK: возврат с VK ID · VK ID, Supabase Auth",
-        "operationId": "vkCallback",
-        "x-calls": [
-          "vk",
-          "auth"
-        ],
-        "security": [],
-        "description": "**Сервис:** Бэкенд сайта  \n**Доступ:** открыт; подлинность проверяется подписью `state`\n\n| Куда обращается | Что делает |\n|---|---|\n| VK ID | `POST https://id.vk.ru/oauth2/auth` (обмен кода на токен), `POST https://id.vk.ru/oauth2/user_info` (профиль и почта) |\n| Supabase Auth | `POST /auth/v1/admin/generate_link` типа `magiclink`: одноразовый токен входа для этой почты. Учётной записи нет: Supabase создаёт её сам |\n\nСюда браузер возвращает VK ID. Ответ всегда редирект на `/login` сайта:\n\n- успех: `?vk_ticket=<билет на 2 минуты>`;\n- ошибка: `?vk_error=` и код: `denied` (пользователь отказал), `vk` (сбой VK), `state` (вход устарел или чужой), `noemail` (в VK нет почты или к ней не дали доступ), `exchange`, `profile`, `session`, `net`.\n\nТокены VK не сохраняются.",
-        "parameters": [
-          {
-            "name": "code",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Код авторизации от VK ID."
-          },
-          {
-            "name": "state",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Подписанная строка из шага 1."
-          },
-          {
-            "name": "device_id",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Идентификатор устройства от VK ID, нужен для обмена кода."
-          },
-          {
-            "name": "error",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Код ошибки от VK ID, например `access_denied`."
-          },
-          {
-            "name": "error_description",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "302": {
-            "description": "Редирект на `/login?vk_ticket=…` либо `/login?vk_error=…`",
-            "headers": {
-              "Location": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/auth/vk/finish": {
-      "post": {
-        "tags": [
-          "Сайт · вход через Яндекс и VK"
-        ],
-        "summary": "Шаг 3 входа через VK: обменять билет на токен входа · никуда не ходит",
-        "operationId": "vkFinish",
-        "x-calls": [],
-        "security": [],
-        "description": "**Сервис:** Бэкенд сайта  \n**Доступ:** открыт; нужен билет и строка `n` того же браузера\n\n| Куда обращается | Что делает |\n|---|---|\n| — | никуда не обращается |\n\nПроверяется подпись и срок билета, затем что SHA-256 от `n` совпадает со значением из шага 1. Так билет срабатывает только в том браузере, который начинал вход.\n\nПолученный `token_hash` фронт сам передаёт в Supabase Auth (`verifyOtp`) и получает сессию.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VkFinish"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Токен входа Supabase",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VkFinishResult"
-                },
-                "example": {
-                  "token_hash": "pkce_3f0c…",
-                  "type": "magiclink"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Билет просрочен или подпись не сошлась",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "examples": {
-                  "e1": {
-                    "summary": "Вход устарел, начните заново",
-                    "value": {
-                      "detail": "Вход устарел, начните заново"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Строка `n` не от этого входа",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "examples": {
-                  "e1": {
-                    "summary": "Вход начат в другом браузере",
-                    "value": {
-                      "detail": "Вход начат в другом браузере"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Тело или параметры не прошли проверку типов (FastAPI)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/health": {
       "servers": [
         {
@@ -3119,30 +2821,6 @@
     }
   },
   "components": {
-    "securitySchemes": {
-      "userJWT": {
-        "type": "http",
-        "scheme": "bearer",
-        "bearerFormat": "JWT",
-        "description": "Токен сессии Supabase (`access_token`). Бэкенд проверяет подпись HS256 и берёт из него id пользователя."
-      },
-      "gpuToken": {
-        "type": "apiKey",
-        "in": "header",
-        "name": "X-Volmetric-Token",
-        "description": "Общий секрет бэкенда и приёмника (`RECEIVER_TOKEN` на GPU-сервере, ключ в `app_settings` на сайте)."
-      },
-      "gpuBearer": {
-        "type": "http",
-        "scheme": "bearer",
-        "description": "Тот же ключ приёмника, вторым способом: `Authorization: Bearer <ключ>`."
-      },
-      "yandexToken": {
-        "type": "http",
-        "scheme": "bearer",
-        "description": "OAuth-токен Яндекса. Присылает Supabase Auth, не браузер."
-      }
-    },
     "schemas": {
       "Error": {
         "type": "object",
@@ -4091,52 +3769,6 @@
           }
         }
       },
-      "YandexUserinfo": {
-        "type": "object",
-        "properties": {
-          "sub": {
-            "type": "string"
-          },
-          "email": {
-            "type": "string"
-          },
-          "email_verified": {
-            "type": "boolean"
-          },
-          "name": {
-            "type": "string"
-          }
-        }
-      },
-      "VkFinish": {
-        "type": "object",
-        "required": [
-          "ticket",
-          "n"
-        ],
-        "properties": {
-          "ticket": {
-            "type": "string",
-            "description": "Значение `vk_ticket` из адреса возврата."
-          },
-          "n": {
-            "type": "string",
-            "description": "Случайная строка, которую фронт создал перед шагом 1."
-          }
-        }
-      },
-      "VkFinishResult": {
-        "type": "object",
-        "properties": {
-          "token_hash": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string",
-            "example": "magiclink"
-          }
-        }
-      },
       "ReceiverHealth": {
         "type": "object",
         "properties": {
@@ -4580,6 +4212,25 @@
             "description": "Результат прочитан с диска после перезапуска приёмника."
           }
         }
+      }
+    },
+    "securitySchemes": {
+      "userJWT": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Токен сессии Supabase (`access_token`). Бэкенд проверяет подпись HS256 и берёт из него id пользователя."
+      },
+      "gpuToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Volmetric-Token",
+        "description": "Общий секрет бэкенда и приёмника (`RECEIVER_TOKEN` на GPU-сервере, ключ в `app_settings` на сайте)."
+      },
+      "gpuBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Тот же ключ приёмника, вторым способом: `Authorization: Bearer <ключ>`."
       }
     }
   }

@@ -1,18 +1,9 @@
-# Volumetric Gottland API: бэкенд сайта + GPU-приёмник. Открывать в Swagger UI (swagger.html рядом).
+# Volumetric Gottland API: снимок схемы с /api/openapi.json. Открывать в Swagger UI (swagger.html рядом).
 openapi: 3.0.3
 info:
   title: Volumetric Gottland API
-  version: '2026-10-06'
-  description: 'Одна спецификация на два сервиса: **бэкенд сайта** (пути `/api/…`, домен volumetric.gottland.ru)
-    и **приёмник на GPU-сервере** (`/health`, `/run`, `/result/…`). У каждого метода в описании указано, какой сервис
-    его выполняет, кто может вызвать и куда метод обращается внутри.
-
-
-    Составлено по коду: сайт, коммит `6848790` от 06.10.2026; приёмник `receiver_dust3r.py`, штамп правки 06.10.2026
-    22:32 МСК.
-
-
-    ## Куда обращаются методы
+  version: 2026-10-08.2
+  description: '## Куда обращаются методы
 
 
     | Система | Что это | Кто туда ходит |
@@ -29,38 +20,11 @@ info:
     | **GPU-сервер** | приёмник `receiver_dust3r.py` и раннер `dust3r_gpu.py` на арендованном сервере | только бэкенд,
     с ключом `X-Volmetric-Token` |
 
-    | **Supabase Auth** | учётные записи и сессии | фронт напрямую; бэкенд только при входе через VK |
-
-    | **Яндекс ID, VK ID** | внешние сервисы входа | бэкенд, только методы `/api/auth/…` |
-
-
-    n8n с 06.10.2026 в цепочке нет: бэкенд вызывает GPU-сервер напрямую.
+    | **Supabase Auth** | учётные записи и сессии: вход по почте и паролю, регистрация | только фронт, напрямую
+    |
 
 
-    ## Как проходит замер
-
-
-    1. Браузер шлёт фото: `POST /api/analyses/`. Для обхода из приложения: `POST /api/scans/{scan_id}/analyze`.
-
-    2. Бэкенд кладёт фото в Storage, заводит строки в БД, отвечает `202` и в фоне вызывает `POST /run` на GPU-сервере
-    с `wait: false`.
-
-    3. GPU-сервер отвечает `202`, сам качает кадры из Storage и считает.
-
-    4. Бэкенд раз в 5 с спрашивает `GET /result/{analysis_id}`.
-
-    5. По окончании GPU-сервер пишет модель в Storage, строку в `dust3r_results` и ссылки на картинки в `analyses`.
-    Бэкенд пишет в `analyses` статус и текст результата.
-
-    6. Браузер видит результат через `GET /api/analyses/{analysis_id}` или в истории.
-
-
-    ## Что идёт мимо этих методов
-
-
-    Вход по почте и паролю, регистрацию, вход через Яндекс, обновление сессии и выход фронт делает напрямую в Supabase
-    Auth библиотекой supabase-js. К таблицам браузер напрямую не обращается, только через бэкенд. Файлы (фото, миниатюры,
-    модель, картинки расчёта) он скачивает по публичным ссылкам Storage, которые приходят в ответах методов.'
+    n8n с 06.10.2026 в цепочке нет: бэкенд вызывает GPU-сервер напрямую.'
 servers:
 - url: https://volumetric.gottland.ru
   description: Бэкенд сайта (nginx → FastAPI, порт 8000 в контейнере)
@@ -73,8 +37,6 @@ tags:
   description: Бэкенд сайта. Данные пользователя.
 - name: Сайт · настройки GPU-сервера
   description: 'Бэкенд сайта. Панель суперадмина в «Профиле»: адрес, режим Cube/VIO, ключ.'
-- name: Сайт · вход через Яндекс и VK
-  description: Бэкенд сайта. Служебные шаги входа через внешние сервисы.
 - name: Сайт · служебное
   description: Бэкенд сайта.
 - name: GPU-сервер · расчёт
@@ -116,7 +78,7 @@ paths:
       - db
       - storage
       - gpu
-      security: &id001
+      security:
       - userJWT: []
       description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
         \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `app_settings` | SELECT строки `key\
@@ -212,7 +174,7 @@ paths:
                   summary: Файл IMG_0012.jpg больше 20 МБ. Сожмите его перед загрузкой.
                   value:
                     detail: Файл IMG_0012.jpg больше 20 МБ. Сожмите его перед загрузкой.
-        '401': &id002
+        '401':
           description: JWT не прошёл проверку
           content:
             application/json:
@@ -227,7 +189,7 @@ paths:
                   summary: Невалидный токен
                   value:
                     detail: Невалидный токен
-        '403': &id003
+        '403':
           description: Нет заголовка Authorization
           content:
             application/json:
@@ -238,13 +200,13 @@ paths:
                   summary: Not authenticated
                   value:
                     detail: Not authenticated
-        '422': &id006
+        '422':
           description: Тело или параметры не прошли проверку типов (FastAPI)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ValidationError'
-        '503': &id007
+        '503':
           description: Адрес GPU-сервера не задан ни в БД, ни в окружении
           content:
             application/json:
@@ -262,7 +224,8 @@ paths:
       operationId: listAnalyses
       x-calls:
       - db
-      security: *id001
+      security:
+      - userJWT: []
       description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
         \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin`\
         \ текущего пользователя |\n| БД · `analyses` | SELECT до 50 последних замеров, новые сверху |\n| БД · `profiles`\
@@ -284,8 +247,32 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/AnalysisListItem'
-        '401': *id002
-        '403': *id003
+        '401':
+          description: JWT не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Токен истёк или неверен
+                  value:
+                    detail: Токен истёк или неверен
+                e2:
+                  summary: Невалидный токен
+                  value:
+                    detail: Невалидный токен
+        '403':
+          description: Нет заголовка Authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
   /api/analyses/admin/users:
     get:
       tags:
@@ -294,7 +281,8 @@ paths:
       operationId: adminListUsers
       x-calls:
       - db
-      security: *id001
+      security:
+      - userJWT: []
       description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя + `profiles.is_superadmin = true`\n\
         \n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin` текущего пользователя\
         \ |\n| БД · `profiles` | SELECT `id, name, company, city` всех пользователей, по имени |\n\nФронт по этому\
@@ -321,7 +309,21 @@ paths:
                     city:
                       type: string
                       nullable: true
-        '401': *id002
+        '401':
+          description: JWT не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Токен истёк или неверен
+                  value:
+                    detail: Токен истёк или неверен
+                e2:
+                  summary: Невалидный токен
+                  value:
+                    detail: Невалидный токен
         '403':
           description: Нет заголовка Authorization либо пользователь не суперадмин
           content:
@@ -345,10 +347,10 @@ paths:
       operationId: getAnalysis
       x-calls:
       - db
-      security: *id001
+      security:
+      - userJWT: []
       parameters:
-      - &id004
-        name: analysis_id
+      - name: analysis_id
         in: path
         required: true
         schema:
@@ -366,9 +368,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AnalysisRow'
-        '401': *id002
-        '403': *id003
-        '404': &id005
+        '401':
+          description: JWT не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Токен истёк или неверен
+                  value:
+                    detail: Токен истёк или неверен
+                e2:
+                  summary: Невалидный токен
+                  value:
+                    detail: Невалидный токен
+        '403':
+          description: Нет заголовка Authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
+        '404':
           description: Замера нет либо он чужой (суперадмин видит любые)
           content:
             application/json:
@@ -387,9 +413,16 @@ paths:
       x-calls:
       - db
       - storage
-      security: *id001
+      security:
+      - userJWT: []
       parameters:
-      - *id004
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: id замера (строка `analyses`).
       description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
         \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin`\
         \ текущего пользователя |\n| БД · `analyses` | SELECT для проверки владельца, затем DELETE строки |\n| БД\
@@ -405,9 +438,43 @@ paths:
                 $ref: '#/components/schemas/Ok'
               example:
                 ok: true
-        '401': *id002
-        '403': *id003
-        '404': *id005
+        '401':
+          description: JWT не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Токен истёк или неверен
+                  value:
+                    detail: Токен истёк или неверен
+                e2:
+                  summary: Невалидный токен
+                  value:
+                    detail: Невалидный токен
+        '403':
+          description: Нет заголовка Authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
+        '404':
+          description: Замера нет либо он чужой (суперадмин видит любые)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Анализ не найден
+                  value:
+                    detail: Анализ не найден
   /api/analyses/{analysis_id}/rerun:
     post:
       tags:
@@ -417,9 +484,16 @@ paths:
       x-calls:
       - db
       - gpu
-      security: *id001
+      security:
+      - userJWT: []
       parameters:
-      - *id004
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: id замера (строка `analyses`).
       description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
         \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `app_settings` | SELECT строки `key\
         \ = gpu`: адрес, режим и ключ GPU-сервера |\n| БД · `profiles` | SELECT `is_superadmin` текущего пользователя\
@@ -466,11 +540,60 @@ paths:
                 id: 53e1bd1a-7c1f-4b0e-9a55-2f1c7d0e8a11
                 status: pending
                 mode: test
-        '401': *id002
-        '403': *id003
-        '404': *id005
-        '422': *id006
-        '503': *id007
+        '401':
+          description: JWT не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Токен истёк или неверен
+                  value:
+                    detail: Токен истёк или неверен
+                e2:
+                  summary: Невалидный токен
+                  value:
+                    detail: Невалидный токен
+        '403':
+          description: Нет заголовка Authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
+        '404':
+          description: Замера нет либо он чужой (суперадмин видит любые)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Анализ не найден
+                  value:
+                    detail: Анализ не найден
+        '422':
+          description: Тело или параметры не прошли проверку типов (FastAPI)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '503':
+          description: Адрес GPU-сервера не задан ни в БД, ни в окружении
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Расчётный сервер не настроен. Обратитесь к администратору.
+                  value:
+                    detail: Расчётный сервер не настроен. Обратитесь к администратору.
   /api/profile/:
     get:
       tags:
@@ -479,7 +602,8 @@ paths:
       operationId: getProfile
       x-calls:
       - db
-      security: *id001
+      security:
+      - userJWT: []
       description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
         \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `*` строки с `id`\
         \ текущего пользователя |"
@@ -490,8 +614,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Profile'
-        '401': *id002
-        '403': *id003
+        '401':
+          description: JWT не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Токен истёк или неверен
+                  value:
+                    detail: Токен истёк или неверен
+                e2:
+                  summary: Невалидный токен
+                  value:
+                    detail: Невалидный токен
+        '403':
+          description: Нет заголовка Authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
     put:
       tags:
       - Сайт · профиль
@@ -499,7 +647,8 @@ paths:
       operationId: updateProfile
       x-calls:
       - db
-      security: *id001
+      security:
+      - userJWT: []
       description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
         \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | UPSERT строки с `id` текущего\
         \ пользователя |\n\nЗаписываются все шесть полей сразу. Поле, которого нет в теле, сохранится как `null`,\
@@ -546,9 +695,38 @@ paths:
                   summary: Адресов для результатов может быть не больше 5
                   value:
                     detail: Адресов для результатов может быть не больше 5
-        '401': *id002
-        '403': *id003
-        '422': *id006
+        '401':
+          description: JWT не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Токен истёк или неверен
+                  value:
+                    detail: Токен истёк или неверен
+                e2:
+                  summary: Невалидный токен
+                  value:
+                    detail: Невалидный токен
+        '403':
+          description: Нет заголовка Authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
+        '422':
+          description: Тело или параметры не прошли проверку типов (FastAPI)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
   /api/scans/:
     get:
       tags:
@@ -557,7 +735,8 @@ paths:
       operationId: listScans
       x-calls:
       - db
-      security: *id001
+      security:
+      - userJWT: []
       description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
         \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin`\
         \ текущего пользователя |\n| БД · `scans` | SELECT до 100 неудалённых обходов, новые сверху |\n| БД · `colmap_photos`\
@@ -590,8 +769,32 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/ScanListItem'
-        '401': *id002
-        '403': *id003
+        '401':
+          description: JWT не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Токен истёк или неверен
+                  value:
+                    detail: Токен истёк или неверен
+                e2:
+                  summary: Невалидный токен
+                  value:
+                    detail: Невалидный токен
+        '403':
+          description: Нет заголовка Authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
     post:
       tags:
       - Сайт · обходы из приложения
@@ -599,7 +802,8 @@ paths:
       operationId: createScan
       x-calls:
       - db
-      security: *id001
+      security:
+      - userJWT: []
       description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
         \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `scans` | SELECT по `id`; INSERT со\
         \ статусом `uploading` либо UPDATE метаданных при повторе |\n| БД · `colmap_photos` | при повторе: SELECT\
@@ -650,8 +854,32 @@ paths:
                   summary: id обхода должен быть UUID
                   value:
                     detail: id обхода должен быть UUID
-        '401': *id002
-        '403': *id003
+        '401':
+          description: JWT не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Токен истёк или неверен
+                  value:
+                    detail: Токен истёк или неверен
+                e2:
+                  summary: Невалидный токен
+                  value:
+                    detail: Невалидный токен
+        '403':
+          description: Нет заголовка Authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
         '409':
           description: id занят чужим обходом
           content:
@@ -663,7 +891,12 @@ paths:
                   summary: Обход с таким id уже есть у другого пользователя
                   value:
                     detail: Обход с таким id уже есть у другого пользователя
-        '422': *id006
+        '422':
+          description: Тело или параметры не прошли проверку типов (FastAPI)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
   /api/scans/{scan_id}/frames/{index}:
     put:
       tags:
@@ -673,10 +906,10 @@ paths:
       x-calls:
       - db
       - storage
-      security: *id001
+      security:
+      - userJWT: []
       parameters:
-      - &id008
-        name: scan_id
+      - name: scan_id
         in: path
         required: true
         schema:
@@ -752,9 +985,33 @@ paths:
                   summary: meta — не JSON
                   value:
                     detail: meta — не JSON
-        '401': *id002
-        '403': *id003
-        '404': &id009
+        '401':
+          description: JWT не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Токен истёк или неверен
+                  value:
+                    detail: Токен истёк или неверен
+                e2:
+                  summary: Невалидный токен
+                  value:
+                    detail: Невалидный токен
+        '403':
+          description: Нет заголовка Authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
+        '404':
           description: Обхода нет, он удалён либо чужой
           content:
             application/json:
@@ -776,7 +1033,12 @@ paths:
                   summary: Кадр больше 25 МБ
                   value:
                     detail: Кадр больше 25 МБ
-        '422': *id006
+        '422':
+          description: Тело или параметры не прошли проверку типов (FastAPI)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
   /api/scans/{scan_id}/complete:
     post:
       tags:
@@ -786,9 +1048,16 @@ paths:
       x-calls:
       - db
       - storage
-      security: *id001
+      security:
+      - userJWT: []
       parameters:
-      - *id008
+      - name: scan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: id обхода (строка `scans`).
       description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
         \ Supabase>`), только автор обхода\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `scans` | SELECT\
         \ обхода; UPDATE `status = ready`, когда все кадры на месте |\n| Storage · бакет `colmap` | запись `scans/{scan_id}/scan.json`,\
@@ -828,9 +1097,43 @@ paths:
                   summary: Некорректный id обхода
                   value:
                     detail: Некорректный id обхода
-        '401': *id002
-        '403': *id003
-        '404': *id009
+        '401':
+          description: JWT не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Токен истёк или неверен
+                  value:
+                    detail: Токен истёк или неверен
+                e2:
+                  summary: Невалидный токен
+                  value:
+                    detail: Невалидный токен
+        '403':
+          description: Нет заголовка Authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
+        '404':
+          description: Обхода нет, он удалён либо чужой
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Обход не найден
+                  value:
+                    detail: Обход не найден
         '413':
           description: Файл слишком большой
           content:
@@ -850,9 +1153,16 @@ paths:
       operationId: scanTrack
       x-calls:
       - db
-      security: *id001
+      security:
+      - userJWT: []
       parameters:
-      - *id008
+      - name: scan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: id обхода (строка `scans`).
       description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
         \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin`\
         \ текущего пользователя |\n| БД · `scans` | SELECT для проверки доступа |\n| БД · `colmap_photos` | SELECT\
@@ -866,9 +1176,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Track'
-        '401': *id002
-        '403': *id003
-        '404': *id009
+        '401':
+          description: JWT не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Токен истёк или неверен
+                  value:
+                    detail: Токен истёк или неверен
+                e2:
+                  summary: Невалидный токен
+                  value:
+                    detail: Невалидный токен
+        '403':
+          description: Нет заголовка Authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
+        '404':
+          description: Обхода нет, он удалён либо чужой
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Обход не найден
+                  value:
+                    detail: Обход не найден
   /api/scans/{scan_id}/cloud:
     get:
       tags:
@@ -878,9 +1222,16 @@ paths:
       x-calls:
       - db
       - storage
-      security: *id001
+      security:
+      - userJWT: []
       parameters:
-      - *id008
+      - name: scan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: id обхода (строка `scans`).
       description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
         \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin`\
         \ текущего пользователя |\n| БД · `scans` | SELECT для проверки доступа и пути в хранилище |\n| Storage\
@@ -894,8 +1245,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Cloud'
-        '401': *id002
-        '403': *id003
+        '401':
+          description: JWT не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Токен истёк или неверен
+                  value:
+                    detail: Токен истёк или неверен
+                e2:
+                  summary: Невалидный токен
+                  value:
+                    detail: Невалидный токен
+        '403':
+          description: Нет заголовка Authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
         '404':
           description: Нет обхода или его scan.json
           content:
@@ -920,9 +1295,16 @@ paths:
       x-calls:
       - db
       - gpu
-      security: *id001
+      security:
+      - userJWT: []
       parameters:
-      - *id008
+      - name: scan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: id обхода (строка `scans`).
       description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
         \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `app_settings` | SELECT строки `key\
         \ = gpu`: адрес, режим и ключ GPU-сервера |\n| БД · `profiles` | SELECT `is_superadmin` текущего пользователя\
@@ -978,9 +1360,43 @@ paths:
                 status: pending
                 scan_id: 0b6f6f2e-51a8-4c0a-9d3c-0d2f1c8b7a10
                 mode: cube
-        '401': *id002
-        '403': *id003
-        '404': *id009
+        '401':
+          description: JWT не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Токен истёк или неверен
+                  value:
+                    detail: Токен истёк или неверен
+                e2:
+                  summary: Невалидный токен
+                  value:
+                    detail: Невалидный токен
+        '403':
+          description: Нет заголовка Authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
+        '404':
+          description: Обхода нет, он удалён либо чужой
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Обход не найден
+                  value:
+                    detail: Обход не найден
         '409':
           description: Обход не готов к расчёту
           content:
@@ -996,8 +1412,23 @@ paths:
                   summary: У обхода нет кадров в хранилище
                   value:
                     detail: У обхода нет кадров в хранилище
-        '422': *id006
-        '503': *id007
+        '422':
+          description: Тело или параметры не прошли проверку типов (FastAPI)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '503':
+          description: Адрес GPU-сервера не задан ни в БД, ни в окружении
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Расчётный сервер не настроен. Обратитесь к администратору.
+                  value:
+                    detail: Расчётный сервер не настроен. Обратитесь к администратору.
   /api/admin/gpu:
     get:
       tags:
@@ -1006,7 +1437,8 @@ paths:
       operationId: getGpuSettings
       x-calls:
       - db
-      security: *id001
+      security:
+      - userJWT: []
       description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя + `profiles.is_superadmin = true`\n\
         \n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin` текущего пользователя\
         \ |\n| БД · `app_settings` | SELECT строки `key = gpu`: адрес, режим и ключ GPU-сервера |\n\nЕсли строки\
@@ -1019,8 +1451,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GpuSettingsPublic'
-        '401': *id002
-        '403': &id010
+        '401':
+          description: JWT не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Токен истёк или неверен
+                  value:
+                    detail: Токен истёк или неверен
+                e2:
+                  summary: Невалидный токен
+                  value:
+                    detail: Невалидный токен
+        '403':
           description: Нет заголовка Authorization либо пользователь не суперадмин
           content:
             application/json:
@@ -1042,7 +1488,8 @@ paths:
       operationId: updateGpuSettings
       x-calls:
       - db
-      security: *id001
+      security:
+      - userJWT: []
       description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя + `profiles.is_superadmin = true`\n\
         \n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin` текущего пользователя\
         \ |\n| БД · `app_settings` | SELECT текущих настроек, UPSERT строки `key = gpu` |\n\nАдрес приводится к\
@@ -1084,9 +1531,42 @@ paths:
                   summary: 'Ключ доступа: только латиница, цифры и знаки без пробелов, до 200 символов'
                   value:
                     detail: 'Ключ доступа: только латиница, цифры и знаки без пробелов, до 200 символов'
-        '401': *id002
-        '403': *id010
-        '422': *id006
+        '401':
+          description: JWT не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Токен истёк или неверен
+                  value:
+                    detail: Токен истёк или неверен
+                e2:
+                  summary: Невалидный токен
+                  value:
+                    detail: Невалидный токен
+        '403':
+          description: Нет заголовка Authorization либо пользователь не суперадмин
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Только для администратора
+                  value:
+                    detail: Только для администратора
+                e2:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
+        '422':
+          description: Тело или параметры не прошли проверку типов (FastAPI)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
         '503':
           description: Нет таблицы `app_settings`
           content:
@@ -1109,7 +1589,8 @@ paths:
       x-calls:
       - db
       - gpu
-      security: *id001
+      security:
+      - userJWT: []
       description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя + `profiles.is_superadmin = true`\n\
         \n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin` текущего пользователя\
         \ |\n| БД · `app_settings` | SELECT строки `key = gpu`: адрес, режим и ключ GPU-сервера |\n| GPU-сервер\
@@ -1157,201 +1638,44 @@ paths:
                   summary: Адрес должен начинаться с http:// или https://
                   value:
                     detail: Адрес должен начинаться с http:// или https://
-        '401': *id002
-        '403': *id010
-        '422': *id006
-  /api/auth/yandex-userinfo:
-    get:
-      tags:
-      - Сайт · вход через Яндекс и VK
-      summary: Профиль Яндекса в формате OIDC · Яндекс ID
-      operationId: yandexUserinfo
-      x-calls:
-      - yandex
-      security:
-      - yandexToken: []
-      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** токен Яндекса (`Authorization: Bearer` или `OAuth`),\
-        \ не JWT сайта\n\n| Куда обращается | Что делает |\n|---|---|\n| Яндекс ID | `GET https://login.yandex.ru/info?format=json`\
-        \ с присланным токеном |\n\nЭтот метод вызывает не браузер, а Supabase Auth во время входа через Яндекс:\
-        \ он указан у провайдера как `userinfo_url`. Бэкенд переименовывает поля Яндекса (`id`, `default_email`,\
-        \ `real_name`) в стандартные `sub`, `email`, `name`. Токен нигде не сохраняется."
-      responses:
-        '200':
-          description: Профиль
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/YandexUserinfo'
-              example:
-                sub: '1130000012345678'
-                email: user@yandex.ru
-                email_verified: true
-                name: Иван Иванов
         '401':
-          description: Токена нет или Яндекс его не принял
+          description: JWT не прошёл проверку
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               examples:
                 e1:
-                  summary: Нет токена
+                  summary: Токен истёк или неверен
                   value:
-                    detail: Нет токена
+                    detail: Токен истёк или неверен
                 e2:
-                  summary: Яндекс не подтвердил токен
+                  summary: Невалидный токен
                   value:
-                    detail: Яндекс не подтвердил токен
-        '422': *id006
-        '502':
-          description: Сбой на стороне Яндекса
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                e1:
-                  summary: Яндекс не ответил
-                  value:
-                    detail: Яндекс не ответил
-                e2:
-                  summary: В ответе Яндекса нет id
-                  value:
-                    detail: В ответе Яндекса нет id
-  /api/auth/vk/start:
-    get:
-      tags:
-      - Сайт · вход через Яндекс и VK
-      summary: 'Шаг 1 входа через VK: уйти на страницу VK ID · никуда не ходит'
-      operationId: vkStart
-      x-calls: []
-      security: []
-      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** открыт, ключ не нужен\n\n| Куда обращается | Что делает\
-        \ |\n|---|---|\n| — | никуда не обращается |\n\nСам бэкенд никуда не обращается: он собирает подписанный\
-        \ `state` (живёт 10 минут) и PKCE-challenge и отвечает редиректом на `https://id.vk.ru/authorize`.\n\nЕсли\
-        \ вход через VK выключен (`VK_CLIENT_ID` пуст), редирект ведёт обратно на `/login?vk_error=off`."
-      parameters:
-      - name: h
-        in: query
-        required: true
-        schema:
-          type: string
-          minLength: 43
-          maxLength: 43
-          pattern: ^[A-Za-z0-9_-]+$
-        description: base64url от SHA-256 случайной строки `n`, которую фронт хранит в sessionStorage.
-      responses:
-        '302':
-          description: Редирект на страницу входа VK ID либо на `/login?vk_error=off`
-          headers:
-            Location:
-              schema:
-                type: string
-        '422': *id006
-  /api/auth/vk/callback:
-    get:
-      tags:
-      - Сайт · вход через Яндекс и VK
-      summary: 'Шаг 2 входа через VK: возврат с VK ID · VK ID, Supabase Auth'
-      operationId: vkCallback
-      x-calls:
-      - vk
-      - auth
-      security: []
-      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** открыт; подлинность проверяется подписью `state`\n\n\
-        | Куда обращается | Что делает |\n|---|---|\n| VK ID | `POST https://id.vk.ru/oauth2/auth` (обмен кода на\
-        \ токен), `POST https://id.vk.ru/oauth2/user_info` (профиль и почта) |\n| Supabase Auth | `POST /auth/v1/admin/generate_link`\
-        \ типа `magiclink`: одноразовый токен входа для этой почты. Учётной записи нет: Supabase создаёт её сам\
-        \ |\n\nСюда браузер возвращает VK ID. Ответ всегда редирект на `/login` сайта:\n\n- успех: `?vk_ticket=<билет\
-        \ на 2 минуты>`;\n- ошибка: `?vk_error=` и код: `denied` (пользователь отказал), `vk` (сбой VK), `state`\
-        \ (вход устарел или чужой), `noemail` (в VK нет почты или к ней не дали доступ), `exchange`, `profile`,\
-        \ `session`, `net`.\n\nТокены VK не сохраняются."
-      parameters:
-      - name: code
-        in: query
-        schema:
-          type: string
-        description: Код авторизации от VK ID.
-      - name: state
-        in: query
-        schema:
-          type: string
-        description: Подписанная строка из шага 1.
-      - name: device_id
-        in: query
-        schema:
-          type: string
-        description: Идентификатор устройства от VK ID, нужен для обмена кода.
-      - name: error
-        in: query
-        schema:
-          type: string
-        description: Код ошибки от VK ID, например `access_denied`.
-      - name: error_description
-        in: query
-        schema:
-          type: string
-      responses:
-        '302':
-          description: Редирект на `/login?vk_ticket=…` либо `/login?vk_error=…`
-          headers:
-            Location:
-              schema:
-                type: string
-  /api/auth/vk/finish:
-    post:
-      tags:
-      - Сайт · вход через Яндекс и VK
-      summary: 'Шаг 3 входа через VK: обменять билет на токен входа · никуда не ходит'
-      operationId: vkFinish
-      x-calls: []
-      security: []
-      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** открыт; нужен билет и строка `n` того же браузера\n\n\
-        | Куда обращается | Что делает |\n|---|---|\n| — | никуда не обращается |\n\nПроверяется подпись и срок\
-        \ билета, затем что SHA-256 от `n` совпадает со значением из шага 1. Так билет срабатывает только в том\
-        \ браузере, который начинал вход.\n\nПолученный `token_hash` фронт сам передаёт в Supabase Auth (`verifyOtp`)\
-        \ и получает сессию."
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/VkFinish'
-      responses:
-        '200':
-          description: Токен входа Supabase
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/VkFinishResult'
-              example:
-                token_hash: pkce_3f0c…
-                type: magiclink
-        '400':
-          description: Билет просрочен или подпись не сошлась
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                e1:
-                  summary: Вход устарел, начните заново
-                  value:
-                    detail: Вход устарел, начните заново
+                    detail: Невалидный токен
         '403':
-          description: Строка `n` не от этого входа
+          description: Нет заголовка Authorization либо пользователь не суперадмин
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               examples:
                 e1:
-                  summary: Вход начат в другом браузере
+                  summary: Только для администратора
                   value:
-                    detail: Вход начат в другом браузере
-        '422': *id006
+                    detail: Только для администратора
+                e2:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
+        '422':
+          description: Тело или параметры не прошли проверку типов (FastAPI)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
   /health:
-    servers: &id011
+    servers:
     - url: http://{gpu_host}:{port}
       description: GPU-сервер. Адрес задаёт суперадмин в «Профиле» сайта (таблица app_settings).
       variables:
@@ -1401,7 +1725,19 @@ paths:
                 jobs_running: 0
                 token_ok: true
   /run:
-    servers: *id011
+    servers:
+    - url: http://{gpu_host}:{port}
+      description: GPU-сервер. Адрес задаёт суперадмин в «Профиле» сайта (таблица app_settings).
+      variables:
+        gpu_host:
+          default: gpu-server
+          description: IP или имя арендованного сервера
+        port:
+          default: '6007'
+          enum:
+          - '6007'
+          - '6006'
+          description: '6007: папка VIO_Technology; 6006: старая папка dust3r'
     post:
       tags:
       - GPU-сервер · расчёт
@@ -1411,7 +1747,7 @@ paths:
       - db
       - storage
       - gpu-local
-      security: &id012
+      security:
       - gpuToken: []
       - gpuBearer: []
       description: "**Сервис:** GPU-сервер (приёмник)  \n**Доступ:** ключ приёмника (`X-Volmetric-Token` или `Authorization:\
@@ -1487,7 +1823,7 @@ paths:
                   summary: analysis_id and photo_ids are required
                   value:
                     detail: analysis_id and photo_ids are required
-        '401': &id013
+        '401':
           description: Ключа нет или он неверный
           content:
             application/json:
@@ -1499,7 +1835,19 @@ paths:
                   value:
                     detail: Неверный или отсутствующий ключ доступа
   /result/{analysis_id}:
-    servers: *id011
+    servers:
+    - url: http://{gpu_host}:{port}
+      description: GPU-сервер. Адрес задаёт суперадмин в «Профиле» сайта (таблица app_settings).
+      variables:
+        gpu_host:
+          default: gpu-server
+          description: IP или имя арендованного сервера
+        port:
+          default: '6007'
+          enum:
+          - '6007'
+          - '6006'
+          description: '6007: папка VIO_Technology; 6006: старая папка dust3r'
     get:
       tags:
       - GPU-сервер · расчёт
@@ -1507,7 +1855,9 @@ paths:
       operationId: receiverResult
       x-calls:
       - gpu-local
-      security: *id012
+      security:
+      - gpuToken: []
+      - gpuBearer: []
       parameters:
       - name: analysis_id
         in: path
@@ -1570,7 +1920,17 @@ paths:
                   summary: Некорректный analysis_id
                   value:
                     detail: Некорректный analysis_id
-        '401': *id013
+        '401':
+          description: Ключа нет или он неверный
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Неверный или отсутствующий ключ доступа
+                  value:
+                    detail: Неверный или отсутствующий ключ доступа
         '404':
           description: Приёмник не знает такой задачи
           content:
@@ -1583,25 +1943,6 @@ paths:
                   value:
                     detail: Задача неизвестна
 components:
-  securitySchemes:
-    userJWT:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: Токен сессии Supabase (`access_token`). Бэкенд проверяет подпись HS256 и берёт из него id пользователя.
-    gpuToken:
-      type: apiKey
-      in: header
-      name: X-Volmetric-Token
-      description: Общий секрет бэкенда и приёмника (`RECEIVER_TOKEN` на GPU-сервере, ключ в `app_settings` на сайте).
-    gpuBearer:
-      type: http
-      scheme: bearer
-      description: 'Тот же ключ приёмника, вторым способом: `Authorization: Bearer <ключ>`.'
-    yandexToken:
-      type: http
-      scheme: bearer
-      description: OAuth-токен Яндекса. Присылает Supabase Auth, не браузер.
   schemas:
     Error:
       type: object
@@ -1660,64 +2001,64 @@ components:
     AnalysisListItem:
       type: object
       properties:
-        id: &id014
+        id:
           type: string
           format: uuid
-        user_id: &id015
+        user_id:
           type: string
           format: uuid
           description: Владелец замера.
-        title: &id016
+        title:
           type: string
-        notes: &id017
+        notes:
           type: string
           nullable: true
-        photo_urls: &id018
+        photo_urls:
           type: array
           items:
             type: string
             format: uri
           description: Ссылки на оригиналы в бакете `colmap`, в порядке загрузки.
-        thumbnail_urls: &id019
+        thumbnail_urls:
           type: array
           items:
             type: string
             format: uri
           description: Миниатюры, в том же порядке, что `photo_urls`.
-        status: &id020
+        status:
           type: string
           enum:
           - pending
           - completed
           - error
           description: '`pending`: считается; `completed`: готово; `error`: причина в `result`.'
-        created_at: &id021
+        created_at:
           type: string
           format: date-time
-        completed_at: &id022
+        completed_at:
           type: string
           format: date-time
           nullable: true
-        result: &id023
+        result:
           type: string
           nullable: true
           description: 'Текст результата, его собирает бэкенд из ответа GPU-сервера. Фронт вынимает из него числа
             по шаблонам, например «Объём DUSt3R: 2.2531 м³». При ошибке здесь её причина.'
-        heatmap_top_url: &id024
+        heatmap_top_url:
           type: string
           format: uri
           nullable: true
           description: Карта высот, вид сверху (пишет GPU-сервер).
-        heatmap_side_url: &id025
+        heatmap_side_url:
           type: string
           format: uri
           nullable: true
-        cloud_top_url: &id026
+        cloud_top_url:
           type: string
           format: uri
           nullable: true
           description: Облако точек, вид сверху (пишет GPU-сервер).
-        cloud_side_url: &id027
+        cloud_side_url:
           type: string
           format: uri
           nullable: true
@@ -1734,20 +2075,67 @@ components:
       description: Строка таблицы `analyses` целиком. Набор колонок зависит от применённых миграций.
       additionalProperties: true
       properties:
-        id: *id014
-        user_id: *id015
-        title: *id016
-        notes: *id017
-        photo_urls: *id018
-        thumbnail_urls: *id019
-        status: *id020
-        created_at: *id021
-        completed_at: *id022
-        result: *id023
-        heatmap_top_url: *id024
-        heatmap_side_url: *id025
-        cloud_top_url: *id026
-        cloud_side_url: *id027
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+          description: Владелец замера.
+        title:
+          type: string
+        notes:
+          type: string
+          nullable: true
+        photo_urls:
+          type: array
+          items:
+            type: string
+            format: uri
+          description: Ссылки на оригиналы в бакете `colmap`, в порядке загрузки.
+        thumbnail_urls:
+          type: array
+          items:
+            type: string
+            format: uri
+          description: Миниатюры, в том же порядке, что `photo_urls`.
+        status:
+          type: string
+          enum:
+          - pending
+          - completed
+          - error
+          description: '`pending`: считается; `completed`: готово; `error`: причина в `result`.'
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        result:
+          type: string
+          nullable: true
+          description: 'Текст результата, его собирает бэкенд из ответа GPU-сервера. Фронт вынимает из него числа
+            по шаблонам, например «Объём DUSt3R: 2.2531 м³». При ошибке здесь её причина.'
+        heatmap_top_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Карта высот, вид сверху (пишет GPU-сервер).
+        heatmap_side_url:
+          type: string
+          format: uri
+          nullable: true
+        cloud_top_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Облако точек, вид сверху (пишет GPU-сервер).
+        cloud_side_url:
+          type: string
+          format: uri
+          nullable: true
         client_id:
           type: string
           format: uuid
@@ -2068,7 +2456,7 @@ components:
           format: uuid
         points:
           type: array
-          items: &id028
+          items:
             type: array
             items:
               type: number
@@ -2083,7 +2471,12 @@ components:
             properties:
               index:
                 type: integer
-              at: *id028
+              at:
+                type: array
+                items:
+                  type: number
+                minItems: 2
+                maxItems: 2
               thumb:
                 type: string
                 format: uri
@@ -2110,7 +2503,12 @@ components:
             rot_spread_deg:
               type: number
               nullable: true
-            shift_en: *id028
+            shift_en:
+              type: array
+              items:
+                type: number
+              minItems: 2
+              maxItems: 2
             acc_m:
               type: number
               description: Лучшая погрешность GPS, м.
@@ -2119,17 +2517,27 @@ components:
               description: Сколько кадров с пригодным GPS.
             points_en:
               type: array
-              items: *id028
+              items:
+                type: array
+                items:
+                  type: number
+                minItems: 2
+                maxItems: 2
               description: Точки обхода в метрах на восток и север от `lat0, lon0`.
             frames_en:
               type: array
-              items: *id028
+              items:
+                type: array
+                items:
+                  type: number
+                minItems: 2
+                maxItems: 2
     Cloud:
       type: object
       properties:
         points:
           type: array
-          items: &id029
+          items:
             type: array
             items:
               type: number
@@ -2138,7 +2546,12 @@ components:
           description: Точки `[x, y, z]`, метры, до 6000 штук.
         cameras:
           type: array
-          items: *id029
+          items:
+            type: array
+            items:
+              type: number
+            minItems: 3
+            maxItems: 3
           description: Позиции камеры по кадрам.
     GpuSettingsPublic:
       type: object
@@ -2233,37 +2646,6 @@ components:
           type: array
           items:
             type: string
-    YandexUserinfo:
-      type: object
-      properties:
-        sub:
-          type: string
-        email:
-          type: string
-        email_verified:
-          type: boolean
-        name:
-          type: string
-    VkFinish:
-      type: object
-      required:
-      - ticket
-      - n
-      properties:
-        ticket:
-          type: string
-          description: Значение `vk_ticket` из адреса возврата.
-        n:
-          type: string
-          description: Случайная строка, которую фронт создал перед шагом 1.
-    VkFinishResult:
-      type: object
-      properties:
-        token_hash:
-          type: string
-        type:
-          type: string
-          example: magiclink
     ReceiverHealth:
       type: object
       properties:
@@ -2588,3 +2970,18 @@ components:
         from_disk:
           type: boolean
           description: Результат прочитан с диска после перезапуска приёмника.
+  securitySchemes:
+    userJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Токен сессии Supabase (`access_token`). Бэкенд проверяет подпись HS256 и берёт из него id пользователя.
+    gpuToken:
+      type: apiKey
+      in: header
+      name: X-Volmetric-Token
+      description: Общий секрет бэкенда и приёмника (`RECEIVER_TOKEN` на GPU-сервере, ключ в `app_settings` на сайте).
+    gpuBearer:
+      type: http
+      scheme: bearer
+      description: 'Тот же ключ приёмника, вторым способом: `Authorization: Bearer <ключ>`.'

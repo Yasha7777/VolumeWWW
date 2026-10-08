@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { useAuth } from '../context/AuthContext'
 import GpuAdminPanel from '../components/GpuAdminPanel'
+import ApiTokenPanel from '../components/ApiTokenPanel'
 import './Profile.css'
 
 /* ───────────────────────── helpers ───────────────────────── */
@@ -512,6 +513,7 @@ export default function Profile() {
           </div>
 
           {isAdmin && <GpuAdminPanel />}
+          {isAdmin && <ApiTokenPanel />}
         </section>
       </div>
     </div>

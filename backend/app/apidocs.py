@@ -2,7 +2,7 @@
 """Описания методов для Swagger: /api/docs и /api/openapi.json.
 
 ЗАЧЕМ. FastAPI сам строит список методов, но без пояснений: что метод делает,
-куда ходит внутри (БД, Storage, GPU-сервер, Яндекс/VK) и какие ошибки отдаёт.
+куда ходит внутри (БД, Storage, GPU-сервер) и какие ошибки отдаёт.
 Здесь лежат эти пояснения, а `install(app)` накладывает их на схему.
 
 КАК УСТРОЕНО.
@@ -71,7 +71,7 @@ SWAGGER_UI = {
 # только новее). Сменить версию = поправить номер здесь.
 SWAGGER_CDN = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14"
 
-DOCS_REVISION = "2026-10-08"   # дата последней правки описаний, видна в шапке Swagger
+DOCS_REVISION = "2026-10-08.2"   # правка описаний (дата.номер за день), видна в шапке Swagger
 UNDOC_TAG = "Без описания"
 HTTP_METHODS = ("get", "put", "post", "delete", "patch", "options", "head", "trace")
 
@@ -608,91 +608,6 @@ paths["/api/admin/gpu/check"] = {"post": {
     },
 }}
 
-# ════════════════════════════ БЭКЕНД: вход ══════════════════════════════════
-paths["/api/auth/yandex-userinfo"] = {"get": {
-    "tags": ["Сайт · вход через Яндекс и VK"],
-    "summary": "Профиль Яндекса в формате OIDC · Яндекс ID",
-    "operationId": "yandexUserinfo",
-    "x-calls": ["yandex"],
-    "security": [{"yandexToken": []}],
-    "description": D(BE, "токен Яндекса (`Authorization: Bearer` или `OAuth`), не JWT сайта", [
-        ("Яндекс ID", "`GET https://login.yandex.ru/info?format=json` с присланным токеном"),
-    ], "Этот метод вызывает не браузер, а Supabase Auth во время входа через Яндекс: он указан у провайдера как "
-       "`userinfo_url`. Бэкенд переименовывает поля Яндекса (`id`, `default_email`, `real_name`) в стандартные "
-       "`sub`, `email`, `name`. Токен нигде не сохраняется."),
-    "responses": {
-        "200": {"description": "Профиль", "content": js(ref("YandexUserinfo"), {
-            "sub": "1130000012345678", "email": "user@yandex.ru", "email_verified": True, "name": "Иван Иванов"})},
-        "401": err("Токена нет или Яндекс его не принял", "Нет токена", "Яндекс не подтвердил токен"),
-        "422": R422,
-        "502": err("Сбой на стороне Яндекса", "Яндекс не ответил", "В ответе Яндекса нет id"),
-    },
-}}
-
-paths["/api/auth/vk/start"] = {"get": {
-    "tags": ["Сайт · вход через Яндекс и VK"],
-    "summary": "Шаг 1 входа через VK: уйти на страницу VK ID · никуда не ходит",
-    "operationId": "vkStart",
-    "x-calls": [],
-    "security": [],
-    "description": D(BE, A_OPEN, [], "Сам бэкенд никуда не обращается: он собирает подписанный `state` (живёт 10 минут) "
-                     "и PKCE-challenge и отвечает редиректом на `https://id.vk.ru/authorize`.\n\n"
-                     "Если вход через VK выключен (`VK_CLIENT_ID` пуст), редирект ведёт обратно на `/login?vk_error=off`."),
-    "parameters": [{"name": "h", "in": "query", "required": True,
-                    "schema": {"type": "string", "minLength": 43, "maxLength": 43, "pattern": "^[A-Za-z0-9_-]+$"},
-                    "description": "base64url от SHA-256 случайной строки `n`, которую фронт хранит в sessionStorage."}],
-    "responses": {"302": {"description": "Редирект на страницу входа VK ID либо на `/login?vk_error=off`",
-                          "headers": {"Location": {"schema": {"type": "string"}}}},
-                  "422": R422},
-}}
-
-paths["/api/auth/vk/callback"] = {"get": {
-    "tags": ["Сайт · вход через Яндекс и VK"],
-    "summary": "Шаг 2 входа через VK: возврат с VK ID · VK ID, Supabase Auth",
-    "operationId": "vkCallback",
-    "x-calls": ["vk", "auth"],
-    "security": [],
-    "description": D(BE, "открыт; подлинность проверяется подписью `state`", [
-        ("VK ID", "`POST https://id.vk.ru/oauth2/auth` (обмен кода на токен), "
-                  "`POST https://id.vk.ru/oauth2/user_info` (профиль и почта)"),
-        ("Supabase Auth", "`POST /auth/v1/admin/generate_link` типа `magiclink`: одноразовый токен входа для этой почты. "
-                          "Учётной записи нет: Supabase создаёт её сам"),
-    ], "Сюда браузер возвращает VK ID. Ответ всегда редирект на `/login` сайта:\n\n"
-       "- успех: `?vk_ticket=<билет на 2 минуты>`;\n"
-       "- ошибка: `?vk_error=` и код: `denied` (пользователь отказал), `vk` (сбой VK), `state` (вход устарел или чужой), "
-       "`noemail` (в VK нет почты или к ней не дали доступ), `exchange`, `profile`, `session`, `net`.\n\n"
-       "Токены VK не сохраняются."),
-    "parameters": [
-        {"name": "code", "in": "query", "schema": {"type": "string"}, "description": "Код авторизации от VK ID."},
-        {"name": "state", "in": "query", "schema": {"type": "string"}, "description": "Подписанная строка из шага 1."},
-        {"name": "device_id", "in": "query", "schema": {"type": "string"}, "description": "Идентификатор устройства от VK ID, нужен для обмена кода."},
-        {"name": "error", "in": "query", "schema": {"type": "string"}, "description": "Код ошибки от VK ID, например `access_denied`."},
-        {"name": "error_description", "in": "query", "schema": {"type": "string"}},
-    ],
-    "responses": {"302": {"description": "Редирект на `/login?vk_ticket=…` либо `/login?vk_error=…`",
-                          "headers": {"Location": {"schema": {"type": "string"}}}}},
-}}
-
-paths["/api/auth/vk/finish"] = {"post": {
-    "tags": ["Сайт · вход через Яндекс и VK"],
-    "summary": "Шаг 3 входа через VK: обменять билет на токен входа · никуда не ходит",
-    "operationId": "vkFinish",
-    "x-calls": [],
-    "security": [],
-    "description": D(BE, "открыт; нужен билет и строка `n` того же браузера", [],
-                     "Проверяется подпись и срок билета, затем что SHA-256 от `n` совпадает со значением из шага 1. "
-                     "Так билет срабатывает только в том браузере, который начинал вход.\n\n"
-                     "Полученный `token_hash` фронт сам передаёт в Supabase Auth (`verifyOtp`) и получает сессию."),
-    "requestBody": {"required": True, "content": js(ref("VkFinish"))},
-    "responses": {
-        "200": {"description": "Токен входа Supabase", "content": js(ref("VkFinishResult"),
-                {"token_hash": "pkce_3f0c…", "type": "magiclink"})},
-        "400": err("Билет просрочен или подпись не сошлась", "Вход устарел, начните заново"),
-        "403": err("Строка `n` не от этого входа", "Вход начат в другом браузере"),
-        "422": R422,
-    },
-}}
-
 # ════════════════════════════ GPU-ПРИЁМНИК ══════════════════════════════════
 GPU_SERVERS = [{
     "url": "http://{gpu_host}:{port}",
@@ -965,13 +880,6 @@ S["GpuCheckResult"] = {"type": "object", "properties": {
     "engine": {"type": "string"}, "code_edit_msk": {"type": "string", "description": "Версия приёмника на сервере."},
     "auth_required": {"type": "boolean"}, "token_ok": {"type": "boolean", "nullable": True},
     "scale_modes_ready": {"type": "array", "items": {"type": "string"}}}}
-S["YandexUserinfo"] = {"type": "object", "properties": {
-    "sub": {"type": "string"}, "email": {"type": "string"}, "email_verified": {"type": "boolean"}, "name": {"type": "string"}}}
-S["VkFinish"] = {"type": "object", "required": ["ticket", "n"], "properties": {
-    "ticket": {"type": "string", "description": "Значение `vk_ticket` из адреса возврата."},
-    "n": {"type": "string", "description": "Случайная строка, которую фронт создал перед шагом 1."}}}
-S["VkFinishResult"] = {"type": "object", "properties": {
-    "token_hash": {"type": "string"}, "type": {"type": "string", "example": "magiclink"}}}
 S["ReceiverHealth"] = {"type": "object", "properties": {
     "status": {"type": "string"}, "service": {"type": "string", "enum": ["volmetric-receiver"]},
     "code_edit_msk": {"type": "string", "description": "Штамп правки файла приёмника: какая версия стоит на сервере."},
@@ -1055,10 +963,6 @@ S["JobState"] = {"type": "object", "properties": {
     "from_disk": {"type": "boolean", "description": "Результат прочитан с диска после перезапуска приёмника."}}}
 
 INFO = """
-Одна спецификация на два сервиса: **бэкенд сайта** (пути `/api/…`, домен volumetric.gottland.ru) и **приёмник на GPU-сервере** (`/health`, `/run`, `/result/…`). У каждого метода в описании указано, какой сервис его выполняет, кто может вызвать и куда метод обращается внутри.
-
-Список методов бэкенда берётся из кода при запуске, поэтому новый метод появляется здесь сам, в разделе «Без описания». Тексты описаний лежат в `backend/app/apidocs.py`. Методы GPU-сервера описаны по `receiver_dust3r.py`, штамп правки 06.10.2026 22:32 МСК: этот сервер отдельный, и его часть нужно править руками.
-
 ## Куда обращаются методы
 
 | Система | Что это | Кто туда ходит |
@@ -1066,23 +970,9 @@ INFO = """
 | **БД** | Postgres в Supabase (supabase.gottland.ru), доступ service-ключом. Таблицы: `analyses` (замеры), `colmap_photos` (кадры), `scans` (обходы из приложения), `profiles`, `app_settings` (настройки GPU), `dust3r_results` (итоги расчётов) | бэкенд и приёмник |
 | **Storage** | файловое хранилище Supabase. Бакет `colmap`: фото, миниатюры, `scan.json`. Бакет `dust3r-ply`: модель и картинки расчёта | бэкенд (`colmap`), приёмник (читает `colmap`, пишет `dust3r-ply`) |
 | **GPU-сервер** | приёмник `receiver_dust3r.py` и раннер `dust3r_gpu.py` на арендованном сервере | только бэкенд, с ключом `X-Volmetric-Token` |
-| **Supabase Auth** | учётные записи и сессии | фронт напрямую; бэкенд только при входе через VK |
-| **Яндекс ID, VK ID** | внешние сервисы входа | бэкенд, только методы `/api/auth/…` |
+| **Supabase Auth** | учётные записи и сессии: вход по почте и паролю, регистрация | только фронт, напрямую |
 
 n8n с 06.10.2026 в цепочке нет: бэкенд вызывает GPU-сервер напрямую.
-
-## Как проходит замер
-
-1. Браузер шлёт фото: `POST /api/analyses/`. Для обхода из приложения: `POST /api/scans/{scan_id}/analyze`.
-2. Бэкенд кладёт фото в Storage, заводит строки в БД, отвечает `202` и в фоне вызывает `POST /run` на GPU-сервере с `wait: false`.
-3. GPU-сервер отвечает `202`, сам качает кадры из Storage и считает.
-4. Бэкенд раз в 5 с спрашивает `GET /result/{analysis_id}`.
-5. По окончании GPU-сервер пишет модель в Storage, строку в `dust3r_results` и ссылки на картинки в `analyses`. Бэкенд пишет в `analyses` статус и текст результата.
-6. Браузер видит результат через `GET /api/analyses/{analysis_id}` или в истории.
-
-## Что идёт мимо этих методов
-
-Вход по почте и паролю, регистрацию, вход через Яндекс, обновление сессии и выход фронт делает напрямую в Supabase Auth библиотекой supabase-js. К таблицам браузер напрямую не обращается, только через бэкенд. Файлы (фото, миниатюры, модель, картинки расчёта) он скачивает по публичным ссылкам Storage, которые приходят в ответах методов.
 """.strip()
 
 TAGS = [
@@ -1090,7 +980,6 @@ TAGS = [
     {"name": "Сайт · обходы из приложения", "description": "Бэкенд сайта. Загрузка обхода из VolmetricARKit, просмотр и запуск замера по нему."},
     {"name": "Сайт · профиль", "description": "Бэкенд сайта. Данные пользователя."},
     {"name": "Сайт · настройки GPU-сервера", "description": "Бэкенд сайта. Панель суперадмина в «Профиле»: адрес, режим Cube/VIO, ключ."},
-    {"name": "Сайт · вход через Яндекс и VK", "description": "Бэкенд сайта. Служебные шаги входа через внешние сервисы."},
     {"name": "Сайт · служебное", "description": "Бэкенд сайта."},
     {"name": "GPU-сервер · расчёт", "description": "Приёмник `receiver_dust3r.py`. Вызывается только бэкендом сайта, браузер сюда не ходит."},
 ]
@@ -1109,7 +998,6 @@ SPEC = {
             "gpuToken": {"type": "apiKey", "in": "header", "name": "X-Volmetric-Token",
                          "description": "Общий секрет бэкенда и приёмника (`RECEIVER_TOKEN` на GPU-сервере, ключ в `app_settings` на сайте)."},
             "gpuBearer": {"type": "http", "scheme": "bearer", "description": "Тот же ключ приёмника, вторым способом: `Authorization: Bearer <ключ>`."},
-            "yandexToken": {"type": "http", "scheme": "bearer", "description": "OAuth-токен Яндекса. Присылает Supabase Auth, не браузер."},
         },
         "schemas": S,
     },

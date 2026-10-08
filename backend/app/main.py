@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import apidocs
-from .routers import admin, analyses, profile, scans, vk_auth, yandex_auth
+from .routers import admin, analyses, profile, scans
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
@@ -29,8 +29,6 @@ app.include_router(analyses.router, prefix="/api")
 app.include_router(profile.router, prefix="/api")
 app.include_router(scans.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")         # настройки расчётного сервера
-app.include_router(yandex_auth.router, prefix="/api")   # вход через Яндекс ID
-app.include_router(vk_auth.router, prefix="/api")       # вход через VK ID
 
 
 @app.get("/api/health")

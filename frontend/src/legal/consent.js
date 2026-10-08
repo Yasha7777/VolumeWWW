@@ -15,7 +15,7 @@
    Доказательная сила у записи, сделанной сервером, выше — если заводить
    журнал согласий, то серверный (IP, время сервера, текст редакции).
    ════════════════════════════════════════════════════════════════════════ */
-export const CONSENT_VERSION = '2026-10-02'
+export const CONSENT_VERSION = '2026-10-08'
 
 export const consentMeta = () => ({
   consent_version: CONSENT_VERSION,
@@ -26,15 +26,3 @@ export const consentMeta = () => ({
 // по нему о согласии судить нельзя, поэтому «неизвестно» ≠ «нет».
 export const consentKnown = (user) => !!user && user.user_metadata !== undefined
 export const hasConsent = (user) => user?.user_metadata?.consent_version === CONSENT_VERSION
-
-// Чекбокс на /register отмечен, дальше человек ушёл на Яндекс: отметку надо
-// донести через редирект. После возврата её подхватит ConsentGate.
-const PENDING_KEY = 'kb-consent-pending'
-export const markConsentPending = () => { try { localStorage.setItem(PENDING_KEY, CONSENT_VERSION) } catch {} }
-export const takeConsentPending = () => {
-  try {
-    const v = localStorage.getItem(PENDING_KEY)
-    localStorage.removeItem(PENDING_KEY)
-    return v === CONSENT_VERSION
-  } catch { return false }
-}

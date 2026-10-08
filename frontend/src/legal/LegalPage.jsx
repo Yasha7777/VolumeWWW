@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom'
-import CookieSettingsLink from '../metrika/CookieSettingsLink'
 
 /* Общая вёрстка юридических страниц: /privacy, /consent, /terms.
    Тексты — в самих страницах (pages/Privacy.jsx, Consent.jsx, Terms.jsx).
@@ -8,7 +7,7 @@ import CookieSettingsLink from '../metrika/CookieSettingsLink'
    попросят согласиться заново).
 
    H1 на странице ровно один — этого требует пререндер (vite-plugin-seo.js). */
-export const LEGAL_EDITION = '2 октября 2026 г.'
+export const LEGAL_EDITION = '8 октября 2026 г.'
 export const OPERATOR = 'Качалин Яков Дмитриевич'
 // падежи — чтобы в тексте не выходило «согласие гражданину РФ Качалин…»
 export const OPERATOR_DAT = 'Качалину Якову Дмитриевичу'     // кому
@@ -57,10 +56,6 @@ export default function LegalPage({ path, title, children }) {
         {DOCS.filter((d) => d.to !== path).map((d) => (
           <span key={d.to}>{' · '}<Link to={d.to} style={LINK}>{d.label}</Link></span>
         ))}
-        {/* на эту ссылку ссылается п. 4.4 Политики */}
-        <CookieSettingsLink style={{ ...LINK, background: 'none', border: 'none', padding: 0, marginLeft: 6, font: 'inherit', cursor: 'pointer' }}>
-          · Настройки cookie
-        </CookieSettingsLink>
       </nav>
     </main>
   )

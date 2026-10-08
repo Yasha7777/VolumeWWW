@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { consentMeta, markConsentPending } from '../legal/consent'
+import { consentMeta } from '../legal/consent'
 
 const NEED_CONSENT = 'Отметьте согласие на обработку персональных данных и с Пользовательским соглашением'
 
 export default function Register() {
-  const { signUp, signInWithYandex, signInWithVk } = useAuth()
+  const { signUp } = useAuth()
   const navigate = useNavigate()
   
   const [email, setEmail] = useState('')
@@ -82,21 +82,6 @@ export default function Register() {
       setTimeout(() => navigate('/login'), 3000)
     }
   }
-
-  // Регистрация через Яндекс или ВКонтакте: согласие нужно ДО ухода туда — учётная
-  // запись создаётся на возврате, без этой формы. Отметку переносит
-  // markConsentPending (подхватит ConsentGate после входа).
-  const external = (start, label) => async () => {
-    setError('')
-    // для входа через внешний сервис из всей формы нужно только согласие
-    if (reject(consent ? {} : { consent: NEED_CONSENT })) return
-    markConsentPending()
-    setLoading(true)
-    const { error: err } = await start()
-    if (err) { setLoading(false); setError(`Не удалось открыть вход через ${label}. Проверьте связь.`) }
-  }
-  const yandex = external(signInWithYandex, 'Яндекс')
-  const vkLogin = external(signInWithVk, 'ВКонтакте')
 
   if (done) return (
     <main className="auth-wrap">
@@ -238,17 +223,6 @@ export default function Register() {
             {loading ? <><div className="spinner" /> Регистрируем...</> : 'Зарегистрироваться'}
           </button>
         </form>
-
-        <div className="auth-or">или через</div>
-        <div className="auth-ext">
-          <button type="button" className="auth-ext__btn auth-ext__btn--ya" disabled={loading} onClick={yandex}>
-            Яндекс
-          </button>
-          <button type="button" className="auth-ext__btn auth-ext__btn--vk" disabled={loading} onClick={vkLogin}>
-            ВКонтакте
-          </button>
-        </div>
-        <p className="auth-note">Согласие выше нужно и для этих способов.</p>
 
         <p className="auth-switch">
           Уже есть аккаунт? <Link to="/login">Войти</Link>

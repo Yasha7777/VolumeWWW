@@ -144,54 +144,6 @@ export function AuthProvider({ children }) {
   const signUp = (email, password, meta) =>
     supabase.auth.signUp({ email, password, options: meta ? { data: meta } : undefined })
 
-  // Вход через Яндекс ID. Провайдер custom:yandex заведён в GoTrue на сервере
-  // (профиль — через прослойку backend/app/routers/yandex_auth.py). Возврат —
-  // на /login: страница дожидается обмена кода на сессию и уводит в /app.
-  // Не на /app: PrivateRoute на плохой связи не дождался бы обмена и сам
-  // увёл бы на /login, потеряв ?code=.
-  const signInWithYandex = () =>
-    supabase.auth.signInWithOAuth({
-      provider: 'custom:yandex',
-      options: { redirectTo: `${window.location.origin}/login` },
-    })
-
-  // Вход через VK ID — обмен кода делает бэкенд (backend/app/routers/vk_auth.py:
-  // ВК требует device_id, который GoTrue не передаёт). Здесь — только начало
-  // и конец. n — случайная строка, остаётся в этой вкладке (sessionStorage);
-  // серверу уходит её хэш. Билет, с которым ВК вернёт на /login, сработает
-  // только вместе с n — то есть в браузере, который начинал вход.
-  const VK_N = 'kb-vk-n'
-  const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-  const signInWithVk = async () => {
-    try {
-      const n = b64url(crypto.getRandomValues(new Uint8Array(32)))
-      const h = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(n)))
-      sessionStorage.setItem(VK_N, n)
-      window.location.assign(`/api/auth/vk/start?h=${h}`)
-      return { error: null }
-    } catch (error) {
-      return { error }
-    }
-  }
-  // Возврат с ВК: меняем билет на одноразовый токен входа, а его — на сессию.
-  const finishVkLogin = async (ticket) => {
-    let n = null
-    try { n = sessionStorage.getItem(VK_N); sessionStorage.removeItem(VK_N) } catch {}
-    if (!n) return { error: new Error('Вход начат в другой вкладке') }
-    try {
-      const r = await fetch('/api/auth/vk/finish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticket, n }),
-      })
-      if (!r.ok) return { error: new Error('Билет входа не принят') }
-      const { token_hash, type } = await r.json()
-      return await supabase.auth.verifyOtp({ token_hash, type })
-    } catch (error) {
-      return { error }
-    }
-  }
-
   // Отметка о согласии для уже вошедшего (окно согласия). USER_UPDATED
   // прилетит в onAuthStateChange выше и обновит user сам.
   const recordConsent = (meta) => supabase.auth.updateUser({ data: meta })
@@ -206,7 +158,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, degraded, signIn, signUp, signOut, signInWithYandex, signInWithVk, finishVkLogin, recordConsent }}>
+    <AuthContext.Provider value={{ user, loading, degraded, signIn, signUp, signOut, recordConsent }}>
       {children}
     </AuthContext.Provider>
   )

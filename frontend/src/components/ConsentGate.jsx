@@ -1,12 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { consentKnown, consentMeta, hasConsent, takeConsentPending } from '../legal/consent'
+import { consentKnown, consentMeta, hasConsent } from '../legal/consent'
 
 /* Окно согласия для вошедшего, у которого нет отметки о согласии с текущей
    редакцией документов (legal/consent.js). Когда показывается:
-     • первый вход через Яндекс — учётная запись создаётся без формы
-       регистрации, чекбокса человек не видел;
      • учётные записи, созданные до появления /consent и /terms;
      • сменилась CONSENT_VERSION.
    Без отметки в приложение не пускаем: обрабатывать данные без согласия
@@ -18,13 +16,6 @@ export default function ConsentGate({ children }) {
   const [error, setError] = useState('')
 
   const needed = consentKnown(user) && !hasConsent(user)
-
-  // Чекбокс уже был отмечен на /register перед уходом на Яндекс —
-  // второй раз не спрашиваем, просто записываем отметку.
-  useEffect(() => {
-    if (!needed) return
-    if (takeConsentPending()) recordConsent(consentMeta()).catch(() => {})
-  }, [needed]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!needed) return children
 
