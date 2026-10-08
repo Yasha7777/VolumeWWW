@@ -425,7 +425,6 @@
 :root[data-theme='dark'] .ks-scope .ks-card__row svg { color: #6f6e69; }
 .ks-card__row > span:first-of-type { width: auto; }
 .ks-card__row > span:nth-of-type(1):not(:last-child) { width: 65px; }
-.ks-card__clock { margin-right: -8px; }
 .ks-card__device { margin-top: 5px; height: 14px; line-height: 14px; font-family: var(--font-mono); font-size: 8.8px; color: var(--muted-2); white-space: nowrap; }
 
 .ks-check { display: grid; place-items: center; border-radius: 4px; color: #fff; }

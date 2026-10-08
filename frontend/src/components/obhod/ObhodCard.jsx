@@ -1,6 +1,6 @@
 import { motion } from 'motion/react'
 import { Check } from 'lucide-react'
-import { IcoCalendar, IcoImages, IcoClock, IcoUser, IcoPin } from './icons'
+import { IcoCalendar, IcoImages, IcoUser, IcoPin } from './icons'
 
 /* Карточка обхода. Кликабельна целиком (роль radio — выбирается один обход),
    выбрать можно только готовый обход — остальные показывают статус и не
@@ -31,8 +31,6 @@ export default function ObhodCard({ o, selected, onToggle, index = 0, animate = 
         <div className="ks-card__row"><IcoCalendar /><span>{o.date}</span></div>
         <div className="ks-card__row">
           <IcoImages /><span>{o.photos} фото</span>
-          {/* длительность СЪЁМКИ обхода (сколько шла запись в приложении), не загрузки */}
-          {o.duration && <><span className="ks-card__clock"><IcoClock /></span><span title="Длительность съёмки обхода">съёмка {o.duration}</span></>}
         </div>
         {o.author && <div className="ks-card__row ks-card__row--gap"><IcoUser /><span>{o.author}</span></div>}
         <div className={'ks-card__row' + (o.author ? '' : ' ks-card__row--gap')}><IcoPin /><span>{o.place || 'нет координат'}</span></div>

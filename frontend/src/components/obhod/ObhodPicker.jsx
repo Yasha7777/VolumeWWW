@@ -318,7 +318,7 @@ export default function ObhodPicker({
                                 {picked.img ? <img src={picked.img} alt="" /> : <span className="ks-chip__noimg" />}
                                 <span className="ks-chip__text">
                                   <span className="ks-chip__date">{picked.title}</span>
-                                  <span className="ks-chip__meta">{picked.photos} фото{picked.duration ? ` · съёмка ${picked.duration}` : ''}</span>
+                                  <span className="ks-chip__meta">{picked.photos} фото</span>
                                 </span>
                                 <button className="ks-chip__x" type="button" aria-label="Снять выбор" onClick={() => onToggle(picked.id)}><X size={13} strokeWidth={1.8} /></button>
                               </motion.div>
