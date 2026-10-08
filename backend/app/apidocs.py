@@ -26,10 +26,35 @@
 """
 import copy
 import logging
+import secrets
 
+from fastapi import Depends, HTTPException
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 logger = logging.getLogger(__name__)
+
+# ДОСТУП К SWAGGER. Страница /api/docs и схема /api/openapi.json закрыты
+# паролем (HTTP Basic): браузер сам покажет окно входа. Логин — любой,
+# проверяется только пароль. Пароль зашит в код намеренно (решение владельца
+# проекта, 08.10.2026); он лежит в git, так что сменить = поправить строку ниже
+# и выкатить. Закрывает он ТОЛЬКО документацию: сами методы /api/… защищены
+# своим — JWT пользователя.
+DOCS_PASSWORD = "!bl+P&w7;ZE6(Js"
+DOCS_REALM = "Volumetric API"
+DOCS_URL = "/api/docs"
+# Схема ОБЯЗАНА лежать под /api/: nginx проксирует на бэкенд только этот
+# префикс. С адресом FastAPI по умолчанию (/openapi.json) страница открывалась,
+# а схему получить не могла — на проде там был 404.
+OPENAPI_URL = "/api/openapi.json"
+SWAGGER_UI = {
+    "docExpansion": "list",            # разделы раскрыты, методы свёрнуты
+    "defaultModelsExpandDepth": 0,     # блок схем внизу свёрнут
+    "filter": True,                    # строка поиска по разделам
+    "persistAuthorization": True,      # введённый токен переживает F5
+}
 
 DOCS_REVISION = "2026-10-08"   # дата последней правки описаний, видна в шапке Swagger
 UNDOC_TAG = "Без описания"
@@ -1140,10 +1165,28 @@ def merge(auto: dict) -> dict:
     return schema
 
 
+_basic = HTTPBasic(realm=DOCS_REALM)
+
+
+def require_docs_password(cred: HTTPBasicCredentials = Depends(_basic)) -> None:
+    """Пускает к Swagger только с верным паролем. Логин не проверяется."""
+    given = (cred.password or "").encode("utf-8")
+    if not secrets.compare_digest(given, DOCS_PASSWORD.encode("utf-8")):
+        # с этим заголовком браузер спросит пароль заново, а не покажет голую ошибку
+        raise HTTPException(status_code=401, detail="Неверный пароль",
+                            headers={"WWW-Authenticate": f'Basic realm="{DOCS_REALM}"'})
+
+
 def install(app) -> None:
-    """Подменяет app.openapi: схема строится один раз, при первом запросе."""
+    """Подключает Swagger: схему с описаниями и две закрытые паролем страницы.
+
+    Штатные /docs и /openapi.json в FastAPI(...) должны быть ВЫКЛЮЧЕНЫ
+    (docs_url=None, openapi_url=None): иначе рядом останутся открытые копии.
+    Вызывать после объявления всех маршрутов.
+    """
 
     def openapi() -> dict:
+        # схема строится один раз, при первом запросе
         if app.openapi_schema:
             return app.openapi_schema
         auto = get_openapi(title=app.title, version=app.version, routes=app.routes)
@@ -1155,3 +1198,17 @@ def install(app) -> None:
         return app.openapi_schema
 
     app.openapi = openapi
+
+    guard = [Depends(require_docs_password)]
+
+    @app.get(OPENAPI_URL, include_in_schema=False, dependencies=guard)
+    def openapi_json():
+        return JSONResponse(app.openapi())
+
+    @app.get(DOCS_URL, include_in_schema=False, dependencies=guard)
+    def swagger_page():
+        return get_swagger_ui_html(
+            openapi_url=OPENAPI_URL,
+            title=f"{app.title} — API",
+            swagger_ui_parameters=SWAGGER_UI,
+        )

@@ -10,19 +10,11 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 app = FastAPI(
     title="Volumetric Gottland",
     version="1.0.0",
-    docs_url="/api/docs",
+    # Штатные страницы документации выключены: Swagger подключает
+    # apidocs.install(app) в конце файла — /api/docs, под паролем.
+    docs_url=None,
     redoc_url=None,
-    # Схема ОБЯЗАНА лежать под /api/: nginx проксирует на бэкенд только этот
-    # префикс. С адресом по умолчанию (/openapi.json) страница /api/docs
-    # открывалась, а схему получить не могла — на проде там был 404.
-    openapi_url="/api/openapi.json",
-    swagger_ui_oauth2_redirect_url=None,
-    swagger_ui_parameters={
-        "docExpansion": "list",            # разделы раскрыты, методы свёрнуты
-        "defaultModelsExpandDepth": 0,     # блок схем внизу свёрнут
-        "filter": True,                    # строка поиска по разделам
-        "persistAuthorization": True,      # введённый токен переживает F5
-    },
+    openapi_url=None,
 )
 
 app.add_middleware(
@@ -46,7 +38,8 @@ def health():
     return {"status": "ok", "service": "karelia-build-ai"}
 
 
-# Описания методов для Swagger (что делает, куда ходит: БД, Storage, GPU).
-# Вызывать ПОСЛЕ объявления всех маршрутов. На работу методов не влияет.
+# Swagger: /api/docs и /api/openapi.json, под паролем, с описаниями методов
+# (что делает, куда ходит: БД, Storage, GPU). Вызывать ПОСЛЕ объявления всех
+# маршрутов. На работу самих методов не влияет.
 apidocs.install(app)
 
