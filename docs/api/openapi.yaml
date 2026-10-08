@@ -1,0 +1,2590 @@
+# Volumetric Gottland API: бэкенд сайта + GPU-приёмник. Открывать в Swagger UI (swagger.html рядом).
+openapi: 3.0.3
+info:
+  title: Volumetric Gottland API
+  version: '2026-10-06'
+  description: 'Одна спецификация на два сервиса: **бэкенд сайта** (пути `/api/…`, домен volumetric.gottland.ru)
+    и **приёмник на GPU-сервере** (`/health`, `/run`, `/result/…`). У каждого метода в описании указано, какой сервис
+    его выполняет, кто может вызвать и куда метод обращается внутри.
+
+
+    Составлено по коду: сайт, коммит `6848790` от 06.10.2026; приёмник `receiver_dust3r.py`, штамп правки 06.10.2026
+    22:32 МСК.
+
+
+    ## Куда обращаются методы
+
+
+    | Система | Что это | Кто туда ходит |
+
+    |---|---|---|
+
+    | **БД** | Postgres в Supabase (supabase.gottland.ru), доступ service-ключом. Таблицы: `analyses` (замеры),
+    `colmap_photos` (кадры), `scans` (обходы из приложения), `profiles`, `app_settings` (настройки GPU), `dust3r_results`
+    (итоги расчётов) | бэкенд и приёмник |
+
+    | **Storage** | файловое хранилище Supabase. Бакет `colmap`: фото, миниатюры, `scan.json`. Бакет `dust3r-ply`:
+    модель и картинки расчёта | бэкенд (`colmap`), приёмник (читает `colmap`, пишет `dust3r-ply`) |
+
+    | **GPU-сервер** | приёмник `receiver_dust3r.py` и раннер `dust3r_gpu.py` на арендованном сервере | только бэкенд,
+    с ключом `X-Volmetric-Token` |
+
+    | **Supabase Auth** | учётные записи и сессии | фронт напрямую; бэкенд только при входе через VK |
+
+    | **Яндекс ID, VK ID** | внешние сервисы входа | бэкенд, только методы `/api/auth/…` |
+
+
+    n8n с 06.10.2026 в цепочке нет: бэкенд вызывает GPU-сервер напрямую.
+
+
+    ## Как проходит замер
+
+
+    1. Браузер шлёт фото: `POST /api/analyses/`. Для обхода из приложения: `POST /api/scans/{scan_id}/analyze`.
+
+    2. Бэкенд кладёт фото в Storage, заводит строки в БД, отвечает `202` и в фоне вызывает `POST /run` на GPU-сервере
+    с `wait: false`.
+
+    3. GPU-сервер отвечает `202`, сам качает кадры из Storage и считает.
+
+    4. Бэкенд раз в 5 с спрашивает `GET /result/{analysis_id}`.
+
+    5. По окончании GPU-сервер пишет модель в Storage, строку в `dust3r_results` и ссылки на картинки в `analyses`.
+    Бэкенд пишет в `analyses` статус и текст результата.
+
+    6. Браузер видит результат через `GET /api/analyses/{analysis_id}` или в истории.
+
+
+    ## Что идёт мимо этих методов
+
+
+    Вход по почте и паролю, регистрацию, вход через Яндекс, обновление сессии и выход фронт делает напрямую в Supabase
+    Auth библиотекой supabase-js. К таблицам браузер напрямую не обращается, только через бэкенд. Файлы (фото, миниатюры,
+    модель, картинки расчёта) он скачивает по публичным ссылкам Storage, которые приходят в ответах методов.'
+servers:
+- url: https://volumetric.gottland.ru
+  description: Бэкенд сайта (nginx → FastAPI, порт 8000 в контейнере)
+tags:
+- name: Сайт · замеры
+  description: Бэкенд сайта. Создание замера по фото, история, пересчёт, удаление.
+- name: Сайт · обходы из приложения
+  description: Бэкенд сайта. Загрузка обхода из VolmetricARKit, просмотр и запуск замера по нему.
+- name: Сайт · профиль
+  description: Бэкенд сайта. Данные пользователя.
+- name: Сайт · настройки GPU-сервера
+  description: 'Бэкенд сайта. Панель суперадмина в «Профиле»: адрес, режим Cube/VIO, ключ.'
+- name: Сайт · вход через Яндекс и VK
+  description: Бэкенд сайта. Служебные шаги входа через внешние сервисы.
+- name: Сайт · служебное
+  description: Бэкенд сайта.
+- name: GPU-сервер · расчёт
+  description: Приёмник `receiver_dust3r.py`. Вызывается только бэкендом сайта, браузер сюда не ходит.
+paths:
+  /api/health:
+    get:
+      tags:
+      - Сайт · служебное
+      summary: Жив ли бэкенд · никуда не ходит
+      operationId: health
+      x-calls: []
+      security: []
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** открыт, ключ не нужен\n\n| Куда обращается | Что делает\
+        \ |\n|---|---|\n| — | никуда не обращается |\n\nБД и GPU-сервер не проверяются: ответ говорит только о том,\
+        \ что процесс запущен."
+      responses:
+        '200':
+          description: Бэкенд запущен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  service:
+                    type: string
+              example:
+                status: ok
+                service: karelia-build-ai
+  /api/analyses/:
+    post:
+      tags:
+      - Сайт · замеры
+      summary: Создать замер по фото · БД, Storage, GPU
+      operationId: createAnalysis
+      x-calls:
+      - db
+      - storage
+      - gpu
+      security: &id001
+      - userJWT: []
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
+        \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `app_settings` | SELECT строки `key\
+        \ = gpu`: адрес, режим и ключ GPU-сервера |\n| БД · `analyses` | SELECT по `client_id` (защита от дублей),\
+        \ INSERT строки со статусом `pending`, UPDATE `photo_urls` и `thumbnail_urls` после загрузки |\n| Storage\
+        \ · бакет `colmap` | на каждое фото два файла: оригинал байт в байт `{analysis_id}/{uuid}.jpg` и миниатюра\
+        \ 400 px `{uuid}_thumb.jpg` |\n| БД · `colmap_photos` | INSERT строки на каждое фото: пути, ссылки, имя\
+        \ файла, EXIF |\n| GPU-сервер | в фоне, после ответа: `POST /run` с `wait: false`, затем `GET /result/{analysis_id}`\
+        \ раз в 5 с, пока не придёт `state: done` (предел ожидания 3600 с) |\n| БД · `analyses` | в фоне, по итогу\
+        \ расчёта: UPDATE `status` (`completed` / `error`), `result` (текст), `completed_at`, `ply_url`, `glb_url`\
+        \ |\n\nОтвет `202` приходит сразу после загрузки фото, расчёт идёт в фоне. Готовность смотреть по `GET /api/analyses/{analysis_id}`:\
+        \ поле `status`.\n\nСами фото на GPU-сервер не отправляются. Уходят id строк `colmap_photos`, EXIF и параметры\
+        \ куба, файлы сервер качает сам.\n\nПовтор с тем же `client_id` второй замер не создаёт: возвращается уже\
+        \ существующая строка с её текущим статусом."
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - files
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Фото, от 1 до 100 штук. Каждое `image/*`, не больше 20 МБ. Порядок файлов равен порядку
+                    кадров в расчёте.
+                title:
+                  type: string
+                  default: ''
+                  description: 'Название замера. Пусто: «Без названия».'
+                notes:
+                  type: string
+                  default: ''
+                  description: Заметка к замеру.
+                exif_data:
+                  type: string
+                  default: '[]'
+                  description: 'JSON-строка: массив объектов EXIF, по одному на файл, в том же порядке, что `files`.
+                    Фронт читает EXIF из оригинала библиотекой exifr. Не массив или битый JSON: считается, что EXIF
+                    нет.'
+                  example: '[{"FocalLength":4.2,"FocalLengthIn35mmFormat":26,"ExifImageWidth":3024,"ExifImageHeight":4032,"ISO":50}]'
+                cube:
+                  type: string
+                  default: ''
+                  description: 'JSON-строка с параметрами калибровочного куба. Пусто или мусор: стандартный куб
+                    4×4 клетки по 17,5 мм.'
+                  example: '{"squares_per_side":4,"square_size_m":0.0175}'
+                client_id:
+                  type: string
+                  format: uuid
+                  default: ''
+                  description: UUID из очереди отправки на фронте. Становится `id` замера и защищает от дублей при
+                    повторной отправке.
+                is_prod:
+                  type: boolean
+                  default: false
+                  deprecated: true
+                  description: Принимается для совместимости, ни на что не влияет.
+      responses:
+        '202':
+          description: Замер создан (или уже существовал), расчёт запущен в фоне
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisAccepted'
+              example:
+                id: 53e1bd1a-7c1f-4b0e-9a55-2f1c7d0e8a11
+                status: pending
+        '400':
+          description: Файлы не прошли проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Нужно хотя бы одно фото
+                  value:
+                    detail: Нужно хотя бы одно фото
+                e2:
+                  summary: Максимум 100 фото
+                  value:
+                    detail: Максимум 100 фото
+                e3:
+                  summary: 'Не изображение: IMG_0012.mov'
+                  value:
+                    detail: 'Не изображение: IMG_0012.mov'
+                e4:
+                  summary: Файл IMG_0012.jpg больше 20 МБ. Сожмите его перед загрузкой.
+                  value:
+                    detail: Файл IMG_0012.jpg больше 20 МБ. Сожмите его перед загрузкой.
+        '401': &id002
+          description: JWT не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Токен истёк или неверен
+                  value:
+                    detail: Токен истёк или неверен
+                e2:
+                  summary: Невалидный токен
+                  value:
+                    detail: Невалидный токен
+        '403': &id003
+          description: Нет заголовка Authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
+        '422': &id006
+          description: Тело или параметры не прошли проверку типов (FastAPI)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '503': &id007
+          description: Адрес GPU-сервера не задан ни в БД, ни в окружении
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Расчётный сервер не настроен. Обратитесь к администратору.
+                  value:
+                    detail: Расчётный сервер не настроен. Обратитесь к администратору.
+    get:
+      tags:
+      - Сайт · замеры
+      summary: История замеров · БД
+      operationId: listAnalyses
+      x-calls:
+      - db
+      security: *id001
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
+        \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin`\
+        \ текущего пользователя |\n| БД · `analyses` | SELECT до 50 последних замеров, новые сверху |\n| БД · `profiles`\
+        \ | только для суперадмина: SELECT имени и компании владельцев |\n\nОбычный пользователь всегда получает\
+        \ только свои замеры, параметр `user_id` для него не действует."
+      parameters:
+      - name: user_id
+        in: query
+        required: false
+        schema:
+          type: string
+        description: 'Только для суперадмина: UUID пользователя или `all` (замеры всех).'
+      responses:
+        '200':
+          description: Список замеров
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AnalysisListItem'
+        '401': *id002
+        '403': *id003
+  /api/analyses/admin/users:
+    get:
+      tags:
+      - Сайт · замеры
+      summary: Список пользователей для фильтра истории · БД
+      operationId: adminListUsers
+      x-calls:
+      - db
+      security: *id001
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя + `profiles.is_superadmin = true`\n\
+        \n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin` текущего пользователя\
+        \ |\n| БД · `profiles` | SELECT `id, name, company, city` всех пользователей, по имени |\n\nФронт по этому\
+        \ же методу определяет права: `200` показывает выбор пользователя в истории, `403` скрывает."
+      responses:
+        '200':
+          description: Пользователи
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      format: uuid
+                    name:
+                      type: string
+                      nullable: true
+                    company:
+                      type: string
+                      nullable: true
+                    city:
+                      type: string
+                      nullable: true
+        '401': *id002
+        '403':
+          description: Нет заголовка Authorization либо пользователь не суперадмин
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Недостаточно прав
+                  value:
+                    detail: Недостаточно прав
+                e2:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
+  /api/analyses/{analysis_id}:
+    get:
+      tags:
+      - Сайт · замеры
+      summary: Один замер со всеми полями · БД
+      operationId: getAnalysis
+      x-calls:
+      - db
+      security: *id001
+      parameters:
+      - &id004
+        name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: id замера (строка `analyses`).
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
+        \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin`\
+        \ текущего пользователя |\n| БД · `analyses` | SELECT `*` строки по `id` |\n\nЭтим методом фронт опрашивает\
+        \ готовность замера: пока `status = pending`, расчёт ещё идёт."
+      responses:
+        '200':
+          description: Строка замера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisRow'
+        '401': *id002
+        '403': *id003
+        '404': &id005
+          description: Замера нет либо он чужой (суперадмин видит любые)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Анализ не найден
+                  value:
+                    detail: Анализ не найден
+    delete:
+      tags:
+      - Сайт · замеры
+      summary: Удалить замер и его фото · БД, Storage
+      operationId: deleteAnalysis
+      x-calls:
+      - db
+      - storage
+      security: *id001
+      parameters:
+      - *id004
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
+        \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin`\
+        \ текущего пользователя |\n| БД · `analyses` | SELECT для проверки владельца, затем DELETE строки |\n| БД\
+        \ · `colmap_photos` | SELECT путей файлов; сами строки удаляются каскадом вместе с замером |\n| Storage\
+        \ · бакет `colmap` | удаление оригиналов и миниатюр замера |\n\nФайлы модели в бакете `dust3r-ply` этот\
+        \ метод не удаляет."
+      responses:
+        '200':
+          description: Удалено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+              example:
+                ok: true
+        '401': *id002
+        '403': *id003
+        '404': *id005
+  /api/analyses/{analysis_id}/rerun:
+    post:
+      tags:
+      - Сайт · замеры
+      summary: Пересчитать замер по уже загруженным фото · БД, GPU
+      operationId: rerunAnalysis
+      x-calls:
+      - db
+      - gpu
+      security: *id001
+      parameters:
+      - *id004
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
+        \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `app_settings` | SELECT строки `key\
+        \ = gpu`: адрес, режим и ключ GPU-сервера |\n| БД · `profiles` | SELECT `is_superadmin` текущего пользователя\
+        \ |\n| БД · `analyses` | SELECT `*` строки, UPDATE: `status = pending`, `result` и `completed_at` обнуляются\
+        \ |\n| БД · `colmap_photos` | в фоне: SELECT кадров замера (по `analyze_id`, у обхода по `scan_id`) с EXIF\
+        \ и данными ARKit |\n| БД · `scans` | в фоне, только если замер сделан по обходу: SELECT строки обхода |\n\
+        | GPU-сервер | в фоне, после ответа: `POST /run` с `wait: false`, затем `GET /result/{analysis_id}` раз\
+        \ в 5 с, пока не придёт `state: done` (предел ожидания 3600 с) |\n| БД · `analyses` | в фоне, по итогу расчёта:\
+        \ UPDATE `status` (`completed` / `error`), `result` (текст), `completed_at`, `ply_url`, `glb_url` |\n\n\
+        Фото повторно не загружаются. Прежний результат стирается сразу, до расчёта.\n\nПерезапустить можно и замер\
+        \ в статусе `pending`: так поднимают запись, зависшую после перезапуска бэкенда."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RerunRequest'
+            example:
+              cube:
+                squares_per_side: 4
+                square_size_m: 0.0175
+      responses:
+        '202':
+          description: Пересчёт запущен в фоне
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum:
+                    - pending
+                  mode:
+                    type: string
+                    enum:
+                    - test
+                    - prod
+                    description: Отражает присланный `is_prod`, на расчёт не влияет.
+              example:
+                id: 53e1bd1a-7c1f-4b0e-9a55-2f1c7d0e8a11
+                status: pending
+                mode: test
+        '401': *id002
+        '403': *id003
+        '404': *id005
+        '422': *id006
+        '503': *id007
+  /api/profile/:
+    get:
+      tags:
+      - Сайт · профиль
+      summary: Профиль текущего пользователя · БД
+      operationId: getProfile
+      x-calls:
+      - db
+      security: *id001
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
+        \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `*` строки с `id`\
+        \ текущего пользователя |"
+      responses:
+        '200':
+          description: Строка профиля
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '401': *id002
+        '403': *id003
+    put:
+      tags:
+      - Сайт · профиль
+      summary: Сохранить профиль · БД
+      operationId: updateProfile
+      x-calls:
+      - db
+      security: *id001
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
+        \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | UPSERT строки с `id` текущего\
+        \ пользователя |\n\nЗаписываются все шесть полей сразу. Поле, которого нет в теле, сохранится как `null`,\
+        \ `emails` как пустой список. Присылать нужно профиль целиком."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdate'
+            example:
+              name: Яков
+              company: Volumetric Gottland
+              position: Разработчик
+              city: Петрозаводск
+              phone: +7 921 123-45-67
+              emails:
+              - report@example.ru
+      responses:
+        '200':
+          description: Сохранено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+              example:
+                ok: true
+        '400':
+          description: Телефон или почта не прошли проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: 'Номер телефона указан неверно: нужен российский номер, +7 и 10 цифр'
+                  value:
+                    detail: 'Номер телефона указан неверно: нужен российский номер, +7 и 10 цифр'
+                e2:
+                  summary: 'Адрес почты указан с ошибкой: user@@mail'
+                  value:
+                    detail: 'Адрес почты указан с ошибкой: user@@mail'
+                e3:
+                  summary: Адресов для результатов может быть не больше 5
+                  value:
+                    detail: Адресов для результатов может быть не больше 5
+        '401': *id002
+        '403': *id003
+        '422': *id006
+  /api/scans/:
+    get:
+      tags:
+      - Сайт · обходы из приложения
+      summary: Список обходов · БД
+      operationId: listScans
+      x-calls:
+      - db
+      security: *id001
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
+        \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin`\
+        \ текущего пользователя |\n| БД · `scans` | SELECT до 100 неудалённых обходов, новые сверху |\n| БД · `colmap_photos`\
+        \ | SELECT первого кадра каждого обхода для обложки |\n| БД · `profiles` | SELECT имени и города авторов\
+        \ |\n| БД · `analyses` | SELECT последнего замера по каждому обходу |"
+      parameters:
+      - name: from
+        in: query
+        schema:
+          type: string
+          format: date-time
+        description: Снято не раньше этого момента (`captured_at`).
+      - name: to
+        in: query
+        schema:
+          type: string
+          format: date-time
+        description: Снято не позже этого момента.
+      - name: user_id
+        in: query
+        schema:
+          type: string
+        description: 'Только для суперадмина: UUID пользователя или `all`.'
+      responses:
+        '200':
+          description: Обходы
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScanListItem'
+        '401': *id002
+        '403': *id003
+    post:
+      tags:
+      - Сайт · обходы из приложения
+      summary: Завести обход перед загрузкой кадров · БД
+      operationId: createScan
+      x-calls:
+      - db
+      security: *id001
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
+        \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `scans` | SELECT по `id`; INSERT со\
+        \ статусом `uploading` либо UPDATE метаданных при повторе |\n| БД · `colmap_photos` | при повторе: SELECT\
+        \ номеров уже загруженных кадров |\n\nПервый шаг загрузки из приложения VolmetricARKit. `id` придумывает\
+        \ телефон.\n\nПовтор с тем же `id` безопасен: в `uploaded` приходят номера кадров, которые уже лежат на\
+        \ сервере, и телефон докачивает остальные."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanCreate'
+            example:
+              id: 0b6f6f2e-51a8-4c0a-9d3c-0d2f1c8b7a10
+              title: Щебень, Ладва
+              captured_at: '2026-10-04T12:20:00+03:00'
+              frame_count: 64
+              duration_s: 92.5
+              device_model: iPhone13,2
+              app_version: 1.04.001
+              lat: 61.36
+              lon: 34.61
+              loc_accuracy_m: 6.0
+              tracking_segments: 1
+              frames_degraded: 0
+      responses:
+        '201':
+          description: Обход заведён или уже существовал
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanUploadState'
+              example:
+                id: 0b6f6f2e-51a8-4c0a-9d3c-0d2f1c8b7a10
+                status: uploading
+                uploaded:
+                - 0
+                - 1
+                - 2
+        '400':
+          description: id не UUID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: id обхода должен быть UUID
+                  value:
+                    detail: id обхода должен быть UUID
+        '401': *id002
+        '403': *id003
+        '409':
+          description: id занят чужим обходом
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Обход с таким id уже есть у другого пользователя
+                  value:
+                    detail: Обход с таким id уже есть у другого пользователя
+        '422': *id006
+  /api/scans/{scan_id}/frames/{index}:
+    put:
+      tags:
+      - Сайт · обходы из приложения
+      summary: Загрузить один кадр обхода · БД, Storage
+      operationId: uploadFrame
+      x-calls:
+      - db
+      - storage
+      security: *id001
+      parameters:
+      - &id008
+        name: scan_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: id обхода (строка `scans`).
+      - name: index
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+        description: 'Номер кадра: от 0 до `frame_count - 1`.'
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
+        \ Supabase>`), только автор обхода\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `scans` | SELECT\
+        \ обхода и проверка владельца |\n| БД · `colmap_photos` | SELECT: нет ли уже такого кадра; INSERT строки\
+        \ кадра с `arkit` и `exif` |\n| Storage · бакет `colmap` | оригинал байт в байт `scans/{scan_id}/{NNN}.jpg`\
+        \ и миниатюра `{NNN}_thumb.jpg` |\n\nПовтор того же кадра файл заново не пишет: приходит прежний ответ с\
+        \ `duplicate: true`."
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: JPEG кадра, не больше 25 МБ.
+                meta:
+                  type: string
+                  default: '{}'
+                  description: 'JSON-строка с данными ARKit по кадру. В БД попадают ключи: `index`, `timestamp`,
+                    `width`, `height`, `intrinsics`, `cameraTransform`, `eulerAngles`, `trackingState`, `trackingReason`,
+                    `worldMappingStatus`, `exposureDuration`, `exposureOffset`, `ambientIntensity`, `ambientColorTemperature`,
+                    `sharpness`, `motionBlurPx`, `trackingSegment`, `featurePointCount`, `location`, `heading`,
+                    `device`. Вложенный объект `exif` сохраняется отдельно как EXIF кадра.'
+                  example: '{"index":0,"width":1920,"height":1440,"intrinsics":[1447.2,0,0,0,1447.2,0,959.5,719.5,1],"cameraTransform":[1,0,0,0,0,1,0,0,0,0,1,0,0.12,1.41,-0.3,1],"trackingState":"normal"}'
+      responses:
+        '200':
+          description: Кадр на сервере
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FrameUploaded'
+              example:
+                index: 0
+                id: 9d0c7f1a-3d3b-4a52-8a61-5b0f2b9f0c11
+                public_url: https://supabase.gottland.ru/storage/v1/object/public/colmap/scans/0b6f…/000.jpg
+        '400':
+          description: Запрос не прошёл проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Некорректный id обхода
+                  value:
+                    detail: Некорректный id обхода
+                e2:
+                  summary: 'Номер кадра вне обхода: 64'
+                  value:
+                    detail: 'Номер кадра вне обхода: 64'
+                e3:
+                  summary: Пустой кадр
+                  value:
+                    detail: Пустой кадр
+                e4:
+                  summary: meta — не JSON
+                  value:
+                    detail: meta — не JSON
+        '401': *id002
+        '403': *id003
+        '404': &id009
+          description: Обхода нет, он удалён либо чужой
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Обход не найден
+                  value:
+                    detail: Обход не найден
+        '413':
+          description: Файл слишком большой
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Кадр больше 25 МБ
+                  value:
+                    detail: Кадр больше 25 МБ
+        '422': *id006
+  /api/scans/{scan_id}/complete:
+    post:
+      tags:
+      - Сайт · обходы из приложения
+      summary: Завершить загрузку обхода · БД, Storage
+      operationId: completeScan
+      x-calls:
+      - db
+      - storage
+      security: *id001
+      parameters:
+      - *id008
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
+        \ Supabase>`), только автор обхода\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `scans` | SELECT\
+        \ обхода; UPDATE `status = ready`, когда все кадры на месте |\n| Storage · бакет `colmap` | запись `scans/{scan_id}/scan.json`,\
+        \ если файл прислан |\n| БД · `colmap_photos` | SELECT номеров загруженных кадров |\n\nЕсли кадров не хватает,\
+        \ статус не меняется, а в `missing` приходят недостающие номера (первые 200). Код ответа при этом тоже `200`."
+      requestBody:
+        required: false
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                scan_json:
+                  type: string
+                  format: binary
+                  description: Файл scan.json из приложения целиком (позы и разреженное облако ARKit), до 40 МБ.
+      responses:
+        '200':
+          description: Состояние загрузки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanCompleteState'
+              example:
+                id: 0b6f6f2e-51a8-4c0a-9d3c-0d2f1c8b7a10
+                status: ready
+                missing: []
+                uploaded: 64
+        '400':
+          description: id не UUID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Некорректный id обхода
+                  value:
+                    detail: Некорректный id обхода
+        '401': *id002
+        '403': *id003
+        '404': *id009
+        '413':
+          description: Файл слишком большой
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: scan.json больше 40 МБ
+                  value:
+                    detail: scan.json больше 40 МБ
+  /api/scans/{scan_id}/track:
+    get:
+      tags:
+      - Сайт · обходы из приложения
+      summary: Траектория камеры для карты · БД
+      operationId: scanTrack
+      x-calls:
+      - db
+      security: *id001
+      parameters:
+      - *id008
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
+        \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin`\
+        \ текущего пользователя |\n| БД · `scans` | SELECT для проверки доступа |\n| БД · `colmap_photos` | SELECT\
+        \ кадров обхода с позами ARKit |\n\nПозиции камеры считаются из `cameraTransform` каждого кадра. Блок `geo`\
+        \ есть, только когда в кадрах записан GPS с погрешностью до 30 м: по нему и по компасу траектория привязывается\
+        \ к карте."
+      responses:
+        '200':
+          description: Траектория
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Track'
+        '401': *id002
+        '403': *id003
+        '404': *id009
+  /api/scans/{scan_id}/cloud:
+    get:
+      tags:
+      - Сайт · обходы из приложения
+      summary: Облако точек ARKit для 3D-просмотра · БД, Storage
+      operationId: scanCloud
+      x-calls:
+      - db
+      - storage
+      security: *id001
+      parameters:
+      - *id008
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
+        \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin`\
+        \ текущего пользователя |\n| БД · `scans` | SELECT для проверки доступа и пути в хранилище |\n| Storage\
+        \ · бакет `colmap` | чтение готового `cloud.v2.json`; если его нет, чтение `scan.json`, сборка облака и\
+        \ запись `cloud.v2.json` на будущее |\n\nЭто облако телефона (ARKit), а не модель DUSt3R. Не больше 6000\
+        \ точек, координаты в метрах, ось y вверх. Ответ сжат gzip, если клиент это умеет."
+      responses:
+        '200':
+          description: Облако
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cloud'
+        '401': *id002
+        '403': *id003
+        '404':
+          description: Нет обхода или его scan.json
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Обход не найден
+                  value:
+                    detail: Обход не найден
+                e2:
+                  summary: У обхода нет scan.json — облако недоступно
+                  value:
+                    detail: У обхода нет scan.json — облако недоступно
+  /api/scans/{scan_id}/analyze:
+    post:
+      tags:
+      - Сайт · обходы из приложения
+      summary: Запустить замер по обходу · БД, GPU
+      operationId: analyzeScan
+      x-calls:
+      - db
+      - gpu
+      security: *id001
+      parameters:
+      - *id008
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя (`Authorization: Bearer <access_token\
+        \ Supabase>`)\n\n| Куда обращается | Что делает |\n|---|---|\n| БД · `app_settings` | SELECT строки `key\
+        \ = gpu`: адрес, режим и ключ GPU-сервера |\n| БД · `profiles` | SELECT `is_superadmin` текущего пользователя\
+        \ |\n| БД · `scans` | SELECT обхода, проверка `status = ready` |\n| БД · `colmap_photos` | SELECT всех кадров\
+        \ обхода с EXIF и данными ARKit |\n| БД · `analyses` | SELECT по `client_id` (защита от дублей), INSERT\
+        \ строки `pending` со ссылкой `scan_id` |\n| GPU-сервер | в фоне, после ответа: `POST /run` с `wait: false`,\
+        \ затем `GET /result/{analysis_id}` раз в 5 с, пока не придёт `state: done` (предел ожидания 3600 с) |\n\
+        | БД · `analyses` | в фоне, по итогу расчёта: UPDATE `status` (`completed` / `error`), `result` (текст),\
+        \ `completed_at`, `ply_url`, `glb_url` |\n\nНа GPU-сервер уходят все кадры обхода без прореживания, по каждому\
+        \ кадру поза и intrinsics ARKit, плюс путь к `scan.json` в хранилище. Замер записывается на автора обхода,\
+        \ даже если его запустил суперадмин."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanAnalyzeRequest'
+            example:
+              title: Щебень, Ладва
+              notes: ''
+              cube:
+                squares_per_side: 4
+                square_size_m: 0.0175
+              client_id: 7a1d1c36-0f0e-4f8a-8b1a-6f6a3d2f9e55
+      responses:
+        '202':
+          description: Замер создан (или уже существовал), расчёт запущен в фоне
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum:
+                    - pending
+                    - completed
+                    - error
+                  scan_id:
+                    type: string
+                    format: uuid
+                  mode:
+                    type: string
+                    enum:
+                    - cube
+                    - vio
+                    description: Режим масштаба из настроек GPU-сервера. Нет в ответе на повтор с тем же `client_id`.
+              example:
+                id: 7a1d1c36-0f0e-4f8a-8b1a-6f6a3d2f9e55
+                status: pending
+                scan_id: 0b6f6f2e-51a8-4c0a-9d3c-0d2f1c8b7a10
+                mode: cube
+        '401': *id002
+        '403': *id003
+        '404': *id009
+        '409':
+          description: Обход не готов к расчёту
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Обход ещё не загружен полностью
+                  value:
+                    detail: Обход ещё не загружен полностью
+                e2:
+                  summary: У обхода нет кадров в хранилище
+                  value:
+                    detail: У обхода нет кадров в хранилище
+        '422': *id006
+        '503': *id007
+  /api/admin/gpu:
+    get:
+      tags:
+      - Сайт · настройки GPU-сервера
+      summary: Текущий адрес и режим GPU-сервера · БД
+      operationId: getGpuSettings
+      x-calls:
+      - db
+      security: *id001
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя + `profiles.is_superadmin = true`\n\
+        \n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin` текущего пользователя\
+        \ |\n| БД · `app_settings` | SELECT строки `key = gpu`: адрес, режим и ключ GPU-сервера |\n\nЕсли строки\
+        \ в БД нет, значения берутся из переменных окружения бэкенда `GPU_SERVER_URL`, `GPU_MODE`, `GPU_TOKEN`.\
+        \ Сам ключ не возвращается никогда."
+      responses:
+        '200':
+          description: Настройки без ключа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GpuSettingsPublic'
+        '401': *id002
+        '403': &id010
+          description: Нет заголовка Authorization либо пользователь не суперадмин
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Только для администратора
+                  value:
+                    detail: Только для администратора
+                e2:
+                  summary: Not authenticated
+                  value:
+                    detail: Not authenticated
+    put:
+      tags:
+      - Сайт · настройки GPU-сервера
+      summary: Сохранить адрес, режим и ключ GPU-сервера · БД
+      operationId: updateGpuSettings
+      x-calls:
+      - db
+      security: *id001
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя + `profiles.is_superadmin = true`\n\
+        \n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin` текущего пользователя\
+        \ |\n| БД · `app_settings` | SELECT текущих настроек, UPSERT строки `key = gpu` |\n\nАдрес приводится к\
+        \ виду `http(s)://хост[:порт]/run`: `1.2.3.4:6007` сохранится как `http://1.2.3.4:6007/run`. Связь с сервером\
+        \ при сохранении не проверяется, для этого есть `/check`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GpuSettingsUpdate'
+            example:
+              url: http://1.2.3.4:6007
+              mode: cube
+              token: null
+      responses:
+        '200':
+          description: Сохранённые настройки без ключа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GpuSettingsPublic'
+        '400':
+          description: Режим, адрес или ключ с ошибкой
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: 'Режим масштаба: cube или vio'
+                  value:
+                    detail: 'Режим масштаба: cube или vio'
+                e2:
+                  summary: Адрес расчётного сервера указан с ошибкой
+                  value:
+                    detail: Адрес расчётного сервера указан с ошибкой
+                e3:
+                  summary: 'Ключ доступа: только латиница, цифры и знаки без пробелов, до 200 символов'
+                  value:
+                    detail: 'Ключ доступа: только латиница, цифры и знаки без пробелов, до 200 символов'
+        '401': *id002
+        '403': *id010
+        '422': *id006
+        '503':
+          description: Нет таблицы `app_settings`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Таблица настроек не создана. Выполните supabase/migration_app_settings.sql в SQL-редакторе
+                    Supabase.
+                  value:
+                    detail: Таблица настроек не создана. Выполните supabase/migration_app_settings.sql в SQL-редакторе
+                      Supabase.
+  /api/admin/gpu/check:
+    post:
+      tags:
+      - Сайт · настройки GPU-сервера
+      summary: Проверить связь с GPU-сервером · БД, GPU
+      operationId: checkGpu
+      x-calls:
+      - db
+      - gpu
+      security: *id001
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** JWT пользователя + `profiles.is_superadmin = true`\n\
+        \n| Куда обращается | Что делает |\n|---|---|\n| БД · `profiles` | SELECT `is_superadmin` текущего пользователя\
+        \ |\n| БД · `app_settings` | SELECT строки `key = gpu`: адрес, режим и ключ GPU-сервера |\n| GPU-сервер\
+        \ | `GET /health` с ключом, ожидание до 8 с. Расчёт не запускается |\n\nПустое тело проверяет сохранённые\
+        \ настройки. Заполненные `url` и `token` проверяются без сохранения.\n\nНеудачная проверка тоже отвечает\
+        \ `200`: смотреть нужно на `ok` и `error`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GpuCheckRequest'
+            example:
+              url: http://1.2.3.4:6007
+      responses:
+        '200':
+          description: Итог проверки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GpuCheckResult'
+              example:
+                ok: true
+                run_url: http://1.2.3.4:6007/run
+                ms: 84
+                error: null
+                engine: dust3r
+                code_edit_msk: 06.10.2026 22:32
+                auth_required: true
+                token_ok: true
+                scale_modes_ready:
+                - cube
+        '400':
+          description: Адрес не задан или с ошибкой
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Адрес расчётного сервера не задан
+                  value:
+                    detail: Адрес расчётного сервера не задан
+                e2:
+                  summary: Адрес должен начинаться с http:// или https://
+                  value:
+                    detail: Адрес должен начинаться с http:// или https://
+        '401': *id002
+        '403': *id010
+        '422': *id006
+  /api/auth/yandex-userinfo:
+    get:
+      tags:
+      - Сайт · вход через Яндекс и VK
+      summary: Профиль Яндекса в формате OIDC · Яндекс ID
+      operationId: yandexUserinfo
+      x-calls:
+      - yandex
+      security:
+      - yandexToken: []
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** токен Яндекса (`Authorization: Bearer` или `OAuth`),\
+        \ не JWT сайта\n\n| Куда обращается | Что делает |\n|---|---|\n| Яндекс ID | `GET https://login.yandex.ru/info?format=json`\
+        \ с присланным токеном |\n\nЭтот метод вызывает не браузер, а Supabase Auth во время входа через Яндекс:\
+        \ он указан у провайдера как `userinfo_url`. Бэкенд переименовывает поля Яндекса (`id`, `default_email`,\
+        \ `real_name`) в стандартные `sub`, `email`, `name`. Токен нигде не сохраняется."
+      responses:
+        '200':
+          description: Профиль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/YandexUserinfo'
+              example:
+                sub: '1130000012345678'
+                email: user@yandex.ru
+                email_verified: true
+                name: Иван Иванов
+        '401':
+          description: Токена нет или Яндекс его не принял
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Нет токена
+                  value:
+                    detail: Нет токена
+                e2:
+                  summary: Яндекс не подтвердил токен
+                  value:
+                    detail: Яндекс не подтвердил токен
+        '422': *id006
+        '502':
+          description: Сбой на стороне Яндекса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Яндекс не ответил
+                  value:
+                    detail: Яндекс не ответил
+                e2:
+                  summary: В ответе Яндекса нет id
+                  value:
+                    detail: В ответе Яндекса нет id
+  /api/auth/vk/start:
+    get:
+      tags:
+      - Сайт · вход через Яндекс и VK
+      summary: 'Шаг 1 входа через VK: уйти на страницу VK ID · никуда не ходит'
+      operationId: vkStart
+      x-calls: []
+      security: []
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** открыт, ключ не нужен\n\n| Куда обращается | Что делает\
+        \ |\n|---|---|\n| — | никуда не обращается |\n\nСам бэкенд никуда не обращается: он собирает подписанный\
+        \ `state` (живёт 10 минут) и PKCE-challenge и отвечает редиректом на `https://id.vk.ru/authorize`.\n\nЕсли\
+        \ вход через VK выключен (`VK_CLIENT_ID` пуст), редирект ведёт обратно на `/login?vk_error=off`."
+      parameters:
+      - name: h
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 43
+          maxLength: 43
+          pattern: ^[A-Za-z0-9_-]+$
+        description: base64url от SHA-256 случайной строки `n`, которую фронт хранит в sessionStorage.
+      responses:
+        '302':
+          description: Редирект на страницу входа VK ID либо на `/login?vk_error=off`
+          headers:
+            Location:
+              schema:
+                type: string
+        '422': *id006
+  /api/auth/vk/callback:
+    get:
+      tags:
+      - Сайт · вход через Яндекс и VK
+      summary: 'Шаг 2 входа через VK: возврат с VK ID · VK ID, Supabase Auth'
+      operationId: vkCallback
+      x-calls:
+      - vk
+      - auth
+      security: []
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** открыт; подлинность проверяется подписью `state`\n\n\
+        | Куда обращается | Что делает |\n|---|---|\n| VK ID | `POST https://id.vk.ru/oauth2/auth` (обмен кода на\
+        \ токен), `POST https://id.vk.ru/oauth2/user_info` (профиль и почта) |\n| Supabase Auth | `POST /auth/v1/admin/generate_link`\
+        \ типа `magiclink`: одноразовый токен входа для этой почты. Учётной записи нет: Supabase создаёт её сам\
+        \ |\n\nСюда браузер возвращает VK ID. Ответ всегда редирект на `/login` сайта:\n\n- успех: `?vk_ticket=<билет\
+        \ на 2 минуты>`;\n- ошибка: `?vk_error=` и код: `denied` (пользователь отказал), `vk` (сбой VK), `state`\
+        \ (вход устарел или чужой), `noemail` (в VK нет почты или к ней не дали доступ), `exchange`, `profile`,\
+        \ `session`, `net`.\n\nТокены VK не сохраняются."
+      parameters:
+      - name: code
+        in: query
+        schema:
+          type: string
+        description: Код авторизации от VK ID.
+      - name: state
+        in: query
+        schema:
+          type: string
+        description: Подписанная строка из шага 1.
+      - name: device_id
+        in: query
+        schema:
+          type: string
+        description: Идентификатор устройства от VK ID, нужен для обмена кода.
+      - name: error
+        in: query
+        schema:
+          type: string
+        description: Код ошибки от VK ID, например `access_denied`.
+      - name: error_description
+        in: query
+        schema:
+          type: string
+      responses:
+        '302':
+          description: Редирект на `/login?vk_ticket=…` либо `/login?vk_error=…`
+          headers:
+            Location:
+              schema:
+                type: string
+  /api/auth/vk/finish:
+    post:
+      tags:
+      - Сайт · вход через Яндекс и VK
+      summary: 'Шаг 3 входа через VK: обменять билет на токен входа · никуда не ходит'
+      operationId: vkFinish
+      x-calls: []
+      security: []
+      description: "**Сервис:** Бэкенд сайта  \n**Доступ:** открыт; нужен билет и строка `n` того же браузера\n\n\
+        | Куда обращается | Что делает |\n|---|---|\n| — | никуда не обращается |\n\nПроверяется подпись и срок\
+        \ билета, затем что SHA-256 от `n` совпадает со значением из шага 1. Так билет срабатывает только в том\
+        \ браузере, который начинал вход.\n\nПолученный `token_hash` фронт сам передаёт в Supabase Auth (`verifyOtp`)\
+        \ и получает сессию."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VkFinish'
+      responses:
+        '200':
+          description: Токен входа Supabase
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VkFinishResult'
+              example:
+                token_hash: pkce_3f0c…
+                type: magiclink
+        '400':
+          description: Билет просрочен или подпись не сошлась
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Вход устарел, начните заново
+                  value:
+                    detail: Вход устарел, начните заново
+        '403':
+          description: Строка `n` не от этого входа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Вход начат в другом браузере
+                  value:
+                    detail: Вход начат в другом браузере
+        '422': *id006
+  /health:
+    servers: &id011
+    - url: http://{gpu_host}:{port}
+      description: GPU-сервер. Адрес задаёт суперадмин в «Профиле» сайта (таблица app_settings).
+      variables:
+        gpu_host:
+          default: gpu-server
+          description: IP или имя арендованного сервера
+        port:
+          default: '6007'
+          enum:
+          - '6007'
+          - '6006'
+          description: '6007: папка VIO_Technology; 6006: старая папка dust3r'
+    get:
+      tags:
+      - GPU-сервер · расчёт
+      summary: Жив ли приёмник и подходит ли ключ · никуда не ходит
+      operationId: receiverHealth
+      x-calls: []
+      security:
+      - {}
+      - gpuToken: []
+      - gpuBearer: []
+      description: "**Сервис:** GPU-сервер (приёмник)  \n**Доступ:** открыт, ключ не нужен; с ключом в ответе появляется\
+        \ `token_ok`\n\n| Куда обращается | Что делает |\n|---|---|\n| — | никуда не обращается |\n\nВсегда отвечает\
+        \ `200`. Вызывается бэкендом из `POST /api/admin/gpu/check`."
+      responses:
+        '200':
+          description: Приёмник запущен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiverHealth'
+              example:
+                status: ok
+                service: volmetric-receiver
+                code_edit_msk: 06.10.2026 22:32
+                engine: dust3r
+                port: 6007
+                auth_required: true
+                scale_modes:
+                - cube
+                - vio
+                scale_modes_ready:
+                - cube
+                async_run: true
+                arkit_focal: true
+                jobs_running: 0
+                token_ok: true
+  /run:
+    servers: *id011
+    post:
+      tags:
+      - GPU-сервер · расчёт
+      summary: Запустить расчёт объёма · БД, Storage, диск и GPU сервера
+      operationId: receiverRun
+      x-calls:
+      - db
+      - storage
+      - gpu-local
+      security: &id012
+      - gpuToken: []
+      - gpuBearer: []
+      description: "**Сервис:** GPU-сервер (приёмник)  \n**Доступ:** ключ приёмника (`X-Volmetric-Token` или `Authorization:\
+        \ Bearer`). Если `RECEIVER_TOKEN` на сервере пуст, проверки нет\n\n| Куда обращается | Что делает |\n|---|---|\n\
+        | БД · `colmap_photos` | SELECT `public_url` по каждому id из `photo_ids` |\n| Storage · бакет `colmap`\
+        \ | скачивание оригиналов кадров по ссылкам и `scan.json` обхода |\n| Диск сервера | папка прогона `volmetric/projects/{analysis_id}/`:\
+        \ кадры `000.jpg…`, `exif.json`, `arkit.json`, `scan.json`, модель, `run_result.json` |\n| Раннер `dust3r_gpu.py`\
+        \ | реконструкция DUSt3R или MASt3R на GPU, поиск куба, масштаб, объём. Один расчёт за раз, остальные ждут\
+        \ в очереди; предел 3600 с |\n| Storage · бакет `dust3r-ply` | запись `{analysis_id}/dust3r_output.ply`\
+        \ и четырёх PNG: `heatmap_top`, `heatmap_side`, `cloud_top`, `cloud_side` |\n| БД · `dust3r_results` | INSERT\
+        \ строки при любом исходе, включая ошибку |\n| БД · `analyses` | PATCH строки замера: ссылки на картинки,\
+        \ `up_vector`, `up_vector_glb`. Статус и текст результата приёмник не трогает, их пишет бэкенд сайта |\n\
+        \nВызывается бэкендом сайта, браузер сюда не ходит.\n\nДва режима ответа, выбирает поле `wait`:\n\n- `wait:\
+        \ false` (так ходит сайт): сразу `202`, результат забирать по `GET /result/{analysis_id}`;\n- поля нет или\
+        \ `true`: соединение держится до конца расчёта, в ответе `200` с объектом результата.\n\nОшибка расчёта\
+        \ в синхронном режиме приходит с кодом `200` и `status: error`. Смотреть нужно на `status`, а не на код.\n\
+        \nРежим `vio` пока не считается: данные обхода сохраняются, объём считается по кубу, в ответе `scale_mode:\
+        \ cube`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunRequest'
+            example:
+              analysis_id: 53e1bd1a-7c1f-4b0e-9a55-2f1c7d0e8a11
+              photo_ids:
+              - 9d0c7f1a-3d3b-4a52-8a61-5b0f2b9f0c11
+              - 1f2e3d4c-5b6a-4789-90ab-cdef01234567
+              wait: false
+              exif:
+              - photo_index: 0
+                exif:
+                  focal_real: 4.2
+                  focal_35mm: 26
+                  orig_width: 3024
+                  orig_height: 4032
+              cube:
+                squares_per_side: 4
+                square_size_m: 0.0175
+              mode: cube
+              source: site
+      responses:
+        '202':
+          description: '`wait: false`: задача принята. Если такая уже считается, приходит то же с `duplicate: true`,
+            второй расчёт не запускается'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunAccepted'
+              example:
+                status: accepted
+                state: running
+                analysis_id: 53e1bd1a-7c1f-4b0e-9a55-2f1c7d0e8a11
+        '200':
+          description: 'Синхронный режим: расчёт закончен (в том числе с ошибкой)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunResult'
+        '400':
+          description: Тело не JSON либо нет обязательных полей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: 'Invalid JSON: Expecting value: line 1 column 1 (char 0)'
+                  value:
+                    detail: 'Invalid JSON: Expecting value: line 1 column 1 (char 0)'
+                e2:
+                  summary: analysis_id and photo_ids are required
+                  value:
+                    detail: analysis_id and photo_ids are required
+        '401': &id013
+          description: Ключа нет или он неверный
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Неверный или отсутствующий ключ доступа
+                  value:
+                    detail: Неверный или отсутствующий ключ доступа
+  /result/{analysis_id}:
+    servers: *id011
+    get:
+      tags:
+      - GPU-сервер · расчёт
+      summary: Забрать исход расчёта · память и диск сервера
+      operationId: receiverResult
+      x-calls:
+      - gpu-local
+      security: *id012
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,80}$
+        description: Тот же id, что был в `POST /run`.
+      description: "**Сервис:** GPU-сервер (приёмник)  \n**Доступ:** ключ приёмника (`X-Volmetric-Token` или `Authorization:\
+        \ Bearer`)\n\n| Куда обращается | Что делает |\n|---|---|\n| Память приёмника | таблица задач, до 200 последних\
+        \ |\n| Диск сервера | `volmetric/projects/{analysis_id}/run_result.json`, если задачи нет в памяти (после\
+        \ перезапуска приёмника) |\n\nБэкенд сайта опрашивает этот метод раз в 5 с.\n\n`state: done` значит «расчёт\
+        \ закончился», а не «удался»: исход в `result.status`.\n\nГотовый результат переживает перезапуск приёмника,\
+        \ незаконченная задача нет: после перезапуска будет `404`. Три ответа `404` подряд бэкенд считает потерей\
+        \ задачи и ставит замеру статус `error`."
+      responses:
+        '200':
+          description: Задача считается или закончена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobState'
+              examples:
+                running:
+                  summary: считается или ждёт очереди
+                  value:
+                    analysis_id: 53e1bd1a-…
+                    state: running
+                    elapsed_sec: 42.0
+                done:
+                  summary: закончена
+                  value:
+                    analysis_id: 53e1bd1a-…
+                    state: done
+                    elapsed_sec: 181.3
+                    result:
+                      status: success
+                      analysis_id: 53e1bd1a-…
+                      volume_m3: 2.2531
+                      cube_status: found
+                      scale_reliable: true
+                      ply_url: https://supabase.gottland.ru/storage/v1/object/public/dust3r-ply/53e1bd1a-…/dust3r_output.ply
+                from_disk:
+                  summary: прочитана с диска после перезапуска
+                  value:
+                    analysis_id: 53e1bd1a-…
+                    state: done
+                    from_disk: true
+                    result:
+                      status: success
+                      analysis_id: 53e1bd1a-…
+        '400':
+          description: id не подходит под шаблон
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Некорректный analysis_id
+                  value:
+                    detail: Некорректный analysis_id
+        '401': *id013
+        '404':
+          description: Приёмник не знает такой задачи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                e1:
+                  summary: Задача неизвестна
+                  value:
+                    detail: Задача неизвестна
+components:
+  securitySchemes:
+    userJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Токен сессии Supabase (`access_token`). Бэкенд проверяет подпись HS256 и берёт из него id пользователя.
+    gpuToken:
+      type: apiKey
+      in: header
+      name: X-Volmetric-Token
+      description: Общий секрет бэкенда и приёмника (`RECEIVER_TOKEN` на GPU-сервере, ключ в `app_settings` на сайте).
+    gpuBearer:
+      type: http
+      scheme: bearer
+      description: 'Тот же ключ приёмника, вторым способом: `Authorization: Bearer <ключ>`.'
+    yandexToken:
+      type: http
+      scheme: bearer
+      description: OAuth-токен Яндекса. Присылает Supabase Auth, не браузер.
+  schemas:
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: Причина, готовый текст.
+      required:
+      - detail
+    ValidationError:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc:
+                type: array
+                items: {}
+              msg:
+                type: string
+              type:
+                type: string
+    Ok:
+      type: object
+      properties:
+        ok:
+          type: boolean
+    Cube:
+      type: object
+      description: Калибровочный куб с шахматным рисунком.
+      properties:
+        squares_per_side:
+          type: integer
+          default: 4
+          description: Клеток на стороне грани. Приёмник принимает 3…10, иначе берёт 4.
+        square_size_m:
+          type: number
+          default: 0.0175
+          description: Сторона клетки в метрах. Приёмник принимает 0,003…0,20, иначе берёт 0,0175.
+    AnalysisAccepted:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: id замера.
+        status:
+          type: string
+          enum:
+          - pending
+          - completed
+          - error
+          description: '`pending` у нового замера; у повтора с тем же `client_id` текущий статус.'
+    AnalysisListItem:
+      type: object
+      properties:
+        id: &id014
+          type: string
+          format: uuid
+        user_id: &id015
+          type: string
+          format: uuid
+          description: Владелец замера.
+        title: &id016
+          type: string
+        notes: &id017
+          type: string
+          nullable: true
+        photo_urls: &id018
+          type: array
+          items:
+            type: string
+            format: uri
+          description: Ссылки на оригиналы в бакете `colmap`, в порядке загрузки.
+        thumbnail_urls: &id019
+          type: array
+          items:
+            type: string
+            format: uri
+          description: Миниатюры, в том же порядке, что `photo_urls`.
+        status: &id020
+          type: string
+          enum:
+          - pending
+          - completed
+          - error
+          description: '`pending`: считается; `completed`: готово; `error`: причина в `result`.'
+        created_at: &id021
+          type: string
+          format: date-time
+        completed_at: &id022
+          type: string
+          format: date-time
+          nullable: true
+        result: &id023
+          type: string
+          nullable: true
+          description: 'Текст результата, его собирает бэкенд из ответа GPU-сервера. Фронт вынимает из него числа
+            по шаблонам, например «Объём DUSt3R: 2.2531 м³». При ошибке здесь её причина.'
+        heatmap_top_url: &id024
+          type: string
+          format: uri
+          nullable: true
+          description: Карта высот, вид сверху (пишет GPU-сервер).
+        heatmap_side_url: &id025
+          type: string
+          format: uri
+          nullable: true
+        cloud_top_url: &id026
+          type: string
+          format: uri
+          nullable: true
+          description: Облако точек, вид сверху (пишет GPU-сервер).
+        cloud_side_url: &id027
+          type: string
+          format: uri
+          nullable: true
+        owner_name:
+          type: string
+          nullable: true
+          description: Только в ответе суперадмину.
+        owner_company:
+          type: string
+          nullable: true
+          description: Только в ответе суперадмину.
+    AnalysisRow:
+      type: object
+      description: Строка таблицы `analyses` целиком. Набор колонок зависит от применённых миграций.
+      additionalProperties: true
+      properties:
+        id: *id014
+        user_id: *id015
+        title: *id016
+        notes: *id017
+        photo_urls: *id018
+        thumbnail_urls: *id019
+        status: *id020
+        created_at: *id021
+        completed_at: *id022
+        result: *id023
+        heatmap_top_url: *id024
+        heatmap_side_url: *id025
+        cloud_top_url: *id026
+        cloud_side_url: *id027
+        client_id:
+          type: string
+          format: uuid
+          nullable: true
+        scan_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Обход, по которому сделан замер.
+        ply_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Облако точек модели в бакете `dust3r-ply`.
+        glb_url:
+          type: string
+          format: uri
+          nullable: true
+          description: 'Сейчас всегда пусто: GLB на сервере не строится.'
+        up_vector:
+          type: array
+          items:
+            type: number
+          nullable: true
+          description: Ось «вверх» модели для 3D-просмотра.
+        up_vector_glb:
+          type: array
+          items:
+            type: number
+          nullable: true
+    RerunRequest:
+      type: object
+      properties:
+        cube:
+          allOf:
+          - $ref: '#/components/schemas/Cube'
+          nullable: true
+          description: 'Куб в БД не хранится: нет в теле, берётся стандартный.'
+        is_prod:
+          type: boolean
+          default: false
+          deprecated: true
+          description: Ни на что не влияет.
+    Profile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          nullable: true
+        company:
+          type: string
+          nullable: true
+        position:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+          example: +7 (921) 123-45-67
+        emails:
+          type: array
+          items:
+            type: string
+            format: email
+          description: Адреса для отчётов, до 5.
+        is_superadmin:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ProfileUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          nullable: true
+        company:
+          type: string
+          nullable: true
+        position:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+          description: 'Российский номер в любом написании. Сохраняется как `+7 (XXX) XXX-XX-XX`. Пусто: `null`.'
+        emails:
+          type: array
+          nullable: true
+          maxItems: 5
+          items:
+            type: string
+            format: email
+          description: До 5 адресов, повторы убираются.
+    ScanListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          type: string
+          enum:
+          - uploading
+          - ready
+        frame_count:
+          type: integer
+        lat:
+          type: number
+          nullable: true
+        lon:
+          type: number
+          nullable: true
+        loc_accuracy_m:
+          type: number
+          nullable: true
+        device_model:
+          type: string
+          nullable: true
+        app_version:
+          type: string
+          nullable: true
+        captured_at:
+          type: string
+          format: date-time
+        duration_s:
+          type: number
+          nullable: true
+        tracking_segments:
+          type: integer
+          nullable: true
+          description: Сколько раз ARKit терял и заново находил трекинг.
+        frames_degraded:
+          type: integer
+          nullable: true
+          description: Кадров со сниженным качеством трекинга.
+        cover_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Миниатюра первого кадра.
+        author_name:
+          type: string
+          nullable: true
+        author_city:
+          type: string
+          nullable: true
+        last_analysis:
+          type: object
+          nullable: true
+          description: Последний замер по обходу, если запускали.
+          properties:
+            id:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum:
+              - pending
+              - completed
+              - error
+            created_at:
+              type: string
+              format: date-time
+    ScanCreate:
+      type: object
+      required:
+      - id
+      - captured_at
+      - frame_count
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID, который придумало приложение.
+        title:
+          type: string
+          maxLength: 200
+          nullable: true
+        captured_at:
+          type: string
+          format: date-time
+        frame_count:
+          type: integer
+          minimum: 2
+          maximum: 2000
+        duration_s:
+          type: number
+          nullable: true
+        device_model:
+          type: string
+          maxLength: 80
+          nullable: true
+        app_version:
+          type: string
+          maxLength: 40
+          nullable: true
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+          nullable: true
+        lon:
+          type: number
+          minimum: -180
+          maximum: 180
+          nullable: true
+        loc_accuracy_m:
+          type: number
+          minimum: 0
+          nullable: true
+        tracking_segments:
+          type: integer
+          minimum: 0
+          maximum: 32767
+          nullable: true
+        frames_degraded:
+          type: integer
+          minimum: 0
+          maximum: 32767
+          nullable: true
+    ScanUploadState:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - uploading
+          - ready
+        uploaded:
+          type: array
+          items:
+            type: integer
+          description: Номера кадров, которые уже на сервере.
+    FrameUploaded:
+      type: object
+      properties:
+        index:
+          type: integer
+        id:
+          type: string
+          format: uuid
+          description: id строки `colmap_photos`.
+        public_url:
+          type: string
+          format: uri
+        duplicate:
+          type: boolean
+          description: Есть и равно `true`, только если кадр уже был загружен раньше.
+    ScanCompleteState:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - uploading
+          - ready
+        missing:
+          type: array
+          items:
+            type: integer
+          description: Номера недостающих кадров, не больше 200.
+        uploaded:
+          type: integer
+          description: Сколько кадров на сервере.
+    ScanAnalyzeRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          nullable: true
+          description: 'Нет: берётся название обхода.'
+        notes:
+          type: string
+          nullable: true
+        cube:
+          allOf:
+          - $ref: '#/components/schemas/Cube'
+          nullable: true
+        client_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Защита от дублей, как у `POST /api/analyses/`.
+        is_prod:
+          type: boolean
+          default: false
+          deprecated: true
+          description: Ни на что не влияет.
+    Track:
+      type: object
+      properties:
+        scan_id:
+          type: string
+          format: uuid
+        points:
+          type: array
+          items: &id028
+            type: array
+            items:
+              type: number
+            minItems: 2
+            maxItems: 2
+          description: Позиции камеры `[x, z]` в метрах ARKit, вид сверху.
+        frames:
+          type: array
+          description: До 12 кадров, равномерно по обходу, для проигрывания.
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              at: *id028
+              thumb:
+                type: string
+                format: uri
+        frame_total:
+          type: integer
+        geo:
+          type: object
+          description: Привязка к карте. Есть не всегда.
+          properties:
+            lat0:
+              type: number
+            lon0:
+              type: number
+            rot_deg:
+              type: number
+              nullable: true
+              description: Поворот системы ARKit к северу.
+            rot_source:
+              type: string
+              enum:
+              - compass
+              - gps
+              nullable: true
+            rot_spread_deg:
+              type: number
+              nullable: true
+            shift_en: *id028
+            acc_m:
+              type: number
+              description: Лучшая погрешность GPS, м.
+            fixes:
+              type: integer
+              description: Сколько кадров с пригодным GPS.
+            points_en:
+              type: array
+              items: *id028
+              description: Точки обхода в метрах на восток и север от `lat0, lon0`.
+            frames_en:
+              type: array
+              items: *id028
+    Cloud:
+      type: object
+      properties:
+        points:
+          type: array
+          items: &id029
+            type: array
+            items:
+              type: number
+            minItems: 3
+            maxItems: 3
+          description: Точки `[x, y, z]`, метры, до 6000 штук.
+        cameras:
+          type: array
+          items: *id029
+          description: Позиции камеры по кадрам.
+    GpuSettingsPublic:
+      type: object
+      properties:
+        url:
+          type: string
+          example: http://1.2.3.4:6007/run
+        mode:
+          type: string
+          enum:
+          - cube
+          - vio
+        token_set:
+          type: boolean
+          description: Задан ли ключ.
+        token_hint:
+          type: string
+          description: Последние 4 символа ключа, если он не короче 12 символов.
+          example: …k3Qz
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        source:
+          type: string
+          enum:
+          - db
+          - env
+          - none
+          description: 'Откуда взят адрес: БД, окружение бэкенда или нигде не задан.'
+        storage_ready:
+          type: boolean
+          description: '`false`: таблицы `app_settings` нет, сохранить настройки нельзя.'
+    GpuSettingsUpdate:
+      type: object
+      required:
+      - url
+      properties:
+        url:
+          type: string
+          maxLength: 500
+        mode:
+          type: string
+          enum:
+          - cube
+          - vio
+          default: cube
+        token:
+          type: string
+          maxLength: 200
+          nullable: true
+          description: '`null`: ключ не менять; строка: заменить; пустая строка: стереть.'
+    GpuCheckRequest:
+      type: object
+      properties:
+        url:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: 'Пусто: проверить сохранённый адрес.'
+        token:
+          type: string
+          maxLength: 200
+          nullable: true
+          description: '`null`: проверить с сохранённым ключом.'
+    GpuCheckResult:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        run_url:
+          type: string
+        ms:
+          type: integer
+          nullable: true
+          description: Время ответа, мс.
+        error:
+          type: string
+          nullable: true
+          description: Причина неудачи, готовый текст.
+        engine:
+          type: string
+        code_edit_msk:
+          type: string
+          description: Версия приёмника на сервере.
+        auth_required:
+          type: boolean
+        token_ok:
+          type: boolean
+          nullable: true
+        scale_modes_ready:
+          type: array
+          items:
+            type: string
+    YandexUserinfo:
+      type: object
+      properties:
+        sub:
+          type: string
+        email:
+          type: string
+        email_verified:
+          type: boolean
+        name:
+          type: string
+    VkFinish:
+      type: object
+      required:
+      - ticket
+      - n
+      properties:
+        ticket:
+          type: string
+          description: Значение `vk_ticket` из адреса возврата.
+        n:
+          type: string
+          description: Случайная строка, которую фронт создал перед шагом 1.
+    VkFinishResult:
+      type: object
+      properties:
+        token_hash:
+          type: string
+        type:
+          type: string
+          example: magiclink
+    ReceiverHealth:
+      type: object
+      properties:
+        status:
+          type: string
+        service:
+          type: string
+          enum:
+          - volmetric-receiver
+        code_edit_msk:
+          type: string
+          description: 'Штамп правки файла приёмника: какая версия стоит на сервере.'
+        engine:
+          type: string
+          enum:
+          - dust3r
+          - mast3r
+        port:
+          type: integer
+        auth_required:
+          type: boolean
+          description: Задан ли `RECEIVER_TOKEN`.
+        scale_modes:
+          type: array
+          items:
+            type: string
+        scale_modes_ready:
+          type: array
+          items:
+            type: string
+          description: Режимы, которые реально считаются. Сейчас только `cube`.
+        async_run:
+          type: boolean
+          description: 'Приёмник умеет `wait: false` и `/result`.'
+        arkit_focal:
+          type: boolean
+          description: Берётся ли фокус из intrinsics ARKit.
+        jobs_running:
+          type: integer
+          description: Задач в работе и в очереди.
+        token_ok:
+          type: boolean
+          description: Есть, только если ключ прислан или не требуется.
+    RunRequest:
+      type: object
+      required:
+      - analysis_id
+      - photo_ids
+      properties:
+        analysis_id:
+          type: string
+          description: id строки `analyses`. Имя папки прогона и ключ задачи.
+        photo_ids:
+          type: array
+          items:
+            type: string
+          minItems: 2
+          description: 'id строк `colmap_photos`. Порядок важен: кадр `i` сохраняется как `00i.jpg`.'
+        wait:
+          type: boolean
+          description: '`false`: ответить сразу `202`. Нет или `true`: держать соединение до конца расчёта.'
+        exif:
+          type: array
+          description: 'По записи на фото. Фокус фиксируется, только если есть все четыре величины: фокусное в мм,
+            фокусное 35 мм экв., ширина и высота оригинала.'
+          items:
+            type: object
+            properties:
+              photo_index:
+                type: integer
+              exif:
+                type: object
+                nullable: true
+                additionalProperties: true
+                properties:
+                  focal_real:
+                    type: number
+                    description: Фокусное, мм.
+                  focal_35mm:
+                    type: number
+                    description: Фокусное в 35 мм эквиваленте.
+                  orig_width:
+                    type: integer
+                  orig_height:
+                    type: integer
+                  iso:
+                    type: number
+                  make:
+                    type: string
+                  model:
+                    type: string
+                  lat:
+                    type: number
+                  lon:
+                    type: number
+                  shot_at:
+                    type: string
+        cube:
+          $ref: '#/components/schemas/Cube'
+        mode:
+          type: string
+          enum:
+          - cube
+          - vio
+          default: cube
+          description: Режим масштаба. `vio` пока только сохраняет данные обхода.
+        options:
+          type: object
+          description: Настройки расчёта. Сайт их не шлёт, действуют значения по умолчанию.
+          properties:
+            height_pct:
+              type: number
+              default: 75
+              description: Перцентиль высоты в ячейке, обрезается до 50…99.
+            cell_m:
+              type: number
+              default: 0.01
+              description: Ячейка сетки, м, обрезается до 0,002…0,10.
+            keep_vegetation:
+              type: boolean
+              default: false
+            min_conf_thr:
+              type: number
+            no_cam_crop:
+              type: boolean
+              default: false
+            dump_raw:
+              type: boolean
+              default: false
+            debug:
+              type: boolean
+              default: false
+        scan:
+          type: object
+          description: Только у замеров по обходу из приложения.
+          additionalProperties: true
+          properties:
+            id:
+              type: string
+            bucket:
+              type: string
+              default: colmap
+            scan_json_path:
+              type: string
+              description: Путь к scan.json в бакете; приёмник качает его своим ключом.
+        frames:
+          type: array
+          description: Данные ARKit по кадрам обхода.
+          items:
+            type: object
+            properties:
+              photo_id:
+                type: string
+              frame_index:
+                type: integer
+              filename:
+                type: string
+              arkit:
+                type: object
+                nullable: true
+                additionalProperties: true
+                properties:
+                  intrinsics:
+                    type: array
+                    items:
+                      type: number
+                    description: Матрица K, 9 чисел.
+                  width:
+                    type: integer
+                  height:
+                    type: integer
+                  cameraTransform:
+                    type: array
+                    items:
+                      type: number
+                    description: Поза камеры, 16 чисел.
+        source:
+          type: string
+          description: Сайт шлёт `site`. Приёмник это поле не читает.
+    RunAccepted:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+          - accepted
+        state:
+          type: string
+          enum:
+          - running
+        analysis_id:
+          type: string
+        duplicate:
+          type: boolean
+    RunResult:
+      type: object
+      additionalProperties: true
+      description: 'Итог расчёта, около 120 полей; здесь те, на которые опирается сайт. Любое поле может быть `null`.
+        Полный список с расшифровкой: `API.md` в папке GPU-кода, раздел 5.'
+      properties:
+        status:
+          type: string
+          enum:
+          - success
+          - partial
+          - error
+          description: '`success`: объём посчитан; `partial`: модель есть, но объёма нет либо он под сомнением;
+            `error`: расчёт не удался.'
+        analysis_id:
+          type: string
+        error_message:
+          type: string
+          nullable: true
+          description: Причина для `error` и `partial`; при `success` замечания по качеству.
+        elapsed_sec:
+          type: number
+        volume_m3:
+          type: number
+          nullable: true
+        volume_litres:
+          type: number
+          nullable: true
+        height_m:
+          type: number
+          nullable: true
+        width_m:
+          type: number
+          nullable: true
+        depth_m:
+          type: number
+          nullable: true
+        footprint_area_m2:
+          type: number
+          nullable: true
+        scale_mode_requested:
+          type: string
+          enum:
+          - cube
+          - vio
+        scale_mode:
+          type: string
+          description: Чем посчитано. Сейчас всегда `cube`.
+        scale_cube:
+          type: number
+          nullable: true
+          description: Масштаб, м на единицу реконструкции.
+        scale_reliable:
+          type: boolean
+          nullable: true
+        scale_warning:
+          type: string
+          nullable: true
+        capture_advice:
+          type: string
+          nullable: true
+          description: Совет по съёмке куба.
+        cube_status:
+          type: string
+          enum:
+          - found
+          - not_found
+          - found_but_too_small
+          - rejected_by_sanity_check
+          - inconsistent_across_photos
+          - found_on_few_photos
+          - pattern_mismatch
+          - opencv_unavailable
+        cube_found_on_n_photos:
+          type: integer
+          nullable: true
+        photos_total:
+          type: integer
+        point_count:
+          type: integer
+          nullable: true
+        focal_from:
+          type: string
+          enum:
+          - arkit
+          - exif
+          nullable: true
+        ply_url:
+          type: string
+          format: uri
+          nullable: true
+        glb_url:
+          type: string
+          nullable: true
+        heatmap_top_url:
+          type: string
+          format: uri
+          nullable: true
+        heatmap_side_url:
+          type: string
+          format: uri
+          nullable: true
+        cloud_top_url:
+          type: string
+          format: uri
+          nullable: true
+        cloud_side_url:
+          type: string
+          format: uri
+          nullable: true
+        log_summary:
+          type: string
+          nullable: true
+    JobState:
+      type: object
+      properties:
+        analysis_id:
+          type: string
+        state:
+          type: string
+          enum:
+          - running
+          - done
+        elapsed_sec:
+          type: number
+        result:
+          $ref: '#/components/schemas/RunResult'
+        from_disk:
+          type: boolean
+          description: Результат прочитан с диска после перезапуска приёмника.
