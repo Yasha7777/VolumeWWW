@@ -24,26 +24,38 @@
 соседних. Текст описания собирает D(сервис, доступ, [(куда, что делает), …],
 пояснение).
 """
+import base64
 import copy
+import json
 import logging
 import secrets
 
-from fastapi import Depends, HTTPException
-from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi import Depends, HTTPException, Request
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import JSONResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.responses import HTMLResponse, JSONResponse
 
 logger = logging.getLogger(__name__)
 
-# ДОСТУП К SWAGGER. Страница /api/docs и схема /api/openapi.json закрыты
-# паролем (HTTP Basic): браузер сам покажет окно входа. Логин — любой,
-# проверяется только пароль. Пароль зашит в код намеренно (решение владельца
-# проекта, 08.10.2026); он лежит в git, так что сменить = поправить строку ниже
-# и выкатить. Закрывает он ТОЛЬКО документацию: сами методы /api/… защищены
-# своим — JWT пользователя.
+# ДОСТУП К SWAGGER.
+#   /api/docs          — открытая страница-оболочка: поле «Пароль» и больше
+#                        ничего, ни одного описания в ней нет;
+#   /api/openapi.json  — сама схема со всеми описаниями, отдаётся ТОЛЬКО с
+#                        паролем. Страница запрашивает её после ввода пароля.
+# Пароль едет заголовком `Authorization: Basic base64(":пароль")` (логин не
+# нужен), так что схему можно забрать и из консоли: curl -u ':пароль' …
+#
+# ПОЧЕМУ СВОЯ ФОРМА, А НЕ ОКНО ВХОДА БРАУЗЕРА. Первая версия (08.10.2026)
+# отвечала 401 с заголовком WWW-Authenticate и рассчитывала на штатное окно
+# Basic-входа. На проде Chrome его не показал: человек видел голый ответ
+# {"detail":"Not authenticated"} и войти не мог (сервер при этом отвечал
+# верно — проверено запросом). Форма на странице от поведения браузера не
+# зависит. По той же причине 401 здесь БЕЗ WWW-Authenticate: с ним браузер мог
+# бы поверх формы показать ещё и своё окно.
+#
+# Пароль зашит в код намеренно (решение владельца проекта, 08.10.2026); он
+# лежит в git, так что сменить = поправить строку ниже и выкатить. Закрывает он
+# ТОЛЬКО документацию: сами методы /api/… защищены своим — JWT пользователя.
 DOCS_PASSWORD = "!bl+P&w7;ZE6(Js"
-DOCS_REALM = "Volumetric API"
 DOCS_URL = "/api/docs"
 # Схема ОБЯЗАНА лежать под /api/: nginx проксирует на бэкенд только этот
 # префикс. С адресом FastAPI по умолчанию (/openapi.json) страница открывалась,
@@ -55,6 +67,9 @@ SWAGGER_UI = {
     "filter": True,                    # строка поиска по разделам
     "persistAuthorization": True,      # введённый токен переживает F5
 }
+# Сам Swagger UI — с CDN, версия закреплена (её же ставит FastAPI по умолчанию,
+# только новее). Сменить версию = поправить номер здесь.
+SWAGGER_CDN = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14"
 
 DOCS_REVISION = "2026-10-08"   # дата последней правки описаний, видна в шапке Swagger
 UNDOC_TAG = "Без описания"
@@ -1165,20 +1180,123 @@ def merge(auto: dict) -> dict:
     return schema
 
 
-_basic = HTTPBasic(realm=DOCS_REALM)
+def password_ok(request: Request) -> bool:
+    """Верный ли пароль в `Authorization: Basic …`. Логин не проверяется."""
+    scheme, _, value = (request.headers.get("authorization") or "").partition(" ")
+    if scheme.lower() != "basic":
+        return False
+    try:
+        decoded = base64.b64decode(value.strip(), validate=True).decode("utf-8")
+    except Exception:
+        return False
+    _, sep, password = decoded.partition(":")
+    return bool(sep) and secrets.compare_digest(password.encode("utf-8"), DOCS_PASSWORD.encode("utf-8"))
 
 
-def require_docs_password(cred: HTTPBasicCredentials = Depends(_basic)) -> None:
-    """Пускает к Swagger только с верным паролем. Логин не проверяется."""
-    given = (cred.password or "").encode("utf-8")
-    if not secrets.compare_digest(given, DOCS_PASSWORD.encode("utf-8")):
-        # с этим заголовком браузер спросит пароль заново, а не покажет голую ошибку
-        raise HTTPException(status_code=401, detail="Неверный пароль",
-                            headers={"WWW-Authenticate": f'Basic realm="{DOCS_REALM}"'})
+def require_docs_password(request: Request) -> None:
+    if not password_ok(request):
+        # без WWW-Authenticate — см. комментарий у DOCS_PASSWORD
+        raise HTTPException(status_code=401, detail="Нужен пароль к документации")
+
+
+DOCS_PAGE = """<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>__TITLE__</title>
+<link rel="stylesheet" href="__CDN__/swagger-ui.css">
+<style>
+  html { background: #fff; }
+  body { margin: 0; background: #fff; color: #2b3440;
+         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+  #gate { max-width: 360px; margin: 18vh auto 0; padding: 0 16px; }
+  #gate h1 { font-size: 20px; margin: 0 0 6px; }
+  #gate p { margin: 0 0 18px; color: #5d6875; font-size: 14px; line-height: 1.45; }
+  #gate label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  #gate .row { display: flex; gap: 8px; }
+  #gate input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 9px 11px;
+                border: 1px solid #b8c0ca; border-radius: 6px; background: #fff; color: inherit; }
+  #gate input:focus-visible, #gate button:focus-visible { outline: 2px solid #2f6fdb; outline-offset: 1px; }
+  #gate button { font: inherit; font-weight: 600; padding: 9px 16px; border: 0; border-radius: 6px;
+                 background: #1f4e9c; color: #fff; cursor: pointer; }
+  #gate button:disabled { opacity: .6; cursor: default; }
+  #msg { min-height: 20px; margin-top: 10px; font-size: 14px; color: #b3261e; }
+  #bar { max-width: 1460px; margin: 0 auto; padding: 8px 20px 0; text-align: right; font-size: 13px; }
+  #bar button { font: inherit; background: none; border: 0; color: #1f4e9c; cursor: pointer; padding: 4px 0; }
+</style>
+</head>
+<body>
+<form id="gate" autocomplete="off">
+  <h1>__TITLE__</h1>
+  <p>Описание методов сайта и расчётного сервера. Доступ по паролю.</p>
+  <label for="pw">Пароль</label>
+  <div class="row">
+    <input id="pw" name="pw" type="password" autocomplete="current-password" autofocus required>
+    <button id="go" type="submit">Открыть</button>
+  </div>
+  <div id="msg" role="alert"></div>
+</form>
+<div id="bar" hidden><button id="out" type="button">Выйти</button></div>
+<div id="swagger-ui"></div>
+<script src="__CDN__/swagger-ui-bundle.js"></script>
+<script>
+(function () {
+  var OPENAPI_URL = __OPENAPI_URL__, UI = __UI__, KEY = "kb-docs-pw";
+  var gate = document.getElementById("gate"), pw = document.getElementById("pw"),
+      go = document.getElementById("go"), msg = document.getElementById("msg"),
+      bar = document.getElementById("bar");
+  function store(v) { try { v === null ? sessionStorage.removeItem(KEY) : sessionStorage.setItem(KEY, v); } catch (e) {} }
+  function saved() { try { return sessionStorage.getItem(KEY); } catch (e) { return null; } }
+  function basic(p) {                       // base64 от ":пароль" в UTF-8
+    var bytes = new TextEncoder().encode(":" + p), bin = "";
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return "Basic " + btoa(bin);
+  }
+  function open(p, quiet) {
+    go.disabled = true; msg.textContent = "";
+    return fetch(OPENAPI_URL, { headers: { Authorization: basic(p) }, cache: "no-store" })
+      .then(function (r) {
+        if (r.status === 401) { store(null); if (!quiet) msg.textContent = "Пароль не подошёл."; return null; }
+        if (!r.ok) throw new Error("код " + r.status);
+        return r.json();
+      })
+      .then(function (spec) {
+        if (!spec) return;
+        if (!window.SwaggerUIBundle) throw new Error("не загрузился Swagger UI (cdn.jsdelivr.net недоступен)");
+        store(p);
+        gate.hidden = true; bar.hidden = false;
+        window.ui = SwaggerUIBundle(Object.assign({
+          spec: spec, dom_id: "#swagger-ui", deepLinking: true,
+          presets: [SwaggerUIBundle.presets.apis], layout: "BaseLayout", validatorUrl: null
+        }, UI));
+      })
+      .catch(function (e) { msg.textContent = "Не удалось открыть: " + e.message + "."; })
+      .then(function () { go.disabled = false; });
+  }
+  gate.addEventListener("submit", function (e) { e.preventDefault(); open(pw.value, false); });
+  document.getElementById("out").addEventListener("click", function () { store(null); location.reload(); });
+  var p = saved(); if (p) open(p, true);    // пароль уже вводили в этой вкладке — F5 не спрашивает заново
+})();
+</script>
+</body>
+</html>
+"""
+# [hidden] у формы и панели: у .swagger-ui своих правил на них нет, но страховка от чужого display
+DOCS_PAGE = DOCS_PAGE.replace("</style>", "  [hidden] { display: none !important; }\n</style>")
+
+
+def docs_page(title: str) -> str:
+    return (DOCS_PAGE
+            .replace("__TITLE__", title)
+            .replace("__CDN__", SWAGGER_CDN)
+            .replace("__OPENAPI_URL__", json.dumps(OPENAPI_URL))
+            .replace("__UI__", json.dumps(SWAGGER_UI)))
 
 
 def install(app) -> None:
-    """Подключает Swagger: схему с описаниями и две закрытые паролем страницы.
+    """Подключает Swagger: схему с описаниями (под паролем) и страницу входа.
 
     Штатные /docs и /openapi.json в FastAPI(...) должны быть ВЫКЛЮЧЕНЫ
     (docs_url=None, openapi_url=None): иначе рядом останутся открытые копии.
@@ -1199,16 +1317,10 @@ def install(app) -> None:
 
     app.openapi = openapi
 
-    guard = [Depends(require_docs_password)]
-
-    @app.get(OPENAPI_URL, include_in_schema=False, dependencies=guard)
+    @app.get(OPENAPI_URL, include_in_schema=False, dependencies=[Depends(require_docs_password)])
     def openapi_json():
-        return JSONResponse(app.openapi())
+        return JSONResponse(app.openapi(), headers={"Cache-Control": "no-store"})
 
-    @app.get(DOCS_URL, include_in_schema=False, dependencies=guard)
+    @app.get(DOCS_URL, include_in_schema=False)
     def swagger_page():
-        return get_swagger_ui_html(
-            openapi_url=OPENAPI_URL,
-            title=f"{app.title} — API",
-            swagger_ui_parameters=SWAGGER_UI,
-        )
+        return HTMLResponse(docs_page(f"{app.title} — API"), headers={"Cache-Control": "no-store"})
