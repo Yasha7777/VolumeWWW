@@ -31,11 +31,12 @@ export default function ObhodCard({ o, selected, onToggle, index = 0, animate = 
         <div className="ks-card__row"><IcoCalendar /><span>{o.date}</span></div>
         <div className="ks-card__row">
           <IcoImages /><span>{o.photos} фото</span>
-          {o.duration && <><span className="ks-card__clock"><IcoClock /></span><span>{o.duration}</span></>}
+          {/* длительность СЪЁМКИ обхода (сколько шла запись в приложении), не загрузки */}
+          {o.duration && <><span className="ks-card__clock"><IcoClock /></span><span title="Длительность съёмки обхода">съёмка {o.duration}</span></>}
         </div>
-        <div className="ks-card__row ks-card__row--gap"><IcoUser /><span>{o.author || '—'}</span></div>
-        <div className="ks-card__row"><IcoPin /><span>{o.place || '—'}</span></div>
-        <div className="ks-card__device">{o.device}</div>
+        {o.author && <div className="ks-card__row ks-card__row--gap"><IcoUser /><span>{o.author}</span></div>}
+        <div className={'ks-card__row' + (o.author ? '' : ' ks-card__row--gap')}><IcoPin /><span>{o.place || 'нет координат'}</span></div>
+        {o.device && <div className="ks-card__device">{o.device}</div>}
       </div>
       {selected && <span className="ks-check ks-check--corner is-on"><Check size={12} strokeWidth={3} /></span>}
     </motion.article>

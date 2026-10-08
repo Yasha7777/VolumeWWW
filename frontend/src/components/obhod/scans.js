@@ -31,17 +31,21 @@ const niceTitle = (t, d) => (!t ? 'Без названия' : EN_AUTO.test(t) &&
 export function normalizeScan(r) {
   const d = new Date(r.captured_at)
   const st = STATUS[r.status] || { label: r.status, ready: false }
-  const place = r.author_city || (r.lat != null && r.lon != null ? `${r.lat.toFixed(3)}°, ${r.lon.toFixed(3)}°` : null)
+  // Место — ТОЛЬКО координаты самого обхода. Раньше первым шёл город из профиля
+  // автора (author_city): у одних карточек выходило «Кондопога», у других —
+  // координаты, и город при этом был не местом съёмки, а строкой из профиля.
+  const place = r.lat != null && r.lon != null ? `${r.lat.toFixed(3)}°, ${r.lon.toFixed(3)}°` : null
   return {
     id: r.id,
     title: niceTitle(r.title, d),
     date: fmtDate(d), dateShort: fmtShort(d),
     photos: r.frame_count,
     duration: fmtDur(r.duration_s), durationS: r.duration_s,
-    // суперадмин видит и чужие обходы (?user_id=); имя не заполнено в профиле → «Вы»
-    author: r.author_name || 'Вы',
+    // суперадмин видит и чужие обходы (?user_id=); имя не заполнено в профиле →
+    // строки автора на карточке нет вовсе (заглушка «Вы» убрана: она стояла и на чужих)
+    author: (r.author_name || '').trim() || null,
     place,
-    device: ['ARKit', r.device_model].filter(Boolean).join(' · '),
+    device: r.device_model || null,
     status: st.label, statusKey: r.status, ready: st.ready,
     img: r.cover_url || null,
     lat: r.lat, lon: r.lon, acc: r.loc_accuracy_m,
