@@ -344,7 +344,6 @@ export default function Analyze() {
           setDiag(pickDiagnostics(data))
           setUpVec(finalUp)
           setUpGlbVec(finalUpGlb)
-          setShowRaw(false)     // новый анализ — технические данные снова свёрнуты
           setReportOpen(true)   // авто-выдвижение отчёта по готовности
           setStatus({ type:'success', title:'Готово!', msg: doneMsgRef.current || `Обработано ${photos.length} фото.` })
           doneMsgRef.current = ''
@@ -398,7 +397,6 @@ export default function Analyze() {
     setUpVec(null)
     setUpGlbVec(null)
     setDiag(null)
-    setShowRaw(false)
 
     const payload = photos.map(p => ({ blob: p.blob, name: p.name, exif: p.exifData ?? null }))
 
@@ -489,7 +487,7 @@ export default function Analyze() {
   // ─── Анализ обхода из приложения ────────────────────────────────────────────
   const clearResult = () => {
     setResult(null); setGlbUrl(null); setPlyUrl(null); setUpVec(null); setUpGlbVec(null)
-    setDiag(null); setShowRaw(false); setReportOpen(false)
+    setDiag(null); setReportOpen(false)
   }
   const runScan = async (queueOnly = false) => {
     const s = pickedScans[0]
@@ -572,7 +570,6 @@ export default function Analyze() {
     setCompProg(0)
     setUpProg(null)
     setReportOpen(false)
-    setShowRaw(false)
   }
 
   const copyResult = () => {
