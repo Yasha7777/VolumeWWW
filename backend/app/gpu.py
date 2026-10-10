@@ -373,12 +373,28 @@ def format_result_text(d: dict, material: str = "unknown", density_kg_m3: float 
 
         mass_t = (vol * density_kg_m3) / 1000 if (vol is not None and density_kg_m3 > 0) else None
 
-        # Куб убран из расчёта 10.10.2026, масштаб по позам ARKit ещё не
-        # подключён: объёма в м³ нет. Говорим прямо, почему.
+        # Масштаб задают позы ARKit из обхода приложения (куба нет с 10.10.2026).
+        # Говорим прямо, чем посчитан объём — или почему его нет.
         scale_line = ""
         if vol is None:
-            scale_line = ("   ℹ️ Объём в м³ пока не считается: калибровочный куб убран, "
-                          "масштаб по позам ARKit ещё не подключён")
+            if not d.get("scan_id"):
+                why = ("это загрузка фото без обхода, а масштаб дают только позы "
+                       "телефона из обхода приложения VolmetricARKit")
+            elif d.get("arkit_pose_note"):
+                why = f"позы ARKit не применены — {d['arkit_pose_note']}"
+            else:
+                why = "позы ARKit не применены"
+            scale_line = f"   ℹ️ Объём в м³ не рассчитан: {why}"
+        elif d.get("scale_mode") == "arkit_pose":
+            used, total = d.get("arkit_pose_frames"), d.get("arkit_pose_frames_total")
+            scale_line = ("   📐 Масштаб: по позам ARKit"
+                          + (f" ({used} кадров из {total})" if used and total else ""))
+            ratio = d.get("arkit_depth_ratio_median")
+            if ratio is not None:
+                near, far = d.get("arkit_depth_ratio_near"), d.get("arkit_depth_ratio_far")
+                scale_line += (f"\n   🔎 Глубина модели / точки ARKit: ×{_fixed(ratio, 2)}"
+                               + (f" (ближние ×{_fixed(near, 2)}, дальние ×{_fixed(far, 2)})"
+                                  if near is not None and far is not None else ""))
 
         block = "\n".join(filter(None, [
             "\n",
