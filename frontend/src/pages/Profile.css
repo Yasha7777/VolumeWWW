@@ -242,7 +242,7 @@
 .kb-admin .kb-hint { margin-top: var(--sp-2); line-height: 1.5; }
 .kb-admin code { font-size: .95em; padding: 1px 5px; border-radius: 4px; background: color-mix(in srgb, var(--text) 7%, transparent); overflow-wrap: anywhere; }
 .kb-admin-warn { color: var(--text); padding-left: var(--sp-3); border-left: 2px solid var(--gold); }
-/* переключатель Cube / VIO — по образцу .mode-toggle (styles.css) */
+/* переключатель Cube / VIO */
 .kb-seg { display: inline-flex; align-self: flex-start; gap: var(--sp-1); padding: var(--sp-1); background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-sm); }
 .kb-seg button { min-width: 84px; padding: var(--sp-2) var(--sp-5); border: none; border-radius: var(--r-xs); font-family: var(--sans); font-size: var(--fs-sm); font-weight: 600; background: transparent; color: var(--muted); cursor: pointer; transition: background .2s var(--ease), color .2s var(--ease); }
 .kb-seg button:hover:not(.is-on) { color: var(--text); }

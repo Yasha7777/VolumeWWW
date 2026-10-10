@@ -909,7 +909,7 @@ function QueueCard({ item, sending, onSend, onRemove }) {
    ПОВЕРХ бокового декора (.kh-flora).
    ============================================================ */
 function BulkBar({
-  count, totalVisible, isProd, onProdChange,
+  count, totalVisible,
   onSelectAll, onClear, onDelete, onRerun, busy,
 }) {
   const empty = count === 0;
@@ -942,36 +942,12 @@ function BulkBar({
 
         <span className="kh-bulk__sep" />
 
-        {/* Тот же переключатель, что на странице анализа (.mode-toggle) —
-            ссылка n8n выбирается прямо здесь, отдельного окна не нужно. */}
-        <div className="kh-bulk__env">
-          <span className="kh-bulk__env-label">Ссылка</span>
-          <div className="mode-toggle">
-            <button
-              type="button"
-              className={`test ${!isProd ? 'active' : ''}`}
-              disabled={!!busy}
-              onClick={() => onProdChange(false)}
-            >
-              TEST
-            </button>
-            <button
-              type="button"
-              className={`prod ${isProd ? 'active' : ''}`}
-              disabled={!!busy}
-              onClick={() => onProdChange(true)}
-            >
-              PROD
-            </button>
-          </div>
-        </div>
-
         <button
           type="button"
           className="btn btn-primary btn-sm"
           onClick={onRerun}
           disabled={!!busy || empty}
-          title={`Запустить заново на ${isProd ? 'PROD' : 'TEST'}`}
+          title="Запустить заново"
         >
           <PlayIcon /> Перезапустить
         </button>
@@ -1056,7 +1032,6 @@ export default function History() {
   // Вход: кнопка «Выбрать», двойной клик по карточке, Ctrl/⌘/Shift+клик.
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
-  const [bulkProd, setBulkProd] = useState(false);   // ссылка n8n: TEST по умолчанию
   const [bulkBusy, setBulkBusy] = useState(null);    // { kind, done, total }
   const lastPickedRef = useRef(null);                // якорь для Shift-диапазона
 
@@ -1375,9 +1350,8 @@ export default function History() {
   const rerunSelected = async () => {
     const ids = selectedIds;
     if (!ids.length || bulkBusy) return;
-    const env = bulkProd ? 'PROD' : 'TEST';
     if (!window.confirm(
-      `Запустить заново ${ids.length} ${zamerWord(ids.length)} на ${env}?\n` +
+      `Запустить заново ${ids.length} ${zamerWord(ids.length)}?\n` +
       'Прежний результат будет перезаписан.'
     )) return;
 
@@ -1385,7 +1359,7 @@ export default function History() {
     const failed = [];
     await mapPool(ids, 3, async (id) => {
       try {
-        await api.rerunAnalysis(id, { isProd: bulkProd });
+        await api.rerunAnalysis(id);
         // Оптимистично: карточка сразу уходит в «в обработке», а поллинг
         // (он просыпается как раз на pending) дотянет реальный результат.
         setItems((list) => list.map((x) =>
@@ -1670,8 +1644,6 @@ export default function History() {
         <BulkBar
           count={selectedIds.length}
           totalVisible={view.flatIds.length}
-          isProd={bulkProd}
-          onProdChange={setBulkProd}
           onSelectAll={selectAllVisible}
           onClear={exitSelect}
           onDelete={deleteSelected}

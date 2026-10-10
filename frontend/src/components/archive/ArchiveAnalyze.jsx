@@ -347,7 +347,6 @@ function Dossier({
 export default function ArchiveAnalyze({
   photos, fileInputRef, handleFiles, onDrop, removePhoto,
   title, setTitle, notes, setNotes,
-  isProd, setIsProd,
   busy, compressing, compProg, compMsg, upProg, status, online,
   runAnalysis, addToQueue, reset, openReport,
   result, parsed, plyUrl, glbUrl, upVec, upGlbVec, diag,
@@ -693,32 +692,6 @@ export default function ArchiveAnalyze({
             />
           </label>
 
-          <div className="arc-field">
-            <span className="arc-field__k">РЕЖИМ РАБОТЫ</span>
-            <div className="arc-seg" role="group" aria-label="Режим работы">
-              {/* TEST / PROD — латиницей по прямой просьбе: это имена
-                  контуров пайплайна n8n, а не подписи интерфейса, и в
-                  логах/настройках они называются именно так. */}
-              <button
-                type="button"
-                className={`arc-seg__b${!isProd ? ' is-on' : ''}`}
-                aria-pressed={!isProd}
-                disabled={busy}
-                onClick={() => !busy && setIsProd(false)}
-              >
-                TEST
-              </button>
-              <button
-                type="button"
-                className={`arc-seg__b arc-seg__b--prod${isProd ? ' is-on' : ''}`}
-                aria-pressed={isProd}
-                disabled={busy}
-                onClick={() => !busy && setIsProd(true)}
-              >
-                PROD
-              </button>
-            </div>
-          </div>
 
           {!online && (
             <p className="arc-warn">

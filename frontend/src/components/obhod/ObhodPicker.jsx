@@ -43,7 +43,7 @@ const EASE = [0.5, 0, 0.2, 1]
 /* Панель выбора обхода: покой → (наведение | фокус) → раскрыта.
    В покое — узкая плашка; при наведении плавно растягивается, а края стекают
    вниз каплями; по клику раскрывается в карту, список и запуск анализа.
-   Обход выбирается один. Внизу панели — режим TEST/PROD, куб, «В очередь»
+   Обход выбирается один. Внизу панели — куб, «В очередь»
    и «Запустить анализ»; пока анализ считается, панель показывает ход и таймер.
    На тач-экранах наведения нет — тап раскрывает сразу. Esc и клик мимо —
    сворачивают (кроме времени, пока идёт анализ). */
@@ -302,7 +302,7 @@ export default function ObhodPicker({
                       <motion.div key="run" className="ks-foot__run" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.3, ease: EASE }}>
                         <span className="ks-run__pulse" aria-hidden />
                         <span className="ks-run__text">
-                          <b>Анализируем «{picked?.title || 'обход'}» · {run.isProd ? 'PROD' : 'TEST'}</b>
+                          <b>Анализируем «{picked?.title || 'обход'}»</b>
                           <span className="ks-run__line">{run.startTime ? <RunClock startTime={run.startTime} /> : 'Отправляем…'}</span>
                         </span>
                         <span className="ks-run__hint">Можно не ждать: анализ досчитается на сервере, результат будет в «Истории».</span>
@@ -334,11 +334,6 @@ export default function ObhodPicker({
                           </AnimatePresence>
                         </div>
                         <div className="ks-foot__mode">
-                          <span className="ks-foot__label">Режим</span>
-                          <div className="ks-mode" role="radiogroup" aria-label="Режим анализа">
-                            <button type="button" role="radio" aria-checked={!run.isProd} className={!run.isProd ? 'is-on' : ''} onClick={() => run.setIsProd?.(false)} disabled={run.busy}>TEST</button>
-                            <button type="button" role="radio" aria-checked={!!run.isProd} className={run.isProd ? 'is-on' : ''} onClick={() => run.setIsProd?.(true)} disabled={run.busy}>PROD</button>
-                          </div>
                           {/* шестерёнка калибровочного куба — тот же компонент, что в ручной загрузке */}
                           <div className="ks-cube">{run.onCube && <CubeSettings onChange={run.onCube} />}</div>
                         </div>

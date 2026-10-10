@@ -32,10 +32,10 @@ export const listQueue = () => idb.getAll()
 export async function removeItem(id) { await idb.delete(id); emit() }
 
 // ─── добавление (photos: [{ blob, name, exif }]) ─────────────────────────────
-export async function enqueue({ title, notes, isProd, photos, cube }) {
+export async function enqueue({ title, notes, photos, cube }) {
   const item = {
     id: crypto.randomUUID(),           // = будущий id анализа (идемпотентность)
-    title: title || '', notes: notes || '', isProd: !!isProd,
+    title: title || '', notes: notes || '',
     cube: cube || null,                // блок параметров калибровочного куба
     photos, createdAt: new Date().toISOString(),
     status: 'queued', attempts: 0, lastError: null,
@@ -72,7 +72,6 @@ export async function flushItem(id, { onProgress } = {}) {
     fd.append('client_id', item.id)    // ← бэк использует его как id анализа
     fd.append('title', item.title || 'Без названия')
     fd.append('notes', item.notes || '')
-    fd.append('is_prod', item.isProd ? 'true' : 'false')
     item.photos.forEach(p => fd.append('files', p.blob, p.name || 'photo.jpg'))
     fd.append('exif_data', JSON.stringify(item.photos.map(p => p.exif ?? null)))
     fd.append('cube', JSON.stringify(item.cube ?? null))   // параметры калибровочного куба

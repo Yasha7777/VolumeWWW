@@ -66,7 +66,6 @@ export default function Analyze() {
   const [diag, setDiag]         = useState(null)
 
   const [busy, setBusy]         = useState(false)
-  const [isProd, setIsProd]     = useState(false)  // по умолчанию TEST
   const [reportOpen, setReportOpen] = useState(false)  // выдвижное окно отчёта
   const [online, setOnline]     = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
   // Блок cube для payload + валидность параметров куба (из CubeSettings).
@@ -405,7 +404,7 @@ export default function Analyze() {
 
     let id
     try {
-      id = await enqueue({ title, notes, isProd, photos: payload, cube })
+      id = await enqueue({ title, notes, photos: payload, cube })
     } catch (err) {
       submittingRef.current = false
       setBusy(false)
@@ -466,7 +465,7 @@ export default function Analyze() {
       const payload = photos.map(p => ({ blob: p.blob, name: p.name, exif: p.exifData ?? null }))
       let id
       try {
-        id = await enqueue({ title, notes, isProd, photos: payload, cube })
+        id = await enqueue({ title, notes, photos: payload, cube })
       } catch (err) {
         setStatus({ type:'error', title:'Ошибка', msg: err.message })
         return
@@ -524,10 +523,10 @@ export default function Analyze() {
     setScanSending(true)
     const client_id = (scanRunIds.current[s.id] ||= globalThis.crypto?.randomUUID?.())
     try {
-      const r = await api.analyzeScan(s.id, { is_prod: isProd, cube, client_id })
+      const r = await api.analyzeScan(s.id, { cube, client_id })
       delete scanRunIds.current[s.id]
       if (queueOnly) {
-        setQueueNote(`«${s.title}» в очереди · ${isProd ? 'PROD' : 'TEST'}`)
+        setQueueNote(`«${s.title}» в очереди`)
         setScanSel([])
       } else {
         setBusy(true); setAId(r.id); setStart(Date.now())
@@ -596,7 +595,7 @@ export default function Analyze() {
 (result || has3d || diag) && (
       <div className="result-card">
         <div className="result-hd">
-          <span className="result-hd-title">Результат · {isProd ? 'PROD' : 'TEST'}</span>
+          <span className="result-hd-title">Результат</span>
           {result && (
             <div style={{ display:'flex', gap:'var(--sp-2)', alignItems:'center' }}>
               <button className="copy-btn" onClick={copyResult}>Копировать</button>
@@ -656,7 +655,6 @@ export default function Analyze() {
           photos={photos} fileInputRef={fileInputRef} handleFiles={handleFiles}
           onDrop={onDrop} removePhoto={removePhoto}
           title={title} setTitle={setTitle} notes={notes} setNotes={setNotes}
-          isProd={isProd} setIsProd={setIsProd}
           busy={busy} compressing={compressing} compProg={compProg} compMsg={compMsg}
           upProg={upProg} status={status} online={online}
           runAnalysis={runAnalysis} addToQueue={addToQueue} reset={reset}
@@ -695,7 +693,7 @@ export default function Analyze() {
               selected={scanSel}
               onToggle={toggleScan}
               run={{
-                isProd, setIsProd, onCube: onCubeChange,
+                onCube: onCubeChange,
                 busy: scanSending, waiting: busy && !!analysisId, startTime,
                 onRun: () => runScan(false), onQueue: () => runScan(true), onDetach: detachScan,
                 notice: queueNote,
@@ -879,32 +877,6 @@ export default function Analyze() {
                 value={notes} onChange={e => setNotes(e.target.value)}
                 disabled={busy}
               />
-            </div>
-          </div>
-
-          {/* ПЕРЕКЛЮЧАТЕЛЬ TEST/PROD — нужен, пока продукт не вышел в прод */}
-          <div className="field" style={{ marginTop:'var(--sp-1)' }}>
-            {/* без инлайн-стиля: .field label уже несёт единый спек подписи
-                (--label-size / --label-weight / --label-spacing). Раньше здесь
-                стояли свои 12px / .5px — тот же смысл, другой вид. */}
-            <label>Режим анализа</label>
-            <div className="mode-toggle">
-              <button
-                type="button"
-                className={`test ${!isProd ? 'active' : ''}`}
-                disabled={busy}
-                onClick={() => !busy && setIsProd(false)}
-              >
-                TEST
-              </button>
-              <button
-                type="button"
-                className={`prod ${isProd ? 'active' : ''}`}
-                disabled={busy}
-                onClick={() => !busy && setIsProd(true)}
-              >
-                PROD
-              </button>
             </div>
           </div>
 

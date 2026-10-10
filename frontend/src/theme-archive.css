@@ -248,17 +248,6 @@
 .arc-input--find { min-height: 34px; font-family: var(--font-mono); font-size: 11px; letter-spacing: .12em; }
 
 /* переключатель из двух ячеек в одной рамке */
-.arc-seg { display: inline-flex; border: var(--hairline); background: var(--surface-2); }
-.arc-seg__b {
-  min-height: 40px; min-width: 96px; padding: 0 20px;
-  border: 0; background: transparent; color: var(--ink-3);
-  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
-  letter-spacing: .16em; cursor: pointer;
-}
-.arc-seg__b + .arc-seg__b { border-left: var(--hairline); }
-.arc-seg__b.is-on { background: var(--ink); color: var(--surface-2); }
-.arc-seg__b--prod.is-on { background: var(--red); color: #F5F2E7; }
-.arc-seg__b[disabled] { opacity: .5; cursor: not-allowed; }
 
 /* ── полоса прогресса ───────────────────────────────────────── */
 .arc-bar { height: 10px; border: var(--hairline); background: var(--surface-2); overflow: hidden; }

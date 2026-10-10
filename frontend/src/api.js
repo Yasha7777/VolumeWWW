@@ -189,13 +189,13 @@ export const api = {
 
   // Повторный прогон существующего замера: бэкенд заново отправляет его на
   // расчётный сервер (фото тот качает из Storage сам). Прежний результат
-  // затирается, статус возвращается в pending. isProd с 06.10.2026 ни на что
-  // не влияет: адрес сервера один, его задаёт суперадмин в «Профиле».
-  rerunAnalysis: (id, { isProd = false, cube = null } = {}) =>
+  // затирается, статус возвращается в pending. Режима TEST/PROD больше нет
+  // (n8n убран): адрес сервера один, его задаёт суперадмин в «Профиле».
+  rerunAnalysis: (id, { cube = null } = {}) =>
     req(`/analyses/${id}/rerun`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_prod: !!isProd, cube }),
+      body: JSON.stringify({ cube }),
     }),
 
   // ─── Обходы (сканы из приложения VolmetricARKit, таблица scans) ─────────
@@ -219,11 +219,11 @@ export const api = {
   // Анализ обхода: бэкенд заводит строку analyses (scan_id) из кадров обхода
   // и отправляет его на расчётный сервер вместе с данными ARKit по кадрам.
   // POST не ретраится (см. req) — двойного запуска нет.
-  analyzeScan: (id, { is_prod = false, cube = null, title, notes, client_id } = {}) =>
+  analyzeScan: (id, { cube = null, title, notes, client_id } = {}) =>
     req(`/scans/${id}/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_prod: !!is_prod, cube, title, notes, client_id }),
+      body: JSON.stringify({ cube, title, notes, client_id }),
     }),
 
   // ─── Admin (суперадмин) ──────────────────────────────────

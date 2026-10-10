@@ -457,26 +457,6 @@ nav { display: flex; gap: var(--sp-1); justify-self: center; }
 .field input:focus, .field textarea:focus { border-color: var(--green-ink); box-shadow: var(--control-focus); }
 .field textarea { height: 72px; line-height: 1.5; }
 
-/* ─── MODE TOGGLE (TEST / PROD) ──────────────────────────── */
-.mode-toggle {
-  display: inline-flex; gap: var(--sp-1); margin-top: var(--sp-2); padding: var(--sp-1);
-  background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm);
-}
-.mode-toggle button {
-  padding: var(--sp-1-5) var(--sp-4); border: none; border-radius: var(--r-xs);
-  font-family: var(--sans); font-size: var(--fs-sm); font-weight: 600;
-  background: transparent; color: var(--muted);
-  cursor: pointer; transition: all .2s var(--ease);
-}
-.mode-toggle button:disabled { cursor: not-allowed; opacity: .6; }
-/* Цвет подписи выводим ИЗ заливки, а не прибиваем к #fff: в тёмной теме
-   .test.active заливается var(--text) — то есть почти белым, — и белая
-   подпись на нём становилась невидимой. Теперь TEST берёт цвет фона
-   страницы, PROD — свой --ok-on. */
-.mode-toggle button.active { box-shadow: 0 2px 4px rgba(0,0,0,.12); }
-.mode-toggle button.test.active { background: var(--text); color: var(--bg); }
-.mode-toggle button.prod.active { background: var(--ok);   color: var(--ok-on); }
-
 /* ─── BUTTONS ────────────────────────────────────────────── */
 .actions { display: grid; grid-template-columns: 1fr auto; gap: var(--sp-3); margin-top: var(--sp-5); }
 .btn {
@@ -1560,12 +1540,6 @@ nav { display: flex; gap: var(--sp-1); justify-self: center; }
   white-space: nowrap;
 }
 .kh-bulk__sep { width: 1px; align-self: stretch; background: var(--border); }
-.kh-bulk__env { display: inline-flex; align-items: center; gap: var(--sp-2); }
-.kh-bulk__env-label {
-  font: 600 var(--fs-3xs)/1 var(--sans); letter-spacing: .12em;
-  text-transform: uppercase; color: var(--muted);
-}
-.kh-bulk__env .mode-toggle { margin-top: 0; }
 .kh-bulk .btn-sm { padding: var(--sp-2) var(--sp-3-5); }
 .kh-bulk__close {
   width: 32px; height: 32px;
