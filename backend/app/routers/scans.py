@@ -398,7 +398,10 @@ def analyze_scan(
             return {"id": existing[0]["id"], "status": existing[0]["status"], "scan_id": scan_id}
     analysis_id = analysis_id or str(uuid.uuid4())
 
-    owner_id = scan["user_id"]
+    # Анализ принадлежит тому, КТО ЕГО ЗАПУСТИЛ, а не владельцу обхода: суперадмин,
+    # запустивший чужой обход, видит замер в своей «Истории», а у владельца
+    # обхода он не появляется. Сам обход (scans.user_id) не меняется.
+    owner_id = current_user["id"]
     title = (body.title or scan.get("title") or "Без названия").strip()
     notes = body.notes or ""
     supabase.table("analyses").insert(
