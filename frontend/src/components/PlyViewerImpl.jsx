@@ -67,7 +67,7 @@ const PlyModel = ({ url, up, onReady }) => {
     geometry.translate(-b.center[0], -b.center[1], -b.center[2]);
     geometry.computeBoundingSphere();
 
-    setPointSize(pointSizeFor(2 * b.radius, pos.count));
+    setPointSize(pointSizeFor(2 * b.radius, pos.count, pos.array));
     onReady({ size: new THREE.Vector3(b.size[0], b.size[1], b.size[2]), radius: b.radius });
   }, [geometry, up, onReady]);
 

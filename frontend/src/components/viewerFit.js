@@ -139,11 +139,66 @@ export function fitDistance(radius, height, dir, fovDeg, aspect = 1) {
  * пыль. Берём шаг между соседними точками на поверхности: размах /
  * √(число точек) — и держим его в разумных пределах от размера модели.
  */
-export function pointSizeFor(extent, count) {
+export function pointSizeFor(extent, count, positions = null) {
   const L = extent > 0 ? extent : 1
   const n = count > 0 ? count : 1
-  const size = (1.7 * L) / Math.sqrt(n)
+  const guess = (1.7 * L) / Math.sqrt(n)
+  // Оценка «размах / √n» верна, только если точки лежат тонкой коркой. Рыхлое
+  // облако (длинный обход, точки слоем — замер 10.10: шаг до соседа на 27%
+  // больше при том же числе точек) с ней выглядит россыпью: между точками
+  // виден фон. Поэтому, когда есть координаты, берём НАСТОЯЩИЙ шаг до
+  // ближайшего соседа и делаем точку в 1.7 раза больше него — так выглядели
+  // модели, которые читались как сплошная поверхность (BigCube: 1.66).
+  const nn = positions ? medianSpacing(positions, guess) : null
+  const size = nn ? 1.7 * nn : guess
   return Math.min(Math.max(size, L * 0.0016), L * 0.02)
+}
+
+/**
+ * Медианное расстояние до ближайшего соседа по выборке точек (по умолчанию
+ * 2000). Соседей ищем в равномерной сетке с ячейкой `cell` (27 ячеек вокруг),
+ * поэтому стоимость ~O(n). Ничего не нашлось в окрестности — null.
+ */
+export function medianSpacing(positions, cell, sample = 2000) {
+  const n = Math.floor(positions.length / 3)
+  if (n < 2 || !(cell > 0)) return null
+  const key = (ix, iy, iz) => ((ix * 73856093) ^ (iy * 19349663) ^ (iz * 83492791)) | 0
+  const grid = new Map()
+  for (let i = 0; i < n; i++) {
+    const k = key(
+      Math.floor(positions[3 * i] / cell),
+      Math.floor(positions[3 * i + 1] / cell),
+      Math.floor(positions[3 * i + 2] / cell),
+    )
+    const bucket = grid.get(k)
+    if (bucket) bucket.push(i)
+    else grid.set(k, [i])
+  }
+  const step = Math.max(1, Math.floor(n / sample))
+  const dists = []
+  for (let i = 0; i < n; i += step) {
+    const x = positions[3 * i], y = positions[3 * i + 1], z = positions[3 * i + 2]
+    const cx = Math.floor(x / cell), cy = Math.floor(y / cell), cz = Math.floor(z / cell)
+    let best = Infinity
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          const bucket = grid.get(key(cx + dx, cy + dy, cz + dz))
+          if (!bucket) continue
+          for (const j of bucket) {
+            if (j === i) continue
+            const ex = positions[3 * j] - x, ey = positions[3 * j + 1] - y, ez = positions[3 * j + 2] - z
+            const d2 = ex * ex + ey * ey + ez * ez
+            if (d2 > 0 && d2 < best) best = d2
+          }
+        }
+      }
+    }
+    if (best < Infinity && best <= cell * cell) dists.push(Math.sqrt(best))
+  }
+  if (dists.length < 20) return null
+  dists.sort((a, b) => a - b)
+  return dists[dists.length >> 1]
 }
 
 /** «Круглый» шаг сетки (1·2·5 × 10ⁿ) около заданного. */
