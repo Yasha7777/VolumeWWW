@@ -1,86 +1,80 @@
 import { useEffect, useRef, useState } from 'react'
+import { ArrowUpRight, Check, Save } from 'lucide-react'
 import { supabase } from '../supabase'
 import { api } from '../api'
 
 /* ─────────────────────────────────────────────────────────────────────────
    Swagger — панель суперадмина в «Профиле», под «Расчётным сервером».
-   Всё, что нужно, чтобы открыть /api/docs и пользоваться «Try it out»:
 
-   • Пароль страницы. Зашит в бэкенде (app/apidocs.py, DOCS_PASSWORD) и
+   • Пароль к /api/docs зашит в бэкенде (app/apidocs.py, DOCS_PASSWORD) и
      приходит с сервера (`GET /api/admin/docs-password`, только суперадмину).
-     Во фронт его не вшиваем: бандл публичный, и пароль прочитал бы любой.
+     Во фронт его не вшиваем: бандл публичный.
+   • Токен — access_token ТЕКУЩЕЙ сессии, его Swagger ждёт в «Authorize».
+     Берётся из хранилища сессии в браузере, ничего нового не выпускается.
+     Живёт около часа (срок задаёт GoTrue) и обновляется сам — строка следит.
 
-   • Токен. Swagger в «Authorize» ждёт токен сессии — ту самую строку, что
-     уходит в каждом запросе к /api в заголовке `Authorization: Bearer …`.
-     Это токен ТЕКУЩЕЙ сессии вошедшего: ничего нового не выпускается, значение
-     берётся из хранилища сессии в браузере. Живёт он недолго (срок задаёт
-     GoTrue на сервере, обычно час) и обновляется сам; поле следит за сменой и
-     показывает актуальный. Прав токен не добавляет: это вход того же
-     пользователя, что смотрит на страницу.
-
-   У каждого поля справа 💾 — скопировать в буфер обмена.
-   Показывается только суперадмину (pages/Profile.jsx).
+   Значения — текст, а не поля ввода: их не редактируют, только копируют.
    ───────────────────────────────────────────────────────────────────────── */
 
-function CopyField({ id, label, value, placeholder, first }) {
+function SecretRow({ label, value, empty }) {
   const [copied, setCopied] = useState(false)
-  const [note, setNote] = useState('')               // подсказка, если буфер обмена недоступен
-  const inputRef = useRef(null)
+  const [manual, setManual] = useState(false)        // буфер обмена закрыт — выделили текст
+  const valueRef = useRef(null)
   const timer = useRef(null)
 
   useEffect(() => () => clearTimeout(timer.current), [])
 
   const copy = async () => {
-    setNote('')
+    setManual(false)
     try {
       await navigator.clipboard.writeText(value)
       setCopied(true)
       clearTimeout(timer.current)
-      timer.current = setTimeout(() => setCopied(false), 2500)
+      timer.current = setTimeout(() => setCopied(false), 2000)
     } catch {
-      // буфер обмена закрыт (http, старый браузер) — выделяем, дальше руками
-      inputRef.current?.select()
-      setNote('Выделено — скопируйте сочетанием Ctrl+C (⌘C).')
+      // http или старый браузер — выделяем значение, дальше Ctrl+C
+      const range = document.createRange()
+      range.selectNodeContents(valueRef.current)
+      const sel = window.getSelection()
+      sel.removeAllRanges(); sel.addRange(range)
+      setManual(true)
     }
   }
 
   return (
-    <div className="kb-field kb-admin-field" style={first ? { marginTop: 0 } : undefined}>
-      <label htmlFor={id}>{label}</label>
-      <div className="kb-copy">
-        <input id={id} ref={inputRef} className="kb-token" type="text" readOnly
-               spellCheck={false} autoComplete="off"
-               value={value} placeholder={placeholder}
-               onFocus={e => e.target.select()} />
-        <button type="button" className={`kb-copy-btn${copied ? ' is-done' : ''}`}
-                onClick={copy} disabled={!value}
-                title={copied ? 'Скопировано' : 'Скопировать'}
-                aria-label={copied ? 'Скопировано' : `Скопировать: ${label.toLowerCase()}`}>
-          {copied ? '✓' : '💾'}
-        </button>
-      </div>
-      {note && <div className="kb-hint">{note}</div>}
+    <div className="kb-secret">
+      <span className="kb-secret-label">{label}</span>
+      <span ref={valueRef} className={`kb-secret-value${value ? '' : ' is-empty'}`} title={value || undefined}>
+        {value || empty}
+      </span>
+      <button type="button" className={`kb-secret-copy${copied ? ' is-done' : ''}`}
+              onClick={copy} disabled={!value}
+              aria-label={`Скопировать: ${label.toLowerCase()}`}
+              title={manual ? 'Выделено — нажмите Ctrl+C (⌘C)' : copied ? 'Скопировано' : 'Скопировать'}>
+        {copied ? <Check size={16} strokeWidth={2.25} /> : <Save size={16} strokeWidth={1.75} />}
+      </button>
+      <span className="kb-sr" aria-live="polite">
+        {copied ? `${label} скопирован` : manual ? 'Выделено, нажмите Ctrl+C' : ''}
+      </span>
     </div>
   )
 }
 
 export default function ApiTokenPanel() {
   const [token, setToken] = useState('')
-  const [password, setPassword] = useState('')
-  const [pwState, setPwState] = useState('loading')  // loading | ok | error
+  const [docs, setDocs] = useState({ password: '', url: '/api/docs', state: 'loading' })
 
   const take = (session) => setToken(session?.access_token || '')
 
   useEffect(() => {
     let alive = true
     supabase.auth.getSession().then(({ data }) => { if (alive) take(data?.session) }).catch(() => {})
-    // токен обновляется сам (autoRefreshToken) — поле должно показывать новый
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (alive && session) take(session)
     })
     api.adminDocsPassword()
-      .then(d => { if (alive) { setPassword(d?.password || ''); setPwState('ok') } })
-      .catch(() => { if (alive) setPwState('error') })
+      .then(d => { if (alive) setDocs({ password: d?.password || '', url: d?.docs_url || '/api/docs', state: 'ok' }) })
+      .catch(() => { if (alive) setDocs(s => ({ ...s, state: 'error' })) })
     return () => { alive = false; subscription.unsubscribe() }
   }, [])
 
@@ -88,13 +82,16 @@ export default function ApiTokenPanel() {
     <div className="kb-admin">
       <div className="kb-admin-head">
         <span className="kb-account-title">Swagger</span>
-        <span className="kb-admin-badge">Администратор</span>
+        <a className="kb-admin-link" href={docs.url} target="_blank" rel="noopener">
+          Открыть <ArrowUpRight size={14} strokeWidth={2} aria-hidden="true" />
+        </a>
       </div>
 
-      <CopyField id="docs-password" label="Пароль страницы" value={password} first
-                 placeholder={pwState === 'error' ? 'не удалось получить — обновите страницу' : 'загружаем…'} />
-      <CopyField id="api-token" label="Токен" value={token}
-                 placeholder="сессия не найдена — войдите заново" />
+      <div className="kb-secrets">
+        <SecretRow label="Пароль" value={docs.password}
+                   empty={docs.state === 'error' ? 'не загрузился — обновите страницу' : 'загружается…'} />
+        <SecretRow label="Токен" value={token} empty="сессии нет — войдите заново" />
+      </div>
     </div>
   )
 }

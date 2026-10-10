@@ -320,3 +320,5 @@
 - 2026-10-08 · Карточка обхода на «Анализе»: убрано время (длительность съёмки) — из карточки и из плашки выбранного обхода.
 
 [2026-10-10] Панель «Swagger» в «Профиле»: заголовок «Swagger» вместо «Токен для Swagger»; большие кнопки «Скопировать»/«Обновить» убраны — у поля справа 💾; добавлено поле «Пароль страницы» (пароль к /api/docs) с тем же 💾. Пароль приходит с сервера новым методом `GET /api/admin/docs-password` (только суперадмин), во фронт не вшит. `frontend/src/components/ApiTokenPanel.jsx`, `frontend/src/pages/Profile.css`, `frontend/src/api.js`, `backend/app/routers/admin.py`, `backend/app/apidocs.py`.
+
+[2026-10-10] Панель «Swagger» переделана по craft-floor (impeccable): вместо полей ввода и эмодзи — список «подпись · значение · копировать» на одной подложке, иконки lucide (Save/Check) вместо 💾/✓, плашка «Администратор» заменена ссылкой «Открыть ↗» на /api/docs, на телефоне подпись уходит над значением. `frontend/src/components/ApiTokenPanel.jsx`, `frontend/src/pages/Profile.css`.
