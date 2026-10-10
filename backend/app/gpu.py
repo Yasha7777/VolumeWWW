@@ -358,22 +358,8 @@ def format_result_text(d: dict, material: str = "unknown", density_kg_m3: float 
     if status in ("success", "partial"):
         model_url = d.get("glb_url") or d.get("ply_url")
         vol = d.get("volume_m3")
-        cube_status = d.get("cube_status")
         height, width, depth = d.get("height_m"), d.get("width_m"), d.get("depth_m")
         area = d.get("footprint_area_m2")
-        total = _or(d.get("photos_total"), "?")
-
-        if cube_status == "found":
-            cube_line = (f"   ✅ Куб обнаружен (на {_or(d.get('cube_found_on_n_photos'), '?')} "
-                         f"из {total} фото)")
-        elif cube_status == "found_on_few_photos" or d.get("scale_reliable") is False:
-            kept = _or(d.get("cube_kept_on_n_photos"), d.get("cube_measurable_on_n_photos"), "?")
-            cube_line = ("   ⚠️ Куб обнаружен, но данных для надёжного масштаба недостаточно "
-                         f"({kept} пригодных кадров из {total})")
-        elif cube_status == "rejected_by_sanity_check":
-            cube_line = "   ⚠️ Куб обнаружен, но масштаб не прошёл проверку — объём недостоверен"
-        else:
-            cube_line = "   ⚠️ Куб не обнаружен"
 
         dims = ""
         if height is not None and width is not None and depth is not None:
@@ -387,23 +373,12 @@ def format_result_text(d: dict, material: str = "unknown", density_kg_m3: float 
 
         mass_t = (vol * density_kg_m3) / 1000 if (vol is not None and density_kg_m3 > 0) else None
 
-        scale_block = ""
-        if d.get("scale_reliable") is False:
-            warning = d.get("scale_warning") or "Масштаб модели недостоверен. Объём показан только справочно."
-            advice = d.get("capture_advice") or "Снимите калибровочный куб отдельно с 3–4 разных ракурсов."
-            scale_block = "\n".join([
-                "", "⚠️ ВНИМАНИЕ: ОБЪЁМ НЕДОСТОВЕРЕН", "", f"   {warning}", "",
-                "📸 Как повысить точность:", f"   {advice}",
-            ])
-        elif d.get("scale_reliable") is True:
-            scale_block = "\n✅ Масштаб модели надёжен"
-
-        # Режим VIO запрошен, а посчитано по кубу — говорим прямо: выдать объём
-        # по кубу за измеренный по VIO было бы обманом.
-        mode_line = ""
-        if d.get("scale_mode_requested") == "vio" and d.get("scale_mode") != "vio":
-            mode_line = ("\nℹ️ Режим VIO: масштаб по данным телефона на сервере пока не "
-                         "считается — объём посчитан по кубу")
+        # Куб убран из расчёта 10.10.2026, масштаб по позам ARKit ещё не
+        # подключён: объёма в м³ нет. Говорим прямо, почему.
+        scale_line = ""
+        if vol is None:
+            scale_line = ("   ℹ️ Объём в м³ пока не считается: калибровочный куб убран, "
+                          "масштаб по позам ARKit ещё не подключён")
 
         block = "\n".join(filter(None, [
             "\n",
@@ -411,9 +386,7 @@ def format_result_text(d: dict, material: str = "unknown", density_kg_m3: float 
             f"   Точек в облаке: {_int_ru(d.get('point_count'))}",
             f"   Объём DUSt3R: {_fixed(vol, 4)} м³" if vol is not None else "   Объём DUSt3R: не определён",
             dims,
-            cube_line,
-            scale_block,
-            mode_line,
+            scale_line,
             "⚖️ Масса (DUSt3R × LLaVA)",
             (f"   Плотность материала: {density_kg_m3} кг/м³" if density_kg_m3 > 0
              else "   Плотность: не определена"),
