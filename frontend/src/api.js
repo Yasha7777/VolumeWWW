@@ -251,4 +251,8 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url, token }),
     }),
+
+  // Пароль к странице Swagger (/api/docs): { password, docs_url }. Во фронт
+  // не вшит — бандл публичный; сервер отдаёт его только суперадмину.
+  adminDocsPassword: () => req('/admin/docs-password'),
 }

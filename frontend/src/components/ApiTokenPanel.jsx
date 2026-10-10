@@ -1,32 +1,73 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../supabase'
+import { api } from '../api'
 
 /* ─────────────────────────────────────────────────────────────────────────
-   Токен для Swagger — панель суперадмина в «Профиле», под «Расчётным сервером».
+   Swagger — панель суперадмина в «Профиле», под «Расчётным сервером».
+   Всё, что нужно, чтобы открыть /api/docs и пользоваться «Try it out»:
 
-   Swagger (/api/docs) в «Authorize» ждёт токен сессии — ту самую строку, что
-   уходит в каждом запросе к /api в заголовке `Authorization: Bearer …`. Раньше
-   её выковыривали из DevTools → Network → Headers; здесь она в поле с кнопкой
-   «Скопировать».
+   • Пароль страницы. Зашит в бэкенде (app/apidocs.py, DOCS_PASSWORD) и
+     приходит с сервера (`GET /api/admin/docs-password`, только суперадмину).
+     Во фронт его не вшиваем: бандл публичный, и пароль прочитал бы любой.
 
-   Это токен ТЕКУЩЕЙ сессии вошедшего: ничего нового не выпускается, с сервера
-   ничего не запрашивается — значение берётся из хранилища сессии в браузере.
-   Живёт он недолго (срок задаёт GoTrue на сервере, обычно час) и обновляется
-   сам; поле следит за сменой и показывает актуальный. «Обновить» — выпустить
-   новый сейчас, не дожидаясь срока.
+   • Токен. Swagger в «Authorize» ждёт токен сессии — ту самую строку, что
+     уходит в каждом запросе к /api в заголовке `Authorization: Bearer …`.
+     Это токен ТЕКУЩЕЙ сессии вошедшего: ничего нового не выпускается, значение
+     берётся из хранилища сессии в браузере. Живёт он недолго (срок задаёт
+     GoTrue на сервере, обычно час) и обновляется сам; поле следит за сменой и
+     показывает актуальный. Прав токен не добавляет: это вход того же
+     пользователя, что смотрит на страницу.
 
-   Показывается только суперадмину (pages/Profile.jsx). Прав токен не добавляет:
-   это вход того же пользователя, что смотрит на страницу.
+   У каждого поля справа 💾 — скопировать в буфер обмена.
+   Показывается только суперадмину (pages/Profile.jsx).
    ───────────────────────────────────────────────────────────────────────── */
+
+function CopyField({ id, label, value, placeholder, first }) {
+  const [copied, setCopied] = useState(false)
+  const [note, setNote] = useState('')               // подсказка, если буфер обмена недоступен
+  const inputRef = useRef(null)
+  const timer = useRef(null)
+
+  useEffect(() => () => clearTimeout(timer.current), [])
+
+  const copy = async () => {
+    setNote('')
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      clearTimeout(timer.current)
+      timer.current = setTimeout(() => setCopied(false), 2500)
+    } catch {
+      // буфер обмена закрыт (http, старый браузер) — выделяем, дальше руками
+      inputRef.current?.select()
+      setNote('Выделено — скопируйте сочетанием Ctrl+C (⌘C).')
+    }
+  }
+
+  return (
+    <div className="kb-field kb-admin-field" style={first ? { marginTop: 0 } : undefined}>
+      <label htmlFor={id}>{label}</label>
+      <div className="kb-copy">
+        <input id={id} ref={inputRef} className="kb-token" type="text" readOnly
+               spellCheck={false} autoComplete="off"
+               value={value} placeholder={placeholder}
+               onFocus={e => e.target.select()} />
+        <button type="button" className={`kb-copy-btn${copied ? ' is-done' : ''}`}
+                onClick={copy} disabled={!value}
+                title={copied ? 'Скопировано' : 'Скопировать'}
+                aria-label={copied ? 'Скопировано' : `Скопировать: ${label.toLowerCase()}`}>
+          {copied ? '✓' : '💾'}
+        </button>
+      </div>
+      {note && <div className="kb-hint">{note}</div>}
+    </div>
+  )
+}
 
 export default function ApiTokenPanel() {
   const [token, setToken] = useState('')
-  const [copied, setCopied] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [note, setNote] = useState('')               // подсказка, если буфер обмена недоступен
-  const [error, setError] = useState('')
-  const inputRef = useRef(null)
-  const copiedTimer = useRef(null)
+  const [password, setPassword] = useState('')
+  const [pwState, setPwState] = useState('loading')  // loading | ok | error
 
   const take = (session) => setToken(session?.access_token || '')
 
@@ -37,64 +78,23 @@ export default function ApiTokenPanel() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (alive && session) take(session)
     })
-    return () => { alive = false; subscription.unsubscribe(); clearTimeout(copiedTimer.current) }
+    api.adminDocsPassword()
+      .then(d => { if (alive) { setPassword(d?.password || ''); setPwState('ok') } })
+      .catch(() => { if (alive) setPwState('error') })
+    return () => { alive = false; subscription.unsubscribe() }
   }, [])
-
-  const copy = async () => {
-    setNote('')
-    try {
-      await navigator.clipboard.writeText(token)
-      setCopied(true)
-      clearTimeout(copiedTimer.current)
-      copiedTimer.current = setTimeout(() => setCopied(false), 2500)
-    } catch {
-      // буфер обмена закрыт (http, старый браузер) — выделяем, дальше руками
-      inputRef.current?.select()
-      setNote('Токен выделен — скопируйте его сочетанием Ctrl+C (⌘C).')
-    }
-  }
-
-  const refresh = async () => {
-    setError(''); setNote('')
-    setBusy(true)
-    try {
-      const { data, error: err } = await supabase.auth.refreshSession()
-      if (err || !data?.session) setError('Не удалось обновить токен. Проверьте связь и попробуйте ещё раз.')
-      else take(data.session)
-    } catch {
-      setError('Не удалось обновить токен. Проверьте связь и попробуйте ещё раз.')
-    }
-    setBusy(false)
-  }
 
   return (
     <div className="kb-admin">
       <div className="kb-admin-head">
-        <span className="kb-account-title">Токен для Swagger</span>
+        <span className="kb-account-title">Swagger</span>
         <span className="kb-admin-badge">Администратор</span>
       </div>
 
-      <div className="kb-field kb-admin-field" style={{ marginTop: 0 }}>
-        <input id="api-token" ref={inputRef} className="kb-token" type="text" readOnly
-               aria-label="Токен для Swagger"
-               spellCheck={false} autoComplete="off"
-               value={token} placeholder="сессия не найдена — войдите заново"
-               onFocus={e => e.target.select()} />
-      </div>
-
-      <div className="kb-admin-actions">
-        <button type="button" className="btn btn-primary" onClick={copy} disabled={!token}>
-          {copied ? 'Скопировано' : 'Скопировать'}
-        </button>
-        <button type="button" className="btn btn-secondary" onClick={refresh} disabled={busy}>
-          {busy ? 'Обновляем…' : 'Обновить'}
-        </button>
-        {note && <span className="kb-actions-note">{note}</span>}
-      </div>
-
-      {error && (
-        <div className="status error" role="alert"><div><strong>Токен не обновился</strong>{error}</div></div>
-      )}
+      <CopyField id="docs-password" label="Пароль страницы" value={password} first
+                 placeholder={pwState === 'error' ? 'не удалось получить — обновите страницу' : 'загружаем…'} />
+      <CopyField id="api-token" label="Токен" value={token}
+                 placeholder="сессия не найдена — войдите заново" />
     </div>
   )
 }

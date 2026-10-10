@@ -256,9 +256,23 @@
   .kb-admin-actions .btn { flex: 1 1 auto; }
 }
 
-/* токен для Swagger (components/ApiTokenPanel.jsx): длинная строка без пробелов —
-   моноширинно и мельче, чтобы в поле помещалось начало и было видно, что это он */
+/* панель «Swagger» (components/ApiTokenPanel.jsx): пароль и токен — строки без
+   пробелов, моноширинно и мельче, чтобы в поле помещалось начало и было видно, что это он */
 .kb-admin .kb-field input.kb-token { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: var(--fs-xs); text-overflow: ellipsis; }
+/* 💾 «скопировать» — внутри поля, у правого края; справа под неё оставлено место */
+.kb-copy { position: relative; }
+.kb-admin .kb-copy input { padding-right: 52px; }
+.kb-copy-btn {
+  position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+  display: grid; place-items: center; width: 38px; height: 38px;
+  padding: 0; border: none; border-radius: var(--r-xs); background: transparent;
+  font-size: 18px; line-height: 1; color: var(--green-ink); cursor: pointer;
+  transition: background .18s var(--ease);
+}
+.kb-copy-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.kb-copy-btn:focus-visible { outline: 2px solid var(--green-ink); outline-offset: 1px; }
+.kb-copy-btn:disabled { opacity: .35; cursor: default; }
+.kb-copy-btn.is-done { font-weight: 700; }
 
 @keyframes kb-breathe { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.06); opacity: .92; } }
 @keyframes kb-drift   { 0%,100% { transform: translateX(0); } 50% { transform: translateX(6px); } }

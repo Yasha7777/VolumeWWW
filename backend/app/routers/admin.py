@@ -3,6 +3,7 @@
   GET  /api/admin/gpu         текущие адрес, режим масштаба и «задан ли ключ»
   PUT  /api/admin/gpu         сохранить адрес / режим Cube|VIO / ключ доступа
   POST /api/admin/gpu/check   проверить связь с приёмником (расчёт не запускает)
+  GET  /api/admin/docs-password  пароль к странице Swagger (/api/docs)
 
 Права — только profiles.is_superadmin, и проверяются ЗДЕСЬ: панель в «Профиле»
 всего лишь UI, прямой запрос от обычного пользователя получает 403.
@@ -13,10 +14,11 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from .. import gpu
+from ..apidocs import DOCS_PASSWORD, DOCS_URL
 from ..auth import get_current_user
 from .analyses import _is_superadmin
 
@@ -77,3 +79,11 @@ async def check_gpu(data: GpuCheckRequest, _: dict = Depends(require_superadmin)
         return await gpu.check_gpu(url, token)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+
+
+@router.get("/docs-password")
+def get_docs_password(response: Response, _: dict = Depends(require_superadmin)):
+    # Пароль зашит в apidocs.py и во фронт НЕ копируется: бандл публичный, и
+    # пароль из него прочитал бы любой. Панель «Swagger» в «Профиле» берёт его здесь.
+    response.headers["Cache-Control"] = "no-store"
+    return {"password": DOCS_PASSWORD, "docs_url": DOCS_URL}

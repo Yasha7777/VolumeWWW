@@ -16,7 +16,8 @@
     относятся: это другой сервер. Они описаны здесь же руками по
     receiver_dust3r.py и показываются всегда. Поменялся приёмник -> правь тут.
 
-На работу самих методов файл НЕ влияет: роутеры его не импортируют, он только
+На работу самих методов файл НЕ влияет: роутеры из него берут только константу
+DOCS_PASSWORD (routers/admin.py показывает её суперадмину), а сам он лишь
 меняет то, что отдаёт /api/openapi.json. Сломается сборка описаний -> в лог
 уйдёт ошибка, а Swagger покажет обычную автосхему FastAPI.
 
@@ -71,7 +72,7 @@ SWAGGER_UI = {
 # только новее). Сменить версию = поправить номер здесь.
 SWAGGER_CDN = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14"
 
-DOCS_REVISION = "2026-10-08.2"   # правка описаний (дата.номер за день), видна в шапке Swagger
+DOCS_REVISION = "2026-10-10.1"   # правка описаний (дата.номер за день), видна в шапке Swagger
 UNDOC_TAG = "Без описания"
 HTTP_METHODS = ("get", "put", "post", "delete", "patch", "options", "head", "trace")
 
@@ -605,6 +606,23 @@ paths["/api/admin/gpu/check"] = {"post": {
         "400": err("Адрес не задан или с ошибкой", "Адрес расчётного сервера не задан",
                    "Адрес должен начинаться с http:// или https://"),
         "401": R401, "403": R403_ADMIN, "422": R422,
+    },
+}}
+
+paths["/api/admin/docs-password"] = {"get": {
+    "tags": ["Сайт · служебное"],
+    "summary": "Пароль к этой документации · БД",
+    "operationId": "getDocsPassword",
+    "x-calls": ["db"],
+    "security": SEC_USER,
+    "description": D(BE, A_ADMIN, [DB_ADMIN],
+                     "Отдаёт пароль страницы `/api/docs` (зашит в `app/apidocs.py`) для панели «Swagger» "
+                     "в «Профиле». Во фронт пароль не вшит: бандл сайта публичный."),
+    "responses": {
+        "200": {"description": "Пароль и адрес страницы", "content": js(
+            {"type": "object", "properties": {"password": {"type": "string"}, "docs_url": {"type": "string"}}},
+            {"password": "••••••••", "docs_url": "/api/docs"})},
+        "401": R401, "403": R403_ADMIN,
     },
 }}
 
