@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { useReducedMotion } from 'motion/react'
-import { buildSurface } from './surface'
 
 /* 3D-вид обхода: облако точек кучи, крутится само, тянется мышью/пальцем.
 
@@ -8,8 +7,11 @@ import { buildSurface } from './surface'
    • src: бинарник KSPC (плотное облако реконструкции, уже нормировано:
      земля y=0, радиус подошвы ≈ 1). Формат — frontend/scripts/cloud_asset.py:
      'KSPC', uint32 count, float32 lim, float32 height, int16[3]·count, uint8[3]·count.
-   • data: { points: [[x,y,z]…], cameras?: [[x,y,z]…] } — разреженные точки ARKit
-     (метры, y вверх по гравитации) и позиции камеры на кадрах. Нормируем здесь.
+   • data: { points: [[x,y,z]…], cameras?: [[x,y,z]…], pile?: [0|1…], surface? } —
+     точки ARKit (метры, y вверх по гравитации), позиции камеры на кадрах и
+     поверхность кучи с объёмом. Поверхность и объём считает бэкенд
+     (backend/app/pile.py, GET /api/scans/{id}/cloud), здесь только нормируем
+     и рисуем. pile[i] = 1 — точка лежит на куче.
 
    three.js грузится динамически — только когда открыли вкладку 3D. */
 
@@ -28,10 +30,19 @@ async function loadKSPC(url) {
   return { positions, colors, height, count: n, cameras: null }
 }
 
-function normalizeArkit({ points, cameras }) {
+/* Поверхность с бэкенда: сетка высот кучи в см над землёй, −1 — вне петли
+   обхода. Отрезанные бугры там уже ровная земля. */
+function decodeSurface(S) {
+  if (!S?.grid?.h) return null
+  const { nx, nz, cell, x0, z0, h } = S.grid
+  const H = new Float32Array(nx * nz), mask = new Uint8Array(nx * nz)
+  for (let q = 0; q < h.length; q++) if (h[q] >= 0) { H[q] = h[q] / 100; mask[q] = 1 }
+  return { ...S, nx, nz, cell, x0, z0, h: H, mask }
+}
+
+function normalizeArkit({ points, cameras, pile, surface }) {
   const n = points.length
-  // поверхность, земля и область кучи (метры); см. surface.js
-  const surf = buildSurface(points, cameras || [])
+  const surf = decodeSurface(surface)
   let cx, cz, r
   if (surf) {
     // центр и масштаб — по петле обхода, а не по всем точкам: фон (деревья,
@@ -50,7 +61,8 @@ function normalizeArkit({ points, cameras }) {
   const roi = new Float32Array(n).fill(1)
   points.forEach((p, i) => {
     positions[i * 3] = (p[0] - cx) / r; positions[i * 3 + 1] = (p[1] - ground(p[0], p[2])) / r; positions[i * 3 + 2] = (p[2] - cz) / r
-    if (surf) roi[i] = surf.inRoi[i]
+    // на поверхности показываем только точки кучи: бугры и фон — в режиме «Точки»
+    if (surf && pile) roi[i] = pile[i] ? 1 : 0
   })
   // высота для цвета/анимации — по куче, а не по самой высокой точке фона
   let top = 0
@@ -63,14 +75,14 @@ function normalizeArkit({ points, cameras }) {
   }
   const cams = cameras?.length ? cameras.map((c) => [(c[0] - cx) / r, (c[1] - ground(c[0], c[2])) / r, (c[2] - cz) / r]) : null
   // сетка поверхности в тех же нормированных координатах, что и точки
-  const surface = surf && surf.top > 0 ? {
+  const surfaceN = surf && surf.top > 0 ? {
     nx: surf.nx, nz: surf.nz, step: surf.cell / r, x0: (surf.x0 - cx) / r, z0: (surf.z0 - cz) / r,
     h: surf.h.map((v) => v / r), mask: surf.mask, scale: r,
     hull: surf.hull.map(([x, z]) => [(x - cx) / r, (z - cz) / r]),
-    volume: surf.volume, range: surf.volumeRange, area: surf.area, top: surf.top, size: surf.size,
+    volume: surf.volume, range: surf.range, area: surf.area, top: surf.top, size: surf.size,
     closed: surf.closed, groundSource: surf.plane.source, hold: surf.plane.hold, foot: surf.foot,
   } : null
-  return { positions, colors, roi, height: top || 0.4, count: n, cameras: cams, surface }
+  return { positions, colors, roi, height: top || 0.4, count: n, cameras: cams, surface: surfaceN }
 }
 
 /* Сетка высот → треугольники. Клетки вне маски (там нет данных) не рисуем,
@@ -396,13 +408,13 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
             <button type="button" className={view === 'points' ? 'is-on' : ''} aria-pressed={view === 'points'} onClick={() => setView('points')}>Точки</button>
           </div>
           {view === 'surface' && (
-            <div className="ks-cloud__vol" title="Предварительно: по разреженным точкам ARKit, без реконструкции. Диапазон — от неточности уровня земли.">
+            <div className="ks-cloud__vol" title="Предварительно: по точкам ARKit, без реконструкции. Диапазон — от неточности уровня земли.">
               <b>≈ {fmtVol(surf.volume)} м³</b>
               <span>диапазон {fmtVol(surf.range[0])}–{fmtVol(surf.range[1])} м³</span>
               {surf.foot && <span className="is-warn">у подошвы слой {fmtM(surf.foot.lift * 100, 0)} см: если это земля — ≈ {fmtVol(surf.foot.volume)} м³</span>}
               <span>высота {fmtM(surf.top, 1)} м · подошва ≈{fmtM(surf.size[0], 0)}×{fmtM(surf.size[1], 0)} м</span>
               {!surf.closed && <span className="is-warn">обход не замкнут — объём ненадёжен</span>}
-              {surf.closed && surf.groundSource !== 'path' && <span className="is-warn">земля найдена по точкам, не по траектории</span>}
+              {surf.closed && (surf.groundSource === 'points' || surf.groundSource === 'flat') && <span className="is-warn">земля найдена по точкам, не по траектории</span>}
               <span>по точкам VIO, предварительно</span>
             </div>
           )}

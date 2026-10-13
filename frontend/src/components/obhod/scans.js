@@ -127,8 +127,10 @@ export function useTrack(scan, demo) {
 }
 
 /* Облако точек для вкладки 3D. Демо — плотная реконструкция из набора.
-   Реальный обход — разреженные точки ARKit и позиции камеры из scan.json
-   (GET /api/scans/{id}/cloud); после анализа сюда можно подставить плотное облако. */
+   Реальный обход — точки ARKit, позиции камеры и поверхность кучи с
+   предварительным объёмом (GET /api/scans/{id}/cloud). Объём считает бэкенд
+   по ВСЕМ точкам обхода (backend/app/pile.py), сюда приходит до 6000 точек
+   только для вида — поэтому в подписи число точек расчёта, а не показанных. */
 const cloudCache = new Map()
 export function useCloud(scan, demo) {
   const [cloud, setCloud] = useState(null)
@@ -146,8 +148,14 @@ export function useCloud(scan, demo) {
     api.getScanCloud(scan.id)
       .then((c) => {
         const n = c?.points?.length || 0
+        const used = c?.surface?.points_used ?? c?.points_total ?? n
+        const nc = c?.cameras?.length || 0
         const v = n
-          ? { data: { points: c.points, cameras: c.cameras || null }, title: scan.title, meta: `Облако ARKit · ${n.toLocaleString('ru-RU')} точек · ${c.cameras?.length || 0} кадров` }
+          ? {
+              data: { points: c.points, cameras: c.cameras || null, pile: c.pile || null, surface: c.surface || null },
+              title: scan.title,
+              meta: `Облако ARKit · в расчёте ${used.toLocaleString('ru-RU')} ${plural(used, 'точка', 'точки', 'точек')} · ${nc} ${plural(nc, 'кадр', 'кадра', 'кадров')}`,
+            }
           : { empty: 'В этом обходе нет точек ARKit' }
         cloudCache.set(scan.id, v)
         if (alive) setCloud(v)

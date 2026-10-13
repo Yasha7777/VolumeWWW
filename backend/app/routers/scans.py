@@ -7,7 +7,9 @@
   GET  /api/scans/               список обходов пользователя (+ обложка, автор)
   GET  /api/scans/{id}/track     траектория камеры, вид сверху, в метрах ARKit,
                                  + до 12 кадров с миниатюрами для проигрывания
-  GET  /api/scans/{id}/cloud     разреженное облако ARKit + позиции камеры (3D)
+  GET  /api/scans/{id}/cloud     облако ARKit + позиции камеры (3D) и
+                                 предварительный объём кучи по точкам ARKit
+                                 (считается здесь, app/pile.py)
   POST /api/scans/{id}/analyze   анализ обхода: строка analyses (scan_id) из
                                  кадров обхода + расчёт на GPU-сервере (gpu.py);
                                  вместе с кадрами уходят данные ARKit по каждому
@@ -35,7 +37,7 @@ import json
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
-from .. import gpu
+from .. import gpu, pile
 from ..auth import get_current_user
 from ..config import settings
 from ..supabase_client import supabase
@@ -434,6 +436,7 @@ def analyze_scan(
 
 # 6000 точек с точностью до сантиметра ≈ 90 КБ JSON (≈ 30 КБ gzip). Ответы
 # крупнее ~200 КБ через прокси сервера обрывались (ERR_CONTENT_LENGTH_MISMATCH).
+# Это предел только для ВИДА: объём считается по всем точкам обхода.
 CLOUD_MAX_POINTS = 6000
 
 
@@ -456,32 +459,10 @@ def _finite(v) -> bool:
 
 
 def build_cloud(scan_json: dict) -> dict:
-    """Точки ARKit со всех кадров, по одному разу на идентификатор (последнее
-    наблюдение точнее первого), + позиции камеры. Метры, y — вверх."""
-    by_id: dict = {}
-    anon: list = []
-    cameras: list = []
-    for fr in scan_json.get("frames") or []:
-        m = fr.get("cameraTransform") or []
-        if len(m) == 16 and all(_finite(m[i]) for i in (12, 13, 14)):
-            cameras.append([round(m[12], 2), round(m[13], 2), round(m[14], 2)])
-        pts = fr.get("featurePoints") or []
-        ids = fr.get("featurePointIdentifiers") or []
-        for k in range(0, len(pts) - 2, 3):
-            x, y, z = pts[k], pts[k + 1], pts[k + 2]
-            if not (_finite(x) and _finite(y) and _finite(z)):
-                continue
-            p = [round(x, 2), round(y, 2), round(z, 2)]
-            j = k // 3
-            if j < len(ids):
-                by_id[ids[j]] = p
-            else:
-                anon.append(p)
-    points = list(by_id.values()) + anon
-    if len(points) > CLOUD_MAX_POINTS:
-        step = len(points) / CLOUD_MAX_POINTS
-        points = [points[int(i * step)] for i in range(CLOUD_MAX_POINTS)]
-    return {"points": points, "cameras": cameras}
+    """Точки ARKit (медиана наблюдений, не больше CLOUD_MAX_POINTS для вида),
+    флаг «точка кучи», позиции камеры и поверхность кучи с объёмом — по ВСЕМ
+    точкам обхода. Метры, y — вверх. Алгоритм — app/pile.py."""
+    return pile.build_cloud(scan_json, CLOUD_MAX_POINTS)
 
 
 def _json_response(request: Request, data) -> Response:
@@ -493,7 +474,7 @@ def _json_response(request: Request, data) -> Response:
     return Response(raw, media_type="application/json")
 
 
-CLOUD_VERSION = 2   # поменять — и закэшированные cloud.json пересчитаются
+CLOUD_VERSION = 3   # поменять — и закэшированные cloud.json пересчитаются (3: объём на бэкенде)
 
 
 @router.get("/{scan_id}/cloud")
