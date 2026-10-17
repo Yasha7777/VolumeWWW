@@ -29,6 +29,12 @@ services:
       options: { max-size: "10m", max-file: "3" }
     ports:
       - "80:80"
+    # Пароль на приложение (всё, кроме лендинга) — см. frontend/nginx.conf.
+    # Файл создаётся на сервере и в git не попадает (.gitignore):
+    #   printf 'логин:%s\n' "$(openssl passwd -apr1)" > .htpasswd
+    # Если файла нет, docker создаст на его месте ПАПКУ → на /app будет 500.
+    volumes:
+      - ./.htpasswd:/etc/nginx/htpasswd:ro
     depends_on:
       - backend
     networks:

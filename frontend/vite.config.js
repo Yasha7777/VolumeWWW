@@ -48,7 +48,10 @@ export default defineConfig({
         // нужны только тем, кто включил эту тему, а это ~200 КБ фоновой загрузки
         // при установке PWA каждому. Их CSS в прекэше есть; без сети тема
         // покажется системными шрифтами — как было, пока шрифты шли с Google.
-        globIgnores: ['**/assets/play-*.woff2', '**/assets/jura-*.woff2', '**/assets/ibm-plex-mono-*.woff2'],
+        // shell.html — оболочка приложения, она под паролем (nginx.conf): у
+        // посетителя лендинга её прекэш получил бы 401 и сорвал установку SW.
+        // Снимут пароль — убрать отсюда и вернуть NavigationRoute в sw.js.
+        globIgnores: ['**/shell.html', '**/assets/play-*.woff2', '**/assets/jura-*.woff2', '**/assets/ibm-plex-mono-*.woff2'],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
       },
     }),

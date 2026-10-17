@@ -1,8 +1,7 @@
 /* Service Worker — Volumetric Gottland PWA.
    injectManifest: workbox прекэширует оболочку (self.__WB_MANIFEST
    подставляется на сборке). /api/* НЕ кэшируем — приложение всегда идёт в сеть. */
-import { precacheAndRoute, createHandlerBoundToURL } from 'workbox-precaching'
-import { NavigationRoute, registerRoute } from 'workbox-routing'
+import { precacheAndRoute } from 'workbox-precaching'
 import { clientsClaim } from 'workbox-core'
 
 // Берём управление страницей сразу после первой загрузки — без второго
@@ -12,18 +11,22 @@ clientsClaim()
 
 precacheAndRoute(self.__WB_MANIFEST || [])   // ← ОДИН раз (было продублировано — отсюда падала сборка)
 
-// SPA-навигация → закешированная ПУСТАЯ оболочка shell.html (кроме /api/ и
-// ФАЙЛОВ). Не index.html: там теперь пререндер лендинга, и на /app до старта
-// JS мелькал бы лендинг. Сами публичные страницы сюда не доходят — их раньше
-// отдаёт precacheAndRoute: / → index.html, /privacy → privacy.html, так же
-// /consent и /terms (cleanURLs).
-// Путь с расширением — это настоящий файл из public/ (robots.txt, llms.txt,
-// yandex_*.html для Вебмастера), а не роут SPA: у роутов точек нет. Без этого
-// исключения SW отдавал на такие адреса оболочку → в браузере рисовалась
-// наша 404, хотя nginx файл отдаёт.
-registerRoute(new NavigationRoute(createHandlerBoundToURL('/shell.html'), {
-  denylist: [/^\/api\//, /\/[^/?]+\.[^/]+$/],
-}))
+// Навигацию SW НЕ перехватывает, пока приложение закрыто паролем (basic auth
+// в nginx.conf). Раньше здесь был NavigationRoute → закешированная оболочка
+// shell.html для /app, /login и т.д. С паролем это ломалось дважды: SW отдавал
+// /app из кэша в обход пароля, а прекэш shell.html у посетителя лендинга
+// получал 401 и валил установку SW целиком. Теперь роуты приложения всегда
+// идут в сеть (nginx спросит пароль), публичные страницы по-прежнему отдаёт
+// precacheAndRoute выше: / → index.html, /privacy → privacy.html, /consent,
+// /terms (cleanURLs). Цена: /app не открывается без сети с нуля.
+//
+// Вернуть, когда пароль снимут (и убрать shell.html из globIgnores в
+// vite.config.js):
+//   import { NavigationRoute, registerRoute } from 'workbox-routing'
+//   import { createHandlerBoundToURL } from 'workbox-precaching'
+//   registerRoute(new NavigationRoute(createHandlerBoundToURL('/shell.html'), {
+//     denylist: [/^\/api\//, /\/[^/?]+\.[^/]+$/],
+//   }))
 
 self.addEventListener('message', (e) => { if (e.data === 'kb-skip-waiting') self.skipWaiting() })
 
