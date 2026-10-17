@@ -51,7 +51,9 @@ export default defineConfig({
         // shell.html — оболочка приложения, она под паролем (nginx.conf): у
         // посетителя лендинга её прекэш получил бы 401 и сорвал установку SW.
         // Снимут пароль — убрать отсюда и вернуть NavigationRoute в sw.js.
-        globIgnores: ['**/shell.html', '**/assets/play-*.woff2', '**/assets/jura-*.woff2', '**/assets/ibm-plex-mono-*.woff2'],
+        // lp.html и lp/ — статический лендинг на / (nginx.conf): service worker его не регистрирует,
+        // а three.js, шрифты и облака лендинга (~1 МБ) пользователям приложения в прекэше не нужны.
+        globIgnores: ['**/shell.html', '**/assets/play-*.woff2', '**/assets/jura-*.woff2', '**/assets/ibm-plex-mono-*.woff2', 'lp.html', 'lp/**'],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
       },
     }),

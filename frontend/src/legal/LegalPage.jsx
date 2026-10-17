@@ -52,7 +52,8 @@ export default function LegalPage({ path, title, children }) {
       </div>
 
       <nav aria-label="Документы сервиса" style={{ marginTop: 20, fontSize: 13, lineHeight: 1.9, color: 'var(--muted)' }}>
-        <Link to="/" style={LINK}>На главную</Link>
+        {/* <a>, а не <Link>: главная — статический лендинг (nginx: / → lp.html), не роут SPA */}
+        <a href="/" style={LINK}>На главную</a>
         {DOCS.filter((d) => d.to !== path).map((d) => (
           <span key={d.to}>{' · '}<Link to={d.to} style={LINK}>{d.label}</Link></span>
         ))}

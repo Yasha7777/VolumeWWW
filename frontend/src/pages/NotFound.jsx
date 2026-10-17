@@ -148,13 +148,14 @@ export default function NotFound() {
       <div className="kb-404__vign" aria-hidden="true" />
       <div className="kb-404__grain" aria-hidden="true" />
 
-      <Link to="/" className="kb-404__mark">
+      {/* <a>, а не <Link>: главная — статический лендинг (nginx: / → lp.html), не роут SPA */}
+      <a href="/" className="kb-404__mark">
         <House strokeWidth={1.75} aria-hidden="true" />
         <span className="kb-404__mark-txt">
           <b>Volumetric Gottland</b>
           <span>ИИ · объём и масса</span>
         </span>
-      </Link>
+      </a>
 
       <main className="kb-404__in">
 
@@ -237,10 +238,10 @@ export default function NotFound() {
                 отклик появляется в момент нажатия, как и требует п.1 скилла. */}
             <motion.div className="kb-404__act"
               whileTap={reduce ? undefined : { scale: 0.97 }} transition={{ duration: 0.1 }}>
-              <Link to="/" className="kb-404__btn kb-404__btn--solid">
+              <a href="/" className="kb-404__btn kb-404__btn--solid">
                 <ArrowLeft strokeWidth={2} aria-hidden="true" />
                 Вернуться. Тихо. Не спеша.
-              </Link>
+              </a>
             </motion.div>
             <motion.div className="kb-404__act"
               whileTap={reduce ? undefined : { scale: 0.97 }} transition={{ duration: 0.1 }}>

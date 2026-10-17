@@ -40,7 +40,8 @@ export const PUBLIC_ROUTES = [
     page: 'landing',
     title: 'Расчёт объёма и массы насыпи по фото — Volumetric Gottland',
     description: 'Снимите насыпь щебня, песка или грунта на телефон со всех сторон — сервис соберёт 3D-модель, посчитает объём в м³ и массу в тоннах и выдаст PDF-отчёт.',
-    sources: ['src/pages/Landing.jsx', 'src/landing.css', 'src/seo/routes.js'],
+    // на / с 2026-10-17 отдаётся статический public/lp.html (nginx.conf); lastmod — и по нему
+    sources: ['public/lp.html', 'public/lp/landing.js', 'src/pages/Landing.jsx', 'src/landing.css', 'src/seo/routes.js'],
   },
   {
     path: '/privacy',
