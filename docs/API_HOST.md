@@ -94,7 +94,7 @@ curl -i https://volumetric.gottland.ru/
   `VITE_API_URL` в `frontend/.env.local` при сборке);
 - домен API в контейнере — второй `server` в конце `frontend/nginx.conf`,
   проксирование — `frontend/api-proxy.conf`;
-- приложение VolmetricARKit пока ходит на `https://volumetric.gottland.ru/api`
-  (`Services/AppConfig.swift`, `apiURL`) — его нужно перевести на новый адрес
-  отдельной сборкой; до этого под паролем сайта оно не работает.
-- Сменили имя домена — поправить все три места: `api.js`, `nginx.conf`, этот файл.
+- приложение VolmetricARKit ходит на домен API с версии 1.04.002 (2)
+  (`Services/AppConfig.swift`, `apiURL`); у версий до неё старый адрес, под
+  паролем сайта они профиль и отправку обходов не могут.
+- Сменили имя домена — поправить все места: `api.js`, `nginx.conf`, этот файл и `AppConfig.swift` приложения (новая версия).

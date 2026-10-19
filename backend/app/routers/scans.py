@@ -474,7 +474,7 @@ def _json_response(request: Request, data) -> Response:
     return Response(raw, media_type="application/json")
 
 
-CLOUD_VERSION = 3   # поменять — и закэшированные cloud.json пересчитаются (3: объём на бэкенде)
+CLOUD_VERSION = 4   # поменять — и закэшированные cloud.json пересчитаются (3: объём на бэкенде; 4: точки 1.05, доля подтверждённого объёма, дрейф петли)
 
 
 @router.get("/{scan_id}/cloud")

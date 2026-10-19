@@ -123,6 +123,94 @@ def test_lost_tracking_segment_ignored():
     assert abs(s["volume"] / CONE_V - 1) < 0.10, s["volume"]
 
 
+# ─── расширенная запись приложения 1.05 (scan.json → "capture") ─────────────
+
+def with_dense(scan, seed=2, hide_above=None):
+    """Тот же обход + capture.densePoints: каждая точка видна ~12 раз,
+    база 0.3 м, шум 6 мм. hide_above — точек кучи выше этой высоты нет."""
+    rng = np.random.default_rng(seed)
+    by_id = {}
+    for f in scan["frames"]:
+        pts, ids = f["featurePoints"], f["featurePointIdentifiers"]
+        for j, pid in enumerate(ids):
+            by_id.setdefault(pid, []).append(pts[3 * j: 3 * j + 3])
+    ids, mean = [], []
+    for pid, obs in by_id.items():
+        p = np.median(np.asarray(obs), axis=0)
+        if hide_above is not None and p[1] - ground(p[0], p[2]) > hide_above:
+            continue
+        ids.append(pid)
+        mean.append(p + rng.normal(0, 0.003, 3))
+    n = len(ids)
+    mm = lambda a: np.round(np.asarray(a) * 1000).astype(int).ravel().tolist()
+    scan["capture"] = {"schema": 1, "densePoints": {
+        "sampleHz": 30, "ids": ids, "meanMm": mm(mean), "lastMm": mm(mean),
+        "count": [12] * n, "spreadMm": [6] * n, "baselineMm": [300] * n, "rangeMm": [2000] * n,
+        "firstMs": [0] * n, "lastMs": [400] * n, "segment": [0] * n}}
+    return scan
+
+
+def test_dense_points_used_and_volume_kept():
+    c = pile.build_cloud(with_dense(make_scan(bump=False)))
+    s = c["surface"]
+    assert c["points_source"] == "dense"
+    assert abs(s["volume"] / CONE_V - 1) < 0.08, s["volume"]
+    assert s["volume_frames"] is not None and abs(s["volume_frames"] / CONE_V - 1) < 0.08
+
+
+def test_dense_filters_short_tracks():
+    scan = with_dense(make_scan(bump=False))
+    d = scan["capture"]["densePoints"]
+    d["count"] = [3] * len(d["ids"])                     # видели 3 раза — мало
+    c = pile.build_cloud(scan)
+    assert c["points_source"] == "frames"
+
+
+def test_old_scan_without_capture_unchanged():
+    c = pile.build_cloud(make_scan(bump=False))
+    assert c["points_source"] == "frames" and c["quality"] is None
+    assert "volume_frames" not in c["surface"]
+
+
+def hide_top(scan, h):
+    """Вершину выше h не видел ни один кадр."""
+    for f in scan["frames"]:
+        pts, ids = f["featurePoints"], f["featurePointIdentifiers"]
+        keep = [j for j in range(len(ids)) if pts[3 * j + 1] - ground(pts[3 * j], pts[3 * j + 2]) <= h]
+        f["featurePoints"] = [v for j in keep for v in pts[3 * j: 3 * j + 3]]
+        f["featurePointIdentifiers"] = [ids[j] for j in keep]
+    return scan
+
+
+def test_support_share_drops_when_top_hidden():
+    full_c = pile.build_cloud(with_dense(make_scan(bump=False)))
+    cut_c = pile.build_cloud(with_dense(hide_top(make_scan(bump=False), 0.5)))
+    assert full_c["points_source"] == cut_c["points_source"] == "dense"
+    full, cut = full_c["surface"]["support"], cut_c["surface"]["support"]
+    assert full["volume_share"] > 0.9, full
+    assert cut["volume_share"] < full["volume_share"] - 0.15, (full, cut)
+    # вершина выше 0.5 м — четверть площади конуса, а под ней ~40 % объёма
+    assert 0.45 < cut["volume_share"] < 0.75, cut
+    assert cut["top_share"] < full["top_share"] - 0.3, (full, cut)
+
+
+def test_loop_drift_from_frames():
+    scan = make_scan(bump=False)
+    n = len(scan["frames"])
+    for i, f in enumerate(scan["frames"]):
+        f["timestamp"] = 100.0 + i
+    # первые кадры снимают то же, что последние; у последних всё ниже на 4 см
+    for k in range(10):
+        head, tail = scan["frames"][k], scan["frames"][n - 1 - k]
+        tail["featurePoints"] = list(head["featurePoints"])
+        tail["featurePointIdentifiers"] = [i + 10 ** 6 for i in head["featurePointIdentifiers"]]
+        pts = tail["featurePoints"]
+        for j in range(1, len(pts), 3):
+            pts[j] -= 0.04
+    d = pile.loop_drift_cm(scan)
+    assert d is not None and abs(d + 4) < 0.6, d
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

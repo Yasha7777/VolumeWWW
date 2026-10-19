@@ -81,6 +81,7 @@ function normalizeArkit({ points, cameras, pile, surface }) {
     hull: surf.hull.map(([x, z]) => [(x - cx) / r, (z - cz) / r]),
     volume: surf.volume, range: surf.range, area: surf.area, top: surf.top, size: surf.size,
     closed: surf.closed, groundSource: surf.plane.source, hold: surf.plane.hold, foot: surf.foot,
+    support: surf.support || null,
   } : null
   return { positions, colors, roi, height: top || 0.4, count: n, cameras: cams, surface: surfaceN }
 }
@@ -254,7 +255,7 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
           cleanup.push(() => person.traverse((o) => { o.geometry?.dispose(); o.material?.dispose() }))
         }
         const S = cloud.surface
-        setSurf({ volume: S.volume, range: S.range, area: S.area, top: S.top, size: S.size, closed: S.closed, groundSource: S.groundSource, foot: S.foot })
+        setSurf({ volume: S.volume, range: S.range, area: S.area, top: S.top, size: S.size, closed: S.closed, groundSource: S.groundSource, foot: S.foot, support: S.support })
       }
       // точки поверх поверхности — мельче и золотом, как на скриншоте анализа
       const baseSize = mat.uniforms.uSize.value
@@ -413,6 +414,12 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
               <span>диапазон {fmtVol(surf.range[0])}–{fmtVol(surf.range[1])} м³</span>
               {surf.foot && <span className="is-warn">у подошвы слой {fmtM(surf.foot.lift * 100, 0)} см: если это земля — ≈ {fmtVol(surf.foot.volume)} м³</span>}
               <span>высота {fmtM(surf.top, 1)} м · подошва ≈{fmtM(surf.size[0], 0)}×{fmtM(surf.size[1], 0)} м</span>
+              {/* доля объёма над клетками с точками ARKit; остальное — заполнение (pile.py, support) */}
+              {surf.support?.volume_share != null && (
+                <span className={surf.support.volume_share < 0.6 ? 'is-warn' : ''}>
+                  подтверждено точками {Math.round(surf.support.volume_share * 100)} % объёма
+                </span>
+              )}
               {!surf.closed && <span className="is-warn">обход не замкнут — объём ненадёжен</span>}
               {surf.closed && (surf.groundSource === 'points' || surf.groundSource === 'flat') && <span className="is-warn">земля найдена по точкам, не по траектории</span>}
               <span>по точкам VIO, предварительно</span>

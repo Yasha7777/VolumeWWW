@@ -26,6 +26,14 @@
      часто наклонная: «14 м³» — асфальт под ногами на 25 см выше газона).
   9. Объём = Σ высот × площадь клетки внутри кучи (ARKit в метрах → м³).
      Разброс — от неточности земли (её сдвиг на ±δ меняет объём на ≈ S·δ).
+
+С приложения 1.05.000 в scan.json есть ключ "capture" — точки ARKit с каждого
+второго кадра (≈30 в секунду), а не только в момент фото. Тогда точки берутся
+оттуда (среднее по наблюдениям; отбор — DENSE_*), а объём по точкам с фото
+отдаётся рядом, `volume_frames`, для сверки. Плюс «доля подтверждённого
+объёма» (`support`): какая часть объёма кучи лежит над клетками, где есть
+точки, а какая — заполнение (замер 19.10.2026: у куч 08.10 — 49–74 %), и
+дрейф по петле (`loop_drift_cm`).
 """
 import logging
 import warnings
@@ -50,6 +58,12 @@ GAZE_NEAR_R = 0.6            # кучей считаем бугор не дал�
 BAND_M = (0.15, 1.0)
 BAND_MIN_PTS, BAND_MIN_SECTORS, BAND_SECTOR_PTS = 60, 5, 8
 BAND_MAX_SIGMA_M, BAND_MAX_TILT_DEG = 0.08, 12.0
+# точки расширенной записи (30 наблюдений в секунду): видели не меньше 8 раз
+# (≈ 0.27 с) и камера за это время сдвинулась хотя бы на 5 см — иначе у точки
+# нет базы для триангуляции. Пороги черновые: проверить на обходах 1.05.
+DENSE_MIN_COUNT = 8
+DENSE_MIN_BASELINE_M = 0.05
+DENSE_MAX_SPREAD_M = 0.15
 RENDER_MIN_CELLS = 90        # сетка для вида мельче — удваиваем
 
 
@@ -94,11 +108,96 @@ def collect(scan):
     pts = np.array([np.median(np.asarray(v), axis=0) for v in by_id.values()]).reshape(-1, 3)
     min_obs = MIN_OBS if (nobs >= MIN_OBS).sum() >= MIN_POINTS else 1
     keep = nobs >= min_obs
-    return {
+    out = {
         "points": pts[keep], "n_ids": int(len(by_id)), "min_obs": min_obs,
         "cams": np.asarray(cams, float).reshape(-1, 3),
         "fwd": np.asarray(fwd, float).reshape(-1, 3),
+        "source": "frames", "main_seg": main_seg,
     }
+    dense = dense_points(scan, main_seg)
+    if dense is not None and len(dense) >= max(MIN_POINTS, len(out["points"])):
+        out["frame_points"] = out["points"]
+        out["points"] = dense
+        out["source"] = "dense"
+    return out
+
+
+def _dense(scan):
+    cap = scan.get("capture") if isinstance(scan, dict) else None
+    d = cap.get("densePoints") if isinstance(cap, dict) else None
+    return d if isinstance(d, dict) and d.get("ids") else None
+
+
+def dense_points(scan, main_seg=0):
+    """Точки расширенной записи (м), прошедшие отбор; None — записи нет."""
+    d = _dense(scan)
+    if d is None:
+        return None
+    try:
+        n = len(d["ids"])
+        mean = np.asarray(d["meanMm"], float).reshape(n, 3) / 1000
+        count = np.asarray(d["count"], float)
+        base = np.asarray(d["baselineMm"], float) / 1000
+        spread = np.asarray(d["spreadMm"], float) / 1000
+        seg = np.asarray(d.get("segment") or [0] * n, float)
+    except (KeyError, ValueError, TypeError):
+        logger.warning("capture.densePoints не читается — беру точки с фото")
+        return None
+    ok = ((count >= DENSE_MIN_COUNT) & (base >= DENSE_MIN_BASELINE_M)
+          & (spread <= DENSE_MAX_SPREAD_M) & (seg == main_seg) & np.all(np.isfinite(mean), axis=1))
+    return mean[ok]
+
+
+def loop_drift_cm(scan, frac=0.15, cell=0.2, min_common=15):
+    """Разница высот одних и тех же мест в начале и в конце обхода, см.
+
+    Номера точек ARKit в начале и в конце не совпадают (замер 19.10), поэтому
+    сравнивается геометрия: медиана высоты в клетке `cell` у точек, впервые
+    увиденных в первые `frac` времени, против последних `frac`; медиана
+    разниц по общим клеткам. То же, что считает приложение (CaptureAnalysis)."""
+    d = _dense(scan)
+    if d is not None:
+        try:
+            n = len(d["ids"])
+            P = np.asarray(d["meanMm"], float).reshape(n, 3) / 1000
+            t = np.asarray(d["firstMs"], float) / 1000
+            keep = np.asarray(d["count"], float) >= 3
+            P, t = P[keep], t[keep]
+        except (KeyError, ValueError, TypeError):
+            d = None
+    if d is None:
+        rows = []
+        frames = [f for f in (scan.get("frames") or []) if isinstance(f, dict)]
+        t0 = next((f["timestamp"] for f in frames if _num(f.get("timestamp"))), None)
+        if t0 is None:
+            return None
+        for f in frames:
+            if not _num(f.get("timestamp")):
+                continue
+            pts = f.get("featurePoints") or []
+            for j in range(len(pts) // 3):
+                x, y, z = pts[3 * j: 3 * j + 3]
+                if _num(x) and _num(y) and _num(z):
+                    rows.append((x, y, z, f["timestamp"] - t0))
+        if len(rows) < 60:
+            return None
+        A = np.asarray(rows, float)
+        P, t = A[:, :3], A[:, 3]
+    if len(P) < 60 or t.max() <= 0:
+        return None
+    T = float(t.max())
+
+    def cells(sel):
+        key = np.floor(P[sel][:, [0, 2]] / cell).astype(np.int64)
+        y = P[sel][:, 1]
+        out = {}
+        for k, v in zip(map(tuple, key), y):
+            out.setdefault(k, []).append(v)
+        return {k: float(np.median(v)) for k, v in out.items() if len(v) >= 2}
+
+    a, b = cells(t <= frac * T), cells(t >= (1 - frac) * T)
+    diffs = [b[k] - a[k] for k in a.keys() & b.keys()]
+    return round(float(np.median(diffs)) * 100, 1) if len(diffs) >= min_common else None
 
 
 # ─── геометрия на плоскости XZ ──────────────────────────────────────────────
@@ -672,6 +771,17 @@ def build_surface(P, cams, fwd):
         if L and max(0.12, 2 * delta) < L["med"] < 0.4 * top:
             foot = {"lift": round(L["med"], 3), "volume": round(_vol(H, pile, cell, L["med"]), 3), "n": L["n"]}
             vs.append(foot["volume"])
+    # доля объёма над клетками, где есть точки (остальное — заполнение)
+    on = pile & (H > GROUND_EPS_M)
+    support = None
+    if on.any():
+        hv = float(H[on].sum())
+        upper = on & (H > 0.6 * top)
+        support = {
+            "volume_share": round(float(H[on & g["data"]].sum()) / hv, 3) if hv > 0 else None,
+            "cell_share": round(float((on & g["data"]).sum()) / float(on.sum()), 3),
+            "top_share": round(float((upper & g["data"]).sum()) / float(upper.sum()), 3) if upper.any() else None,
+        }
     # размеры подошвы по главным осям
     size = [0.0, 0.0]
     Zi, Xi = np.nonzero(pile & (H > GROUND_EPS_M))
@@ -708,6 +818,7 @@ def build_surface(P, cams, fwd):
         "top": round(top, 3), "size": [round(s, 2) for s in size],
         "closed": bool(closed), "coverage": round(float(coverage), 1), "foot": foot,
         "points_used": int(inside.sum()), "points_pile": int(in_pile.sum()),
+        "support": support,
         "_in_pile": in_pile,
         "debug": {"cell_m": round(cell, 3), "isolate": iso, "toe_ground": ground,
                   "gaze": None if gaze is None else np.round(gaze, 2).tolist()},
@@ -725,6 +836,21 @@ def build_cloud(scan, max_points=6000):
     except Exception:                                   # вид без объёма лучше, чем 500
         logger.exception("Поверхность кучи не построена")
     pile = surface.pop("_in_pile") if surface else np.zeros(len(P), bool)
+    if surface is not None and c.get("source") == "dense":
+        # объём по точкам с фото — рядом, для сверки новой записи со старой
+        try:
+            legacy = build_surface(c["frame_points"], c["cams"], c["fwd"])
+            surface["volume_frames"] = legacy["volume"] if legacy else None
+        except Exception:
+            logger.exception("Объём по точкам с фото не построен")
+            surface["volume_frames"] = None
+    try:
+        drift = loop_drift_cm(scan)
+    except Exception:
+        logger.exception("Дрейф петли не посчитан")
+        drift = None
+    cap = scan.get("capture") if isinstance(scan, dict) else None
+    phone_quality = cap.get("quality") if isinstance(cap, dict) else None
     idx = np.arange(len(P))
     if len(P) > max_points:
         idx = np.floor(np.arange(max_points) * (len(P) / max_points)).astype(int)
@@ -733,5 +859,8 @@ def build_cloud(scan, max_points=6000):
         "pile": pile[idx].astype(int).tolist(),
         "cameras": np.round(c["cams"], 2).tolist(),
         "points_total": int(len(P)), "ids_total": c["n_ids"], "min_obs": c["min_obs"],
+        "points_source": c.get("source", "frames"),
+        "loop_drift_cm": drift,
+        "quality": phone_quality,
         "surface": surface,
     }
