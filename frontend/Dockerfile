@@ -22,5 +22,8 @@ FROM nginx:1.27-alpine
 
 COPY dist/ /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Общий кусок проксирования API (nginx.conf подключает его дважды: /api/ сайта
+# и домен API). Не в conf.d — оттуда он попал бы на уровень http.
+COPY api-proxy.conf /etc/nginx/snippets/api-proxy.conf
 
 EXPOSE 80

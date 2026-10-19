@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 
 /* ============================================================
-   api.js — все вызовы к /api/*.
+   api.js — все вызовы к API (адрес — API_BASE ниже).
    ------------------------------------------------------------
    Слой рассчитан на мобильную сеть, а не на офисный Wi-Fi:
 
@@ -19,6 +19,19 @@ import { supabase } from './supabase'
      прогресс отправки байтов (upload.onprogress). fetch про отправку не
      сообщает ничего, поэтому раньше полоса на экране жила своей жизнью.
    ============================================================ */
+
+/* ── АДРЕС API — отдельный домен, а не /api сайта ─────────────────────────
+   Весь volumetric.gottland.ru закрыт паролем хостового nginx (Basic). Пароль
+   и наш токен едут в ОДНОМ заголовке Authorization: браузер не подставит
+   Basic поверх Bearer, и хостовый nginx отвечал 401 на каждый вызов /api —
+   сайт открывался после пароля, но ничего не загружал. Поэтому API живёт на
+   своём домене БЕЗ пароля (защита — JWT на бэкенде), см. docs/API_HOST.md.
+   В dev — /api через прокси vite (vite.config.js). Свой адрес на сборке —
+   VITE_API_URL в frontend/.env.local, полный, с /api на конце.          */
+export const API_BASE = (
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? 'https://api.volumetric.gottland.ru/api' : '/api')
+).replace(/\/+$/, '')
 
 const REQ_TIMEOUT_MS = 30000
 const REQ_RETRIES    = 2
@@ -68,7 +81,7 @@ async function req(path, options = {}) {
   for (let attempt = 0; ; attempt++) {
     let res
     try {
-      res = await fetchWithTimeout('/api' + path, {
+      res = await fetchWithTimeout(API_BASE + path, {
         ...options,
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -117,7 +130,7 @@ async function req(path, options = {}) {
 function uploadOnce(formData, { onProgress, token }) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    xhr.open('POST', '/api/analyses/')
+    xhr.open('POST', API_BASE + '/analyses/')
     xhr.responseType = 'text'
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
 

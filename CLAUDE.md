@@ -37,10 +37,20 @@ docker compose logs -f frontend
 ## Architecture
 
 ```
-nginx (port 80)
-  /        → React SPA (built dist/)
-  /api/    → FastAPI backend (port 8000, internal)
+хостовый nginx (TLS; пароль Basic на весь volumetric.gottland.ru)
+  volumetric.gottland.ru      → контейнер nginx :80, default_server
+      /        → React SPA (built dist/)
+      /api/    → FastAPI (старые вкладки и приложение; под паролем хоста не работает)
+  api.volumetric.gottland.ru  → тот же контейнер :80, server_name, БЕЗ пароля
+      /api/    → FastAPI backend (port 8000, internal)
 ```
+
+**Сайт и API — на разных доменах (с 2026-10-19).** Фронт ходит в API по полному адресу
+`API_BASE` из `frontend/src/api.js` (`https://api.volumetric.gottland.ru/api`, в dev — `/api`
+через прокси vite). Причина: пароль хостового nginx и токен входа едут в одном заголовке
+`Authorization`, поэтому `/api/` под паролем отвечал 401 на каждый вызов. **Не ставь пароль на
+домен API и не возвращай фронт на относительный `/api`.** Что настроить на хосте —
+`docs/API_HOST.md`; проксирование API для обоих входов — `frontend/api-proxy.conf`.
 
 **Backend** (`backend/app/`):
 - `main.py` — FastAPI app, CORS, mounts routers at `/api`

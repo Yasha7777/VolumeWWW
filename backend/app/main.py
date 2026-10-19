@@ -17,12 +17,19 @@ app = FastAPI(
     openapi_url=None,
 )
 
+# С 2026-10-19 сайт и API на разных доменах (volumetric… → api.volumetric…),
+# и каждый вызов фронта — кросс-доменный: CORS теперь работает по-настоящему.
+# "*" безопасен: вход — токен в заголовке Authorization, а не cookie, чужая
+# страница его не подставит. max_age — браузер помнит ответ на предварительный
+# OPTIONS 2 ч (больше Chrome не держит) и не гоняет его перед каждым опросом
+# замера; по умолчанию было 10 мин.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],      # nginx ограничит снаружи
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    max_age=7200,
 )
 
 app.include_router(analyses.router, prefix="/api")

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUpRight, Check, Save } from 'lucide-react'
 import { supabase } from '../supabase'
-import { api } from '../api'
+import { api, API_BASE } from '../api'
 
 /* ─────────────────────────────────────────────────────────────────────────
    Swagger — панель суперадмина в «Профиле», под «Расчётным сервером».
@@ -15,6 +15,11 @@ import { api } from '../api'
 
    Значения — текст, а не поля ввода: их не редактируют, только копируют.
    ───────────────────────────────────────────────────────────────────────── */
+
+// Бэкенд отдаёт путь от корня (/api/docs). Сайт и API на разных доменах
+// (api.js, API_BASE), поэтому путь приклеиваем к адресу API, а не сайта:
+// /api/docs на домене сайта упирается в пароль хостового nginx.
+const docsHref = (path) => API_BASE + (path || '/api/docs').replace(/^\/api(?=\/)/, '')
 
 function SecretRow({ label, value, empty }) {
   const [copied, setCopied] = useState(false)
@@ -62,7 +67,7 @@ function SecretRow({ label, value, empty }) {
 
 export default function ApiTokenPanel() {
   const [token, setToken] = useState('')
-  const [docs, setDocs] = useState({ password: '', url: '/api/docs', state: 'loading' })
+  const [docs, setDocs] = useState({ password: '', url: docsHref(), state: 'loading' })
 
   const take = (session) => setToken(session?.access_token || '')
 
@@ -73,7 +78,7 @@ export default function ApiTokenPanel() {
       if (alive && session) take(session)
     })
     api.adminDocsPassword()
-      .then(d => { if (alive) setDocs({ password: d?.password || '', url: d?.docs_url || '/api/docs', state: 'ok' }) })
+      .then(d => { if (alive) setDocs({ password: d?.password || '', url: docsHref(d?.docs_url), state: 'ok' }) })
       .catch(() => { if (alive) setDocs(s => ({ ...s, state: 'error' })) })
     return () => { alive = false; subscription.unsubscribe() }
   }, [])

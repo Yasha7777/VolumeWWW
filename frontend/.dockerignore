@@ -9,6 +9,7 @@
 *
 !dist
 !nginx.conf
+!api-proxy.conf
 
 # Мусор ОС и локальные секреты не должны просочиться даже через dist
 **/.DS_Store
