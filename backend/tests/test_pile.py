@@ -211,6 +211,23 @@ def test_loop_drift_from_frames():
     assert d is not None and abs(d + 4) < 0.6, d
 
 
+def test_masked_blur_small_grid():
+    # сетка короче ядра свёртки — раньше падала на broadcast (обход 20.10)
+    H = np.random.default_rng(3).random((18, 16))
+    M = np.ones_like(H, bool)
+    B = pile._masked_blur(H, M, 3.1)                     # ядро 17 клеток
+    assert B.shape == H.shape
+    big = np.random.default_rng(4).random((40, 40))
+    k = np.exp(-np.arange(-8, 9) ** 2 / (2 * 3.1 ** 2))
+    ref = big.copy()
+    for ax in (0, 1):                                    # как было: mode="same"
+        ref = np.apply_along_axis(lambda a: np.convolve(a, k, "same"), ax, ref)
+    w = np.ones_like(big)
+    for ax in (0, 1):
+        w = np.apply_along_axis(lambda a: np.convolve(a, k, "same"), ax, w)
+    assert np.array_equal(pile._masked_blur(big, np.ones_like(big, bool), 3.1), ref / w)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

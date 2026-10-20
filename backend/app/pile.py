@@ -413,9 +413,13 @@ def _masked_blur(H, M, sigma):
     r = max(1, int(np.ceil(sigma * 2.5)))
     k = np.exp(-np.arange(-r, r + 1) ** 2 / (2 * sigma * sigma))
     v, w = np.where(M, H, 0.0), M.astype(float)
+    # не mode="same": при сетке короче ядра (< 2r+1 клеток) он отдаёт ряд длины
+    # ядра, и маленькая куча падала на broadcast (обход 20.10, 16 клеток при ядре 17).
+    # full[r : r + n] при n ≥ 2r+1 совпадает с "same" до бита.
+    conv = lambda a: np.convolve(a, k, "full")[r: r + len(a)]
     for ax in (0, 1):
-        v = np.apply_along_axis(lambda a: np.convolve(a, k, "same"), ax, v)
-        w = np.apply_along_axis(lambda a: np.convolve(a, k, "same"), ax, w)
+        v = np.apply_along_axis(conv, ax, v)
+        w = np.apply_along_axis(conv, ax, w)
     return np.where(M & (w > 1e-9), v / np.maximum(w, 1e-9), 0.0)
 
 
