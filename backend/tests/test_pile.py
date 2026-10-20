@@ -228,6 +228,38 @@ def test_masked_blur_small_grid():
     assert np.array_equal(pile._masked_blur(big, np.ones_like(big, bool), 3.1), ref / w)
 
 
+def test_huge_pile():
+    # огромная куча (пятница 24.10): конус R 12 м, h 5 м (754 м³), обход по кругу 15 м
+    rng = np.random.default_rng(7)
+    R, h = 12.0, 5.0
+    n = 60000
+    r = 14.5 * np.sqrt(rng.random(n))
+    a = 2 * np.pi * rng.random(n)
+    x, z = r * np.cos(a), r * np.sin(a)
+    y = np.maximum(0.0, h * (1 - np.hypot(x, z) / R))
+    pts = np.c_[x, y, z]
+    frames, obs = [], [[] for _ in range(240)]
+    for i, p in enumerate(pts):
+        for f in rng.choice(240, 3, replace=False):
+            obs[f].append((i, p + rng.normal(0, 0.01, 3)))
+    for f in range(240):
+        ang = 2 * np.pi * f / 240
+        c = np.array([15 * np.cos(ang), 1.5, 15 * np.sin(ang)])
+        fwd = np.array([0, 1.0, 0]) - c
+        fwd /= np.linalg.norm(fwd)
+        right = np.cross(fwd, [0, 1, 0]); right /= np.linalg.norm(right)
+        up = np.cross(right, fwd)
+        T = np.eye(4)
+        T[:3, 0], T[:3, 1], T[:3, 2], T[:3, 3] = right, up, -fwd, c
+        frames.append({"cameraTransform": T.T.ravel().tolist(), "trackingState": "normal", "trackingSegment": 0,
+                       "featurePoints": [v for _, q in obs[f] for v in q.tolist()],
+                       "featurePointIdentifiers": [i for i, _ in obs[f]]})
+    s = pile.build_cloud({"frames": frames})["surface"]
+    true = math.pi * R ** 2 * h / 3
+    assert abs(s["volume"] / true - 1) < 0.08, (s["volume"], true)
+    assert s["support"]["volume_share"] > 0.9, s["support"]
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

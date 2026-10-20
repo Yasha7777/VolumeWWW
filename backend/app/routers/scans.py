@@ -504,7 +504,9 @@ def scan_cloud(scan_id: str, request: Request, current_user: dict = Depends(get_
 # supabase==2.5.0 (storage3 0.7) читает заголовок x-upsert, новые версии — ключ upsert;
 # передаём оба, чтобы повтор после обрыва не падал на «Duplicate».
 MAX_FRAME_BYTES = 25 * 1024 * 1024      # 12 Мп JPEG 0.95 — 3–6 МБ, запас на 48 Мп
-MAX_SCAN_JSON_BYTES = 40 * 1024 * 1024
+# Огромная куча на приложении 1.05: ~250 фото × ~25 КБ + capture (точки 30 Гц,
+# датчик движения 100 Гц) — десятки МБ; при 40 МБ /complete отказывал бы.
+MAX_SCAN_JSON_BYTES = 200 * 1024 * 1024
 # В colmap_photos.arkit кладём позу и то, что нужно карте/пайплайну. Точки
 # облака туда не идут — они целиком лежат в scan.json в Storage.
 ARKIT_KEYS = (
