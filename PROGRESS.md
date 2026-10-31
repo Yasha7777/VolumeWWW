@@ -343,3 +343,5 @@
 
 [2026-10-20] Огромные кучи (съёмка 24.10): `backend/app/routers/scans.py` — предел scan.json 40 → 200 МБ (огромная куча на приложении 1.05: ~250 фото + точки 30 Гц + датчик 100 Гц — десятки МБ). `backend/tests/test_pile.py` — `test_huge_pile`: конус R 12 м, h 5 м (754 м³), обход 15 м — объём в пределах 8 %, подтверждено > 90 %; 14 из 14.
 
+
+[2026-10-31] Восстановлен адрес API фронтенда: frontend/src/api.js использует https://volumetric.gottland.ru/api вместо отсутствующего в DNS api.volumetric.gottland.ru. На основном домене проверены health (200) и scans с неверным Bearer (JSON 401 бэкенда без Basic challenge). docs/API_HOST.md: текущая схема и архив прежней инструкции. git_auto_commit.sh принимает список путей для отправки без посторонних новых файлов. frontend/dist пересобран; проверено отсутствие старого API URL и dev-заглушек, роль публичного Supabase-ключа anon. Выкатка на сервер: git pull origin main && docker compose up --build -d; авторизованную загрузку истории и обходов проверить после выката.

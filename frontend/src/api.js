@@ -20,17 +20,15 @@ import { supabase } from './supabase'
      сообщает ничего, поэтому раньше полоса на экране жила своей жизнью.
    ============================================================ */
 
-/* ── АДРЕС API — отдельный домен, а не /api сайта ─────────────────────────
-   Весь volumetric.gottland.ru закрыт паролем хостового nginx (Basic). Пароль
-   и наш токен едут в ОДНОМ заголовке Authorization: браузер не подставит
-   Basic поверх Bearer, и хостовый nginx отвечал 401 на каждый вызов /api —
-   сайт открывался после пароля, но ничего не загружал. Поэтому API живёт на
-   своём домене БЕЗ пароля (защита — JWT на бэкенде), см. docs/API_HOST.md.
+/* ── АДРЕС API ─────────────────────────────────────────────────────────
+   На основном домене /api доступен без хостового Basic, с JWT бэкенда.
+   api.volumetric.gottland.ru не настроен в DNS (проверено 31.10.2026).
+   Не включать Basic на /api: он конфликтует с Authorization: Bearer.
    В dev — /api через прокси vite (vite.config.js). Свой адрес на сборке —
    VITE_API_URL в frontend/.env.local, полный, с /api на конце.          */
 export const API_BASE = (
   import.meta.env.VITE_API_URL ||
-  (import.meta.env.PROD ? 'https://api.volumetric.gottland.ru/api' : '/api')
+  (import.meta.env.PROD ? 'https://volumetric.gottland.ru/api' : '/api')
 ).replace(/\/+$/, '')
 
 const REQ_TIMEOUT_MS = 30000

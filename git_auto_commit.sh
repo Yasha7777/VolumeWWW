@@ -38,7 +38,13 @@ if [ ! -f frontend/dist/index.html ]; then
 fi
 
 echo "▸ Бандл чистый, коммичу…"
-git add . ':!3dmodels'
+# Можно передать только проверенные пути, чтобы не забрать чужие новые файлы:
+# bash git_auto_commit.sh frontend/src/api.js frontend/dist PROGRESS.md
+if [ "$#" -gt 0 ]; then
+  git add -- "$@"
+else
+  git add . ':!3dmodels'
+fi
 
 # Пересборка меняет хеши в именах чанков, так что «нечего коммитить» бывает
 # редко — но если правок не было вовсе, не роняем скрипт с невнятной ошибкой

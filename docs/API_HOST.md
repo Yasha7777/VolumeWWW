@@ -1,4 +1,23 @@
-# Отдельный домен для API — что настроить на сервере
+# Адрес API и настройки сервера
+
+## Текущая конфигурация — 31.10.2026
+
+Фронтенд по умолчанию использует **`https://volumetric.gottland.ru/api`**.
+Проверено: `/api/health` отвечает 200, `/api/scans/` с неверным Bearer-токеном
+отвечает JSON 401 от бэкенда, без запроса хостового Basic. Поддомен
+`api.volumetric.gottland.ru` отвечает NXDOMAIN и сейчас не используется.
+Приложение VolmetricARKit 1.05.005 также использует основной домен.
+
+Не включать `auth_basic` на `/api/`: авторизация API использует Bearer JWT.
+`VITE_API_URL` может переопределить адрес во время сборки; после изменения
+нужно пересобрать `frontend/dist` (это делает `git_auto_commit.sh`).
+После push на сервере выполнить `git pull origin main && docker compose up --build -d`.
+Затем проверить `/api/health` и загрузку истории/обходов в авторизованном браузере.
+
+## Архив: отдельный домен, предложенный 19.10.2026
+
+Ниже сохранена прежняя инструкция для случая будущего переноса API.
+Она требует настройки DNS, TLS и nginx; текущую конфигурацию не описывает.
 
 **Полный адрес API:** `https://api.volumetric.gottland.ru/api`
 (проверка: `https://api.volumetric.gottland.ru/api/health`, Swagger: `https://api.volumetric.gottland.ru/api/docs`)
