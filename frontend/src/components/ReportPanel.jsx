@@ -177,6 +177,12 @@ function ReportPanel({ open, onClose, onOpen, result, photos = [], title = '' })
                 </div>
               </div>
 
+              {data.qualityWarning && (
+                <div className="rp__sum-warning" role="alert">
+                  <strong>Точность объёма ограничена.</strong> {data.qualityWarning}
+                </div>
+              )}
+
               <div className="rp__sum-meta">
                 Исходных кадров: {data.framesUsed}
               </div>

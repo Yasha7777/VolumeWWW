@@ -34,6 +34,7 @@ import httpx
 
 from .config import settings
 from .supabase_client import supabase
+from .scan_inputs import ScanInputError, store_prepared
 
 logger = logging.getLogger(__name__)
 
@@ -283,7 +284,7 @@ def scan_block(scan: Optional[dict]) -> Optional[dict]:
         # Само тело scan.json не шлём (облако ARKit — мегабайты): приёмник
         # забирает файл из Storage своим service-ключом.
         block["bucket"] = COLMAP_BUCKET
-        block["scan_json_path"] = f"{prefix}/scan.json"
+        block["scan_json_path"] = scan.get("prepared_scan_json_path") or f"{prefix}/scan.json"
     return block
 
 
@@ -355,6 +356,10 @@ def format_result_text(d: dict, material: str = "unknown", density_kg_m3: float 
     header = "🔗 Похожие в БД: нет данных"
     block = ""
     status = d.get("status")
+    warning = ""
+    if status == "partial":
+        reason = _first_line(d.get("error_message"), 3000) or "приёмник не подтвердил точность объёма"
+        warning = f"\n\n⚠️ ОГРАНИЧЕННАЯ ТОЧНОСТЬ: {reason}"
     if status in ("success", "partial"):
         model_url = d.get("glb_url") or d.get("ply_url")
         vol = d.get("volume_m3")
@@ -411,9 +416,12 @@ def format_result_text(d: dict, material: str = "unknown", density_kg_m3: float 
             f"   3D модель: {model_url}" if model_url else "",
         ]))
 
+    intro = (f'Расчёт gottland.ru для "{material}" выполнен с ограниченной точностью.\n'
+             if status == "partial" else
+             f'Все проанализированно с помощью gottland.ru для "{material}", где \n')
     return (
-        f'Все проанализированно с помощью gottland.ru для "{material}", где \n'
-        f"{header}{block}\n\n:) \nСпасибо, что выбираете нас!"
+        intro +
+        f"{header}{warning}{block}\n\n:) \nСпасибо, что выбираете нас!"
     )
 
 
@@ -564,6 +572,22 @@ async def run_and_save(analysis_id: str, photos: list[dict], cube: dict,
             logger.warning("GPU %s: %d кадров без строки colmap_photos пропущено",
                            analysis_id, len(photos) - len(usable))
 
+        if scan:
+            try:
+                by_photo = {f.get("id"): f for f in frames or []}
+                photo_ids = [p["id"] for p in usable]
+                if (len(by_photo) != len(frames or []) or len(set(photo_ids)) != len(photo_ids)
+                        or set(by_photo) != set(photo_ids)):
+                    raise ScanInputError("Фотографии и данные ARKit обхода не совпадают. Исходники сохранены.")
+                scan, frames, preparation = await asyncio.to_thread(
+                    store_prepared, supabase.storage.from_(COLMAP_BUCKET),
+                    scan, [by_photo[pid] for pid in photo_ids], analysis_id)
+            except ScanInputError as exc:
+                await asyncio.to_thread(finish, "error", str(exc))
+                return
+            logger.info("GPU %s: prepared input v%s, observations %s, diagnostics %s",
+                        analysis_id, preparation["version"], preparation["counts"],
+                        preparation["geometry"])
         payload = build_payload(analysis_id, usable, cube, cfg["mode"], scan, frames)
         headers = {TOKEN_HEADER: cfg["token"]} if cfg["token"] else {}
         logger.info("GPU %s: %d кадров, режим %s, обход %s -> %s",
@@ -582,6 +606,15 @@ async def run_and_save(analysis_id: str, photos: list[dict], cube: dict,
             logger.error("GPU %s: расчёт не удался: %s", analysis_id, data.get("error_message"))
             await asyncio.to_thread(finish, "error", f"Ошибка расчёта: {reason}")
             return
+
+        if data.get("status") not in ("success", "partial"):
+            logger.error("GPU %s: неизвестный статус приёмника: %r", analysis_id, data.get("status"))
+            await asyncio.to_thread(finish, "error", "Ошибка: расчётный сервер вернул ответ без результата.")
+            return
+
+        if data["status"] == "partial":
+            logger.warning("GPU %s: объём получен с ограниченной точностью: %s",
+                           analysis_id, _first_line(data.get("error_message"), 500))
 
         links = {k: data[k] for k in ("ply_url", "glb_url") if data.get(k)}
         await asyncio.to_thread(finish, "completed", format_result_text(data), links)

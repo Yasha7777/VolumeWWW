@@ -41,6 +41,11 @@ from collections import deque
 
 import numpy as np
 
+if __package__:
+    from .scan_inputs import geometry_report
+else:  # research tools also import pile directly from backend/app
+    from scan_inputs import geometry_report
+
 logger = logging.getLogger(__name__)
 
 MIN_OBS = 2                  # точку должны видеть не меньше 2 кадров
@@ -834,9 +839,16 @@ def build_cloud(scan, max_points=6000):
     позиции камеры, флаг «точка кучи» и поверхность с объёмом."""
     c = collect(scan)
     P = c["points"]
+    geometry = geometry_report(scan)
+    geometry_warning = (
+        "В записи обнаружен скачок карты ARKit или смена системы координат. "
+        "Исходные точки сохранены, но объём по ним ненадёжен. Нужен повторный обход."
+        if geometry["blocked"] else None
+    )
     surface = None
     try:
-        surface = build_surface(P, c["cams"], c["fwd"])
+        if not geometry_warning:
+            surface = build_surface(P, c["cams"], c["fwd"])
     except Exception:                                   # вид без объёма лучше, чем 500
         logger.exception("Поверхность кучи не построена")
     pile = surface.pop("_in_pile") if surface else np.zeros(len(P), bool)
@@ -849,12 +861,16 @@ def build_cloud(scan, max_points=6000):
             logger.exception("Объём по точкам с фото не построен")
             surface["volume_frames"] = None
     try:
-        drift = loop_drift_cm(scan)
+        drift = None if geometry_warning else loop_drift_cm(scan)
     except Exception:
         logger.exception("Дрейф петли не посчитан")
         drift = None
     cap = scan.get("capture") if isinstance(scan, dict) else None
     phone_quality = cap.get("quality") if isinstance(cap, dict) else None
+    if geometry_warning:
+        previous = phone_quality if isinstance(phone_quality, dict) else {}
+        phone_quality = {**previous, "level": "red",
+                         "reasons": [geometry_warning, *(previous.get("reasons") or [])]}
     idx = np.arange(len(P))
     if len(P) > max_points:
         idx = np.floor(np.arange(max_points) * (len(P) / max_points)).astype(int)
@@ -866,5 +882,6 @@ def build_cloud(scan, max_points=6000):
         "points_source": c.get("source", "frames"),
         "loop_drift_cm": drift,
         "quality": phone_quality,
+        "geometry_warning": geometry_warning,
         "surface": surface,
     }

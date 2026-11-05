@@ -31,7 +31,6 @@ function loadYmaps(key) {
   return loading
 }
 
-const W = 539, H = 488
 const MIN_SPAN_M = 40     // минимальная рамка вокруг обхода, м
 const MAX_ZOOM = 19       // глубже спутниковые снимки Карелии часто пустые
 
@@ -48,7 +47,7 @@ export default function ObhodSatellite({ geo, theme = 'light', onProjection, onE
 
   useEffect(() => {
     if (!YMAPS_KEY || !geo?.points_en?.length) return
-    let map = null, alive = true
+    let map = null, alive = true, observer = null
     loadYmaps(YMAPS_KEY).then((ymaps) => {
       if (!alive || !host.current) return
       const pts = geo.points_en.map((p) => enToLatLon(geo, p))
@@ -69,21 +68,28 @@ export default function ObhodSatellite({ geo, theme = 'light', onProjection, onE
         if (!alive) return
         if (map.getZoom() > MAX_ZOOM) await map.setZoom(MAX_ZOOM)
         if (!alive) return
-        const zoom = map.getZoom()
-        const proj = map.options.get('projection')
-        const cg = proj.toGlobalPixels(map.getCenter(), zoom)
-        const el = host.current
-        const sx = W / (el.clientWidth || W), sy = H / (el.clientHeight || H)
-        const toPx = ([lat, lon]) => {
-          const g = proj.toGlobalPixels([lat, lon], zoom)
-          return [((g[0] - cg[0]) + (el.clientWidth || W) / 2) * sx, ((g[1] - cg[1]) + (el.clientHeight || H) / 2) * sy]
+        const project = () => {
+          if (!alive || !host.current) return
+          const zoom = map.getZoom()
+          const proj = map.options.get('projection')
+          const cg = proj.toGlobalPixels(map.getCenter(), zoom)
+          const width = host.current.clientWidth, height = host.current.clientHeight
+          const toPx = ([lat, lon]) => {
+            const g = proj.toGlobalPixels([lat, lon], zoom)
+            return [g[0] - cg[0] + width / 2, g[1] - cg[1] + height / 2]
+          }
+          // Both the SVG viewBox and the scale bar now use native CSS pixels.
+          const mpp = (156543.03392 * Math.cos((map.getCenter()[0] * Math.PI) / 180)) / 2 ** zoom
+          onProjection?.({ toPx: (en) => toPx(enToLatLon(geo, en)), mpp })
         }
-        const mpp = (156543.03392 * Math.cos((map.getCenter()[0] * Math.PI) / 180)) / 2 ** zoom * sx
         setReady(true)
-        onProjection?.({ toPx: (en) => toPx(enToLatLon(geo, en)), mpp })
+        project()
+        map.events.add('boundschange', project)
+        observer = new ResizeObserver(() => { map.container.fitToViewport(); project() })
+        observer.observe(host.current)
       }, () => onError?.())
     }).catch(() => { if (alive) onError?.() })
-    return () => { alive = false; map?.destroy() }
+    return () => { alive = false; observer?.disconnect(); map?.destroy() }
   }, [geo]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return <div ref={host} className={'ks-sat' + (ready ? ' is-ready' : '') + (theme === 'dark' ? ' is-dark' : '')} aria-hidden />

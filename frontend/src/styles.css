@@ -495,6 +495,7 @@ nav { display: flex; gap: var(--sp-1); justify-self: center; }
 .status.error   { background: var(--red-bg); color: var(--red); border: 1px solid var(--err-border); }
 .status.success { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
 .status.info    { background: var(--info-bg); color: var(--info); border: 1px solid var(--info-border); }
+.status.warning { background: var(--warn-bg); color: var(--amber); border: 1px solid var(--amber); }
 .status strong  { font-weight: 600; display: block; margin-bottom: 2px; }
 
 /* ─── PROGRESS ───────────────────────────────────────────── */
@@ -1181,6 +1182,13 @@ nav { display: flex; gap: var(--sp-1); justify-self: center; }
   color: var(--red);
 }
 .kh-card__error svg { flex: none; margin-top: 1px; }
+.kh-card__warning {
+  display: flex; align-items: flex-start; gap: var(--sp-2);
+  margin-top: var(--sp-2); padding: var(--sp-2-5) var(--sp-3-5);
+  border-radius: var(--r-sm); background: var(--warn-bg);
+  color: var(--amber); font: 400 var(--fs-sm)/1.4 var(--sans);
+}
+.kh-card__warning svg { flex: none; margin-top: 1px; }
 
 /* строка «в обработке» */
 .kh-card__pending {
@@ -1371,10 +1379,13 @@ nav { display: flex; gap: var(--sp-1); justify-self: center; }
 .kh-badge.is-error .kh-bdot { background: var(--red); }
 .kh-badge.is-pending { background: var(--warn-bg); color: var(--amber); }
 .kh-badge.is-pending .kh-bdot { background: var(--amber); animation: pulse 1.4s ease-in-out infinite; }
+.kh-badge.is-warning { background: var(--warn-bg); color: var(--amber); }
+.kh-badge.is-warning .kh-bdot { background: var(--amber); }
 
 .kh-card__dot.is-done { background: var(--ok); }
 .kh-card__dot.is-error { background: var(--red); }
 .kh-card__dot.is-pending { background: var(--amber); animation: pulse 1.4s ease-in-out infinite; }
+.kh-card__dot.is-warning { background: var(--amber); }
 
 /* ---------- Пустые состояния ---------- */
 .kh-empty {

@@ -164,6 +164,12 @@
 .rp__sum-cell--accent { border-left: 3px solid var(--gold); }
 
 .rp__sum-meta { margin-top: var(--sp-3); font: 400 var(--fs-sm)/1.5 var(--sans); color: var(--muted); }
+.rp__sum-warning {
+  margin-top: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--amber);
+  border-radius: var(--r-sm); background: var(--warn-bg); color: var(--amber);
+  font: 400 var(--fs-sm)/1.5 var(--sans);
+}
+.rp__sum-warning strong { font-weight: 700; }
 .rp__sum-hint {
   margin-top: var(--sp-4); padding-top: var(--sp-3-5); border-top: 1px solid var(--border);
   font: 400 var(--fs-xs)/1.5 var(--sans); color: var(--muted);

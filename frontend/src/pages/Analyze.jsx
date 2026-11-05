@@ -9,6 +9,7 @@ import { DiagnosticsBlock, pickDiagnostics } from '../components/Diagnostics'  /
 import ReportPanel from '../components/ReportPanel'   // ← выдвижное окно отчёта
 import ResultSummary from '../components/ResultSummary'  // ← плашка-сводка: материал / объём / плотность / масса
 import { parseWebhookResult } from '../components/RaschetDownloadButton' // ← общий парсер (объём DUSt3R, масса = V×ρ)
+import { qualityWarningFromResult } from '../components/raschet/raschetData'
 import { enqueue, flushItem } from '../queue/queue'  // ← офлайн-очередь (PWA)
 import Reveal from '../components/Reveal'  // ← лёгкое scroll/stagger-проявление
 // Новый вид страницы (светлая/тёмная темы): выбор обхода из приложения вместо
@@ -345,7 +346,10 @@ export default function Analyze() {
           setUpVec(finalUp)
           setUpGlbVec(finalUpGlb)
           setReportOpen(true)   // авто-выдвижение отчёта по готовности
-          setStatus({ type:'success', title:'Готово!', msg: doneMsgRef.current || `Обработано ${photos.length} фото.` })
+          const qualityWarning = qualityWarningFromResult(textResult)
+          setStatus(qualityWarning
+            ? { type:'warning', title:'Проверьте объём', msg:`Расчёт завершён с ограниченной точностью. ${qualityWarning}` }
+            : { type:'success', title:'Готово!', msg: doneMsgRef.current || `Обработано ${photos.length} фото.` })
           doneMsgRef.current = ''
           setAId(null)
 

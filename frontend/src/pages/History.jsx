@@ -11,6 +11,7 @@ import { MeasureCardSkeleton } from '../components/Skeleton';
 import { useTheme } from '../theme/ThemeProvider';
 import ArchiveHistory from '../components/archive/ArchiveHistory';  // ← вид этого же списка в теме «Архив»
 import { parseWebhookResult } from '../components/RaschetDownloadButton';  // ← плотность для карточки записи
+import { qualityWarningFromResult } from '../components/raschet/raschetData';
 
 // Декор по бокам — base64 из отдельных файлов (Vite ?raw)
 // декор загружается отдельными файлами из public/decor/*.png —
@@ -552,8 +553,10 @@ function Metric({ label, value, unit }) {
   );
 }
 
-function Badge({ status }) {
-  const m = metaFor(status);
+function Badge({ status, warning }) {
+  const m = warning && status === 'completed'
+    ? { label: 'Проверить объём', cls: 'is-warning' }
+    : metaFor(status);
   return (
     <span className={`kh-badge ${m.cls}`}>
       <span className="kh-bdot" />
@@ -657,7 +660,8 @@ function MeasureCard({
   item, expanded, deleting, onToggle, onPhoto, onDelete, index = 0,
   selectMode = false, selected = false, onSelect, onSelectStart,
 }) {
-  const m = metaFor(item.status);
+  const qualityWarning = item.status === 'completed' ? qualityWarningFromResult(item.result) : null;
+  const m = qualityWarning ? { ...metaFor(item.status), cls: 'is-warning' } : metaFor(item.status);
   const heading = getHeading(item);
   const site = getSite(item);
   const loc = getLocation(item);
@@ -745,7 +749,7 @@ function MeasureCard({
           <div className="kh-card__title-row">
             <span className={`kh-card__dot ${m.cls}`} />
             <span className="kh-card__title">{heading}</span>
-            <Badge status={item.status} />
+            <Badge status={item.status} warning={qualityWarning} />
           </div>
 
           <div className="kh-card__meta">
@@ -779,6 +783,11 @@ function MeasureCard({
               {photos.length > 0 && <Metric label="Фото" value={photos.length} unit="шт." />}
             </div>
           ) : null}
+          {qualityWarning && (
+            <div className="kh-card__warning" role="alert">
+              <WarnIcon /> <span>Точность объёма ограничена. {qualityWarning}</span>
+            </div>
+          )}
         </div>
 
         <div className="kh-card__aside" onClick={(e) => e.stopPropagation()}>
@@ -1216,6 +1225,7 @@ export default function History() {
     let sumWeight = 0;
     for (const it of scoped) {
       if (it.status !== 'completed') continue;
+      if (qualityWarningFromResult(it.result)) continue;
       const v = getVolume(it);
       if (v != null) sumVol += v;
       const w = getWeight(it);

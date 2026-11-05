@@ -402,6 +402,14 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
       {status === 'loading' && !hero && <div className="ks-cloud__msg"><span className="ks-cloud__spin" />Загружаем облако точек…</div>}
       {status === 'error' && !hero && <div className="ks-cloud__msg">Облако не загрузилось. Попробуйте позже.</div>}
       {status === 'ready' && !hero && <div className={'ks-cloud__hint' + (touched ? ' is-gone' : '')}>↻ Потяните, чтобы повернуть</div>}
+      {status === 'ready' && !hero && data?.geometry_warning && (
+        <div className="ks-cloud__surf">
+          <div className="ks-cloud__vol" role="status">
+            <b>Объём не рассчитан</b>
+            <span className="is-warn">{data.geometry_warning}</span>
+          </div>
+        </div>
+      )}
       {status === 'ready' && surf && (
         <div className="ks-cloud__surf">
           <div className="ks-cloud__seg" role="group" aria-label="Вид модели">

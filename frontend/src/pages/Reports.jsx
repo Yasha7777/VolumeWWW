@@ -102,6 +102,7 @@ export default function Reports() {
                 <span role="cell" className="arc-tab__no">{pad3(i + 1)}</span>
                 <span role="cell" className="arc-tab__mat">
                   {(it.title || mat.name || 'БЕЗ НАЗВАНИЯ').toUpperCase()}
+                  {parsed.qualityWarning && <small title={parsed.qualityWarning}> · ПРОВЕРИТЬ ОБЪЁМ</small>}
                 </span>
                 <span role="cell" className="arc-tab__r">{parsed.volume ?? DASH} <i>м³</i></span>
                 <span role="cell" className="arc-tab__r">{parsed.mass ?? DASH} <i>т</i></span>
@@ -140,6 +141,11 @@ export default function Reports() {
               <div style={{ color: 'var(--muted)', fontSize: 'var(--fs-sm)' }}>
                 {parsed.volume ?? '—'} м³ · {parsed.mass ?? '—'} т · {fmtDate(it.created_at)}
               </div>
+              {parsed.qualityWarning && (
+                <div style={{ color: 'var(--amber)', fontSize: 'var(--fs-sm)' }}>
+                  Ограниченная точность: {parsed.qualityWarning}
+                </div>
+              )}
             </div>
             <RaschetDownloadButton
               result={it.result}

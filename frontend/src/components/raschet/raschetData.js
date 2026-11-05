@@ -38,6 +38,13 @@ export const fmtMass = (n) => {
   return ruNum(n, frac)
 }
 
+// analyses.status допускает только pending/completed/error, поэтому предупреждение
+// приёмника partial хранится в тексте результата отдельной строкой.
+export const qualityWarningFromResult = (raw) => {
+  const match = String(raw || '').match(/^⚠️ ОГРАНИЧЕННАЯ ТОЧНОСТЬ:\s*(.+)$/mu)
+  return match ? match[1].trim() : null
+}
+
 export function parseWebhookResult(raw) {
   const s = String(raw || '')
   const grab = (re) => { const m = s.match(re); return m ? m[1] : null }
@@ -73,6 +80,7 @@ export function parseWebhookResult(raw) {
     mass: fmtMass(massT),
     density: ruInt(densityKg),
     glbUrl,
+    qualityWarning: qualityWarningFromResult(raw),
     // сырые числа — на случай, если понадобятся выше по коду
     _volumeNum: volumeNum,
     _densityKg: densityKg,
@@ -109,6 +117,7 @@ export const STUB = {
   rows: [{ material: 'Не определён', volume: '—', density: '—', mass: '—' }],
   framesUsed: '—',
   glbUrl: null,
+  qualityWarning: null,
   photos: [null, null, null],
   photoCaptions: ['Кадр 1', 'Кадр 2', 'Кадр 3'],
   org: 'ООО «Карелия Строй»',
@@ -157,6 +166,7 @@ export function buildDocData({ result, photos, title, docNo }) {
     }],
     framesUsed: parsed.framesUsed ?? (photos?.length || STUB.framesUsed),
     glbUrl: parsed.glbUrl || null,
+    qualityWarning: parsed.qualityWarning || null,
     photos: photoArr,
     photoCaptions: captions,
   }

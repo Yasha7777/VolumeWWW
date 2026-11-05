@@ -97,6 +97,10 @@ const styles = StyleSheet.create({
   sumVal:  { fontSize: 16, fontWeight: 700, color: INK },
   sumValM: { fontSize: 13, fontWeight: 700, color: INK, textTransform: 'capitalize' },
   sumUnit: { fontSize: 8.5, fontWeight: 400, color: MUTED },
+  qualityWarning: {
+    marginTop: 12, padding: 9, borderWidth: 1, borderColor: GOLD,
+    borderRadius: 5, backgroundColor: ACCENT, color: '#6B4100', fontSize: 8,
+  },
 
   photos: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
   photoCol: { width: '31.5%' },
@@ -209,6 +213,12 @@ export function RaschetDocument({ data = {} }) {
             <Text style={styles.sumVal}>{r.mass} <Text style={styles.sumUnit}>т</Text></Text>
           </View>
         </View>
+
+        {d.qualityWarning && (
+          <Text style={styles.qualityWarning}>
+            Ограниченная точность. Объём требует проверки: {d.qualityWarning}
+          </Text>
+        )}
 
         <Text style={[styles.secHd, { marginTop: 18 }]}>3. Фотофиксация объекта</Text>
         <View style={styles.photos}>

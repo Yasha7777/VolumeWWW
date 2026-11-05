@@ -3,6 +3,7 @@ import { useReducedMotion } from 'motion/react'
 import { Plus, Minus, Camera, Play, Pause, Map as MapIcon, Box, MapPin } from 'lucide-react'
 import { DEMO_MAP } from './demo'
 import ObhodSatellite, { YMAPS_KEY } from './ObhodSatellite'
+import { fitTrack, NICE } from './mapGeometry'
 
 const ObhodCloud = lazy(() => import('./ObhodCloud'))
 
@@ -21,22 +22,6 @@ function smooth(pts, closed = false) {
   return d
 }
 
-const NICE = [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000]
-
-/* Траектория ARKit (метры, вид сверху: x вправо, z вниз) → координаты карточки.
-   Масштаб честный: линейка внизу считается из того же коэффициента. */
-function fitTrack(points) {
-  const xs = points.map((p) => p[0]), zs = points.map((p) => p[1])
-  const minX = Math.min(...xs), maxX = Math.max(...xs), minZ = Math.min(...zs), maxZ = Math.max(...zs)
-  const box = { l: 60, r: 60, t: 110, b: 90 }
-  const s = Math.min((W - box.l - box.r) / Math.max(maxX - minX, 0.5), (H - box.t - box.b) / Math.max(maxZ - minZ, 0.5))
-  const ox = box.l + ((W - box.l - box.r) - (maxX - minX) * s) / 2
-  const oy = box.t + ((H - box.t - box.b) - (maxZ - minZ) * s) / 2
-  const map = ([x, z]) => [ox + (x - minX) * s, oy + (z - minZ) * s]
-  const pts = points.map(map)
-  const L = NICE.find((n) => n * s >= 70) || NICE[NICE.length - 1]
-  return { pts, map, pxPerM: s, bar: { len: L * s, label: L } }
-}
 
 const fmtCoord = (v, pos, neg) => `${Math.abs(v).toFixed(4)}° ${v >= 0 ? pos : neg}`
 const pad = (n) => String(n).padStart(2, '0')
@@ -56,7 +41,7 @@ function CameraPin({ at: [x, y], muted }) {
    пройденный участок, над ней — кадр, снятый в этом месте. Кадры
    привязаны к длине пути: frames[i].at → ближайшая точка на линии.
    Всё двигается через ref, без перерисовки React на каждый кадр. */
-function useReplay({ pathRef, frames, duration = 7, auto = true, reduce }) {
+function useReplay({ pathRef, frames, duration = 7, auto = true, reduce, width = W }) {
   const [playing, setPlaying] = useState(false)
   const [frame, setFrame] = useState(null)
   const dot = useRef(null), trail = useRef(null), bubble = useRef(null)
@@ -90,13 +75,13 @@ function useReplay({ pathRef, frames, duration = 7, auto = true, reduce }) {
     if (trail.current) trail.current.style.strokeDashoffset = String(len - l)
     if (bubble.current) {
       const below = q.y < 120
-      bubble.current.style.transform = `translate(${(Math.min(W - 60, Math.max(60, q.x))).toFixed(1)}px, ${q.y.toFixed(1)}px) translate(-50%, ${below ? '18px' : 'calc(-100% - 16px)'})`
+      bubble.current.style.transform = `translate(${(Math.min(width - 60, Math.max(60, q.x))).toFixed(1)}px, ${q.y.toFixed(1)}px) translate(-50%, ${below ? '18px' : 'calc(-100% - 16px)'})`
       bubble.current.classList.toggle('is-below', below)
     }
     let cur = null
     for (const m of marks) if (m.l <= l + 4) cur = m.i
     setFrame((f) => (f === cur ? f : cur))
-  }, [pathRef])
+  }, [pathRef, width])
 
   const stop = useCallback(() => { cancelAnimationFrame(st.current.raf); st.current.raf = 0; setPlaying(false) }, [])
 
@@ -129,6 +114,17 @@ function useReplay({ pathRef, frames, duration = 7, auto = true, reduce }) {
 
 export default function ObhodMap({ demo = false, track = null, loading = false, cloud = null, theme = 'light' }) {
   const reduce = useReducedMotion()
+  const host = useRef(null)
+  const [viewport, setViewport] = useState({ width: W, height: H })
+  useEffect(() => {
+    const el = host.current
+    if (!el) return
+    const update = () => setViewport({ width: el.clientWidth || W, height: el.clientHeight || H })
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
   const [view, setView] = useState('map')
   // спутник Яндекса — когда обход привязан к северу (компас/GPS из приложения ≥ 5)
   const geo = !demo && YMAPS_KEY && track?.geo?.rot_deg != null && track.geo.points_en?.length > 1 ? track.geo : null
@@ -143,9 +139,9 @@ export default function ObhodMap({ demo = false, track = null, loading = false, 
       const fr = geo.frames_en || []
       return { pts, frameAt: (i) => (fr[i] ? sat.toPx(fr[i]) : null), bar: { len: L / sat.mpp, label: L }, onSat: true }
     }
-    const fit = fitTrack(track.points)
+    const fit = fitTrack(track.points, viewport.width, viewport.height)
     return { ...fit, frameAt: (i) => fit.map(track.frames[i].at) }
-  }, [demo, track, geo, sat])
+  }, [demo, track, geo, sat, viewport])
   const selPath = useRef(null)
 
   // кадры для проигрывания: демо — готовый набор, реальный обход — из /track
@@ -161,7 +157,7 @@ export default function ObhodMap({ demo = false, track = null, loading = false, 
   }, [demo, real, track])
   const total = demo ? DEMO_MAP.walkTotal : track?.frameCount
   const durS = demo ? DEMO_MAP.walkDuration : track?.duration
-  const rp = useReplay({ pathRef: selPath, frames, reduce, auto: view === 'map' })
+  const rp = useReplay({ pathRef: selPath, frames, reduce, auto: view === 'map', width: demo ? W : viewport.width })
   const cur = rp.frame != null && frames ? frames[rp.frame] : null
 
   let body, loc, scale, selD = ''
@@ -188,7 +184,7 @@ export default function ObhodMap({ demo = false, track = null, loading = false, 
     scale = { ticks: [['0', 0], ['250', 47], ['500', 84]], end: '1 000 м', width: 183 }
   } else if (real) {
     const { pts, bar } = real
-    selD = smooth(pts)
+    selD = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`).join(' ')
     const step = Math.max(1, Math.ceil(pts.length / 6))
     const cams = pts.filter((_, i) => i % step === 0 && i > 0)
     const nodeStep = Math.max(1, Math.ceil(pts.length / 24))
@@ -223,12 +219,12 @@ export default function ObhodMap({ demo = false, track = null, loading = false, 
   const switchView = (v) => { if (v !== view) { rp.stop(); setView(v) } }
 
   return (
-    <div className={'ks-map' + (is3d ? ' is-3d' : '') + (geo && !satFailed ? ' has-sat' : '') + (real && !real.onSat ? ' is-plain' : '') + (!demo && !real ? ' is-idle' : '')}>
+    <div ref={host} className={'ks-map' + (is3d ? ' is-3d' : '') + (geo && !satFailed ? ' has-sat' : '') + (real && !real.onSat ? ' is-plain' : '') + (!demo && !real ? ' is-idle' : '')}>
       {geo && !satFailed && !is3d
         ? <ObhodSatellite geo={geo} theme={theme} onProjection={setSat} onError={() => setSatFailed(true)} />
         : <div className="ks-map__terrain" />}
       {!is3d && (
-        <svg className="ks-map__svg" viewBox={`0 0 ${W} ${H}`} aria-hidden>
+        <svg className="ks-map__svg" viewBox={`0 0 ${demo ? W : viewport.width} ${demo ? H : viewport.height}`} style={demo ? undefined : { width: '100%', height: '100%', left: 0, marginLeft: 0 }} aria-hidden>
           {body}
           {frames && body && (
             <g className={'ks-replay' + (rp.started ? ' is-on' : '')}>

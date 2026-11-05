@@ -260,6 +260,25 @@ def test_huge_pile():
     assert s["support"]["volume_share"] > 0.9, s["support"]
 
 
+def test_map_jump_preserves_cloud_but_does_not_publish_volume():
+    from copy import deepcopy
+    scan = make_scan(bump=False)
+    scan["capture"] = {"trajectory": {"tMs": [0, 33], "positionMm": [0, 0, 0, 3000, 0, 0]}}
+    original = deepcopy(scan)
+    result = pile.build_cloud(scan)
+    assert result["surface"] is None
+    assert result["points_total"] > 0 and len(result["points"]) > 0
+    assert result["quality"]["level"] == "red"
+    assert result["geometry_warning"] and result["loop_drift_cm"] is None
+    assert scan == original
+
+
+def test_coordinate_epochs_do_not_publish_mixed_surface():
+    scan = make_scan(bump=False)
+    scan["capture"] = {"frameEpochs": [0] * 36 + [1] * 36}
+    assert pile.build_cloud(scan)["surface"] is None
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
