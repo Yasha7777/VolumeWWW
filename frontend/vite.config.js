@@ -2,8 +2,14 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import seo from './scripts/vite-plugin-seo.js'
+import { writeFileSync } from 'node:fs'
+import { createBuildInfo, buildInfoPath } from './scripts/build-info.js'
 
-export default defineConfig({
+export default defineConfig(({ command }) => {
+  const buildInfo = createBuildInfo()
+  if (command === 'build') writeFileSync(buildInfoPath, JSON.stringify(buildInfo, null, 2) + '\n')
+  return {
+  define: { __SITE_BUILD__: JSON.stringify(buildInfo) },
   plugins: [
     react(),
     // sitemap / пререндер / сверка роутов. closeBundle у него `order: 'pre'` —
@@ -108,4 +114,5 @@ export default defineConfig({
       return undefined
     } } },
   },
+  }
 })

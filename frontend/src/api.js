@@ -245,6 +245,7 @@ export const api = {
   // token_set, token_hint, updated_at, source, storage_ready }. Сам ключ
   // доступа сервер не возвращает никогда.
   adminGetGpu: () => req('/admin/gpu'),
+  adminGetVersion: () => req('/admin/version', { cache: 'no-store' }),
 
   // token: строка — заменить ключ, '' — стереть, undefined — не трогать.
   adminSaveGpu: ({ url, mode, token }) =>

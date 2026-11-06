@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { useAuth } from '../context/AuthContext'
 import GpuAdminPanel from '../components/GpuAdminPanel'
+import SiteVersionPanel from '../components/SiteVersionPanel'
 import ApiTokenPanel from '../components/ApiTokenPanel'
 import './Profile.css'
 
@@ -512,6 +513,7 @@ export default function Profile() {
             <p>Чтобы сменить пароль, воспользуйтесь ссылкой «Забыли пароль?» на странице входа.</p>
           </div>
 
+          {isAdmin && <SiteVersionPanel />}
           {isAdmin && <GpuAdminPanel />}
           {isAdmin && <ApiTokenPanel />}
         </section>

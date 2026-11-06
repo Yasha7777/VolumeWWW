@@ -2099,3 +2099,7 @@ body.kh-bulk-open .content { padding-bottom: 120px; }
   .pv__reset { padding: 8px; }
   .pv__hint { left: 12px; right: 12px; text-align: center; font-size: 10.5px; }
 }
+
+.kb-site-build { margin: 12px 0; overflow-wrap: anywhere; font-size: 14px; line-height: 1.6; }
+.kb-site-build > strong { display: block; }
+.kb-site-build code { user-select: all; }

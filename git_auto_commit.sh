@@ -45,6 +45,9 @@ if [ "$#" -gt 0 ]; then
 else
   git add . ':!3dmodels'
 fi
+# The frontend bundle and backend manifest must always ship together, including
+# when the caller supplies an explicit list of source paths.
+git add -- frontend/dist backend/app/site_build.json
 
 # Пересборка меняет хеши в именах чанков, так что «нечего коммитить» бывает
 # редко — но если правок не было вовсе, не роняем скрипт с невнятной ошибкой

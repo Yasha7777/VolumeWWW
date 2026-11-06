@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from .. import gpu
+from ..site_build import read_build_info
 from ..apidocs import DOCS_PASSWORD, DOCS_URL
 from ..auth import get_current_user
 from .analyses import _is_superadmin
@@ -30,6 +31,16 @@ def require_superadmin(current_user: dict = Depends(get_current_user)) -> dict:
     if not _is_superadmin(current_user["id"]):
         raise HTTPException(403, "Только для администратора")
     return current_user
+
+
+@router.get("/version")
+def get_site_version(response: Response, _: dict = Depends(require_superadmin)):
+    response.headers["Cache-Control"] = "no-store"
+    info = read_build_info()
+    if info is None:
+        raise HTTPException(503, "Версия сборки не записана. Пересоберите и обновите сайт.",
+                            headers={"Cache-Control": "no-store"})
+    return info
 
 
 class GpuSettingsUpdate(BaseModel):
