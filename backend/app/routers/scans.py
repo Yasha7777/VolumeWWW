@@ -474,7 +474,7 @@ def _json_response(request: Request, data) -> Response:
     return Response(raw, media_type="application/json")
 
 
-CLOUD_VERSION = 5   # 5: не выдаём объём при скачках карты/несовместимых эпохах координат
+CLOUD_VERSION = 6   # 6: не выдаём объём при преобладании интерполяции/неустойчивой форме
 
 
 @router.get("/{scan_id}/cloud")

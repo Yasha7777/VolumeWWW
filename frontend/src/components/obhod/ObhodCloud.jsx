@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useReducedMotion } from 'motion/react'
+import { estimationWarning } from './estimationQuality.js'
 
 /* 3D-вид обхода: облако точек кучи, крутится само, тянется мышью/пальцем.
 
@@ -33,7 +34,7 @@ async function loadKSPC(url) {
 /* Поверхность с бэкенда: сетка высот кучи в см над землёй, −1 — вне петли
    обхода. Отрезанные бугры там уже ровная земля. */
 function decodeSurface(S) {
-  if (!S?.grid?.h) return null
+  if (!S?.grid?.h || estimationWarning({ surface: S })) return null
   const { nx, nz, cell, x0, z0, h } = S.grid
   const H = new Float32Array(nx * nz), mask = new Uint8Array(nx * nz)
   for (let q = 0; q < h.length; q++) if (h[q] >= 0) { H[q] = h[q] / 100; mask[q] = 1 }
@@ -402,11 +403,11 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
       {status === 'loading' && !hero && <div className="ks-cloud__msg"><span className="ks-cloud__spin" />Загружаем облако точек…</div>}
       {status === 'error' && !hero && <div className="ks-cloud__msg">Облако не загрузилось. Попробуйте позже.</div>}
       {status === 'ready' && !hero && <div className={'ks-cloud__hint' + (touched ? ' is-gone' : '')}>↻ Потяните, чтобы повернуть</div>}
-      {status === 'ready' && !hero && data?.geometry_warning && (
+      {status === 'ready' && !hero && (data?.geometry_warning || estimationWarning(data)) && (
         <div className="ks-cloud__surf">
           <div className="ks-cloud__vol" role="status">
             <b>Объём не рассчитан</b>
-            <span className="is-warn">{data.geometry_warning}</span>
+            <span className="is-warn">{data.geometry_warning || estimationWarning(data)}</span>
           </div>
         </div>
       )}
@@ -419,18 +420,18 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
           {view === 'surface' && (
             <div className="ks-cloud__vol" title="Предварительно: по точкам ARKit, без реконструкции. Диапазон — от неточности уровня земли.">
               <b>≈ {fmtVol(surf.volume)} м³</b>
-              <span>диапазон {fmtVol(surf.range[0])}–{fmtVol(surf.range[1])} м³</span>
+              <span>при изменении уровня земли: {fmtVol(surf.range[0])}–{fmtVol(surf.range[1])} м³; это не полная погрешность</span>
               {surf.foot && <span className="is-warn">у подошвы слой {fmtM(surf.foot.lift * 100, 0)} см: если это земля — ≈ {fmtVol(surf.foot.volume)} м³</span>}
               <span>высота {fmtM(surf.top, 1)} м · подошва ≈{fmtM(surf.size[0], 0)}×{fmtM(surf.size[1], 0)} м</span>
               {/* доля объёма над клетками с точками ARKit; остальное — заполнение (pile.py, support) */}
               {surf.support?.volume_share != null && (
                 <span className={surf.support.volume_share < 0.6 ? 'is-warn' : ''}>
-                  подтверждено точками {Math.round(surf.support.volume_share * 100)} % объёма
+                  над ячейками с точками: {Math.round(surf.support.volume_share * 100)} % расчётного объёма
                 </span>
               )}
               {!surf.closed && <span className="is-warn">обход не замкнут — объём ненадёжен</span>}
               {surf.closed && (surf.groundSource === 'points' || surf.groundSource === 'flat') && <span className="is-warn">земля найдена по точкам, не по траектории</span>}
-              <span>по точкам VIO, предварительно</span>
+              <span>по точкам VIO, предварительно · для сыпучих куч</span>
             </div>
           )}
         </div>

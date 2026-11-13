@@ -834,6 +834,29 @@ def build_surface(P, cams, fwd):
     }
 
 
+def estimation_warning(surface):
+    """Conservative publication gate, not an accuracy/confidence estimate.
+
+    Harmonic filling assumes a continuous pile. If most integrated volume is
+    above empty cells, neither its footprint nor its vertical edges are observed.
+    Never publish this as a measured volume with a ground-only error interval.
+    """
+    if not surface:
+        return None
+    support = (surface.get("support") or {}).get("volume_share")
+    if support is not None and support < 0.5:
+        return ("Большая часть модели построена между точками: границы объекта "
+                "не определены достаточно надёжно. Предобъём не показан. "
+                "Метод рассчитан на сыпучие кучи; для палет и упаковок "
+                "с вертикальными стенками нужен отдельный расчёт геометрии.")
+    frames, volume = surface.get("volume_frames"), surface.get("volume")
+    if frames is not None and volume is not None and max(frames, volume) > 0:
+        if abs(frames - volume) / max(frames, volume) > 0.25:
+            return ("Расчёты по двум наборам точек одного обхода заметно расходятся. "
+                    "Предобъём не показан: форма поверхности неустойчива.")
+    return None
+
+
 def build_cloud(scan, max_points=6000):
     """Ответ GET /scans/{id}/cloud: точки для вида (не больше max_points),
     позиции камеры, флаг «точка кучи» и поверхность с объёмом."""
@@ -871,6 +894,10 @@ def build_cloud(scan, max_points=6000):
         previous = phone_quality if isinstance(phone_quality, dict) else {}
         phone_quality = {**previous, "level": "red",
                          "reasons": [geometry_warning, *(previous.get("reasons") or [])]}
+    estimate_warning = estimation_warning(surface)
+    if estimate_warning:
+        surface = None
+        pile = np.zeros(len(P), bool)
     idx = np.arange(len(P))
     if len(P) > max_points:
         idx = np.floor(np.arange(max_points) * (len(P) / max_points)).astype(int)
@@ -883,5 +910,6 @@ def build_cloud(scan, max_points=6000):
         "loop_drift_cm": drift,
         "quality": phone_quality,
         "geometry_warning": geometry_warning,
+        "estimation_warning": estimate_warning,
         "surface": surface,
     }

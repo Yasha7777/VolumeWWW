@@ -1,0 +1,9 @@
+# Code-only deployment when Docker Hub is unavailable. Requires existing images
+# and unchanged backend requirements. Start via deploy_cached.sh.
+services:
+  backend:
+    volumes:
+      - ./backend/app:/app/app:ro
+  frontend:
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html:ro
