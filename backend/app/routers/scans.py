@@ -474,12 +474,24 @@ def _json_response(request: Request, data) -> Response:
     return Response(raw, media_type="application/json")
 
 
-CLOUD_VERSION = 6   # 6: не выдаём объём при преобладании интерполяции/неустойчивой форме
+CLOUD_VERSION = 7   # 7: проверенная фотореконструкция имеет приоритет над ARKit-предобъёмом
 
 
 @router.get("/{scan_id}/cloud")
 def scan_cloud(scan_id: str, request: Request, current_user: dict = Depends(get_current_user)):
     scan = _get_scan(scan_id, current_user, cols="id, storage_prefix")
+    from ..reconstruction import ARTIFACT_NAME, validate_reconstruction
+    # Source scans and previous caches remain untouched. Only the offline worker
+    # with service credentials can publish this separately reviewed artifact.
+    try:
+        raw = supabase.storage.from_(COLMAP_BUCKET).download(f"{scan['storage_prefix']}/{ARTIFACT_NAME}")
+    except Exception:
+        raw = None
+    if raw is not None:
+        try:
+            return _json_response(request, validate_reconstruction(json.loads(raw), scan_id))
+        except (ValueError, TypeError, KeyError, AttributeError):
+            logger.warning("Некорректная фотореконструкция обхода %s; используем ARKit", scan_id)
     cached = f"{scan['storage_prefix']}/cloud.v{CLOUD_VERSION}.json"
     try:
         return _json_response(request, json.loads(supabase.storage.from_(COLMAP_BUCKET).download(cached)))

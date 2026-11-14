@@ -5,6 +5,7 @@ export function cloudViewData(c) {
     cameras: c.cameras || null,
     pile: c.pile || null,
     surface: c.surface || null,
+    reconstruction: c.reconstruction || null,
     geometry_warning: c.geometry_warning || null,
     estimation_warning: c.estimation_warning || null,
   }

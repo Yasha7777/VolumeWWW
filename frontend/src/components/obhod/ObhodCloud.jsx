@@ -84,6 +84,10 @@ function normalizeArkit({ points, cameras, pile, surface }) {
     volume: surf.volume, range: surf.range, area: surf.area, top: surf.top, size: surf.size,
     closed: surf.closed, groundSource: surf.plane.source, hold: surf.plane.hold, foot: surf.foot,
     support: surf.support || null,
+    mesh: surf.mesh ? {
+      vertices: surf.mesh.vertices.map(([x, y, z]) => [(x - cx) / r, (y - ground(x, z)) / r, (z - cz) / r]),
+      faces: surf.mesh.faces,
+    } : null,
   } : null
   return { positions, colors, roi, height: top || 0.4, count: n, cameras: cams, surface: surfaceN, metersPerUnit: r }
 }
@@ -91,6 +95,26 @@ function normalizeArkit({ points, cameras, pile, surface }) {
 /* Сетка высот → треугольники. Клетки вне маски (там нет данных) не рисуем,
    поэтому край поверхности повторяет форму обхода, а не квадрат. */
 function surfaceMesh(THREE, S, dark) {
+  // Preserve vertical sides from the photo mesh. Do not turn it back into the
+  // smoothed ARKit heightfield that originally expanded pallets into mounds.
+  if (S.mesh) {
+    const g = new THREE.BufferGeometry()
+    const pos = new Float32Array(S.mesh.vertices.flat())
+    const col = new Float32Array(pos.length)
+    const low = new THREE.Color(dark ? '#5d6b52' : '#a9b394')
+    const high = new THREE.Color(dark ? '#f1e6cc' : '#f5ecd6')
+    const color = new THREE.Color()
+    const top = S.top / S.scale || 1
+    S.mesh.vertices.forEach((p, i) => {
+      color.copy(low).lerp(high, Math.min(1, Math.max(0, p[1] / top)))
+      col.set([color.r, color.g, color.b], i * 3)
+    })
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3))
+    g.setIndex(S.mesh.faces.flat())
+    g.computeVertexNormals()
+    return g
+  }
   const { nx, nz, step, x0, z0, h, mask } = S
   const pos = new Float32Array(nx * nz * 3), col = new Float32Array(nx * nz * 3)
   let top = 0
@@ -429,11 +453,11 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
             <button type="button" className={view === 'points' ? 'is-on' : ''} aria-pressed={view === 'points'} onClick={() => setView('points')}>Точки</button>
           </div>
           {view === 'surface' && (
-            <div className="ks-cloud__vol" title="Предварительно: по точкам ARKit, без реконструкции. Диапазон — от неточности уровня земли.">
+            <div className="ks-cloud__vol" title={data?.reconstruction ? 'Внешняя форма по фотографиям, масштаб по траектории ARKit. Абсолютная точность независимо не подтверждена.' : 'Предварительно: по точкам ARKit, без реконструкции. Диапазон — от неточности уровня земли.'}>
               <b>≈ {fmtVol(surf.volume)} м³</b>
-              <span>при изменении уровня земли: {fmtVol(surf.range[0])}–{fmtVol(surf.range[1])} м³; это не полная погрешность</span>
+              <span>при изменении уровня земли{data?.reconstruction ? ' на ±2 см' : ''}: {fmtVol(surf.range[0])}–{fmtVol(surf.range[1])} м³; это не полная погрешность</span>
               {surf.foot && <span className="is-warn">у подошвы слой {fmtM(surf.foot.lift * 100, 0)} см: если это земля — ≈ {fmtVol(surf.foot.volume)} м³</span>}
-              <span>высота {fmtM(surf.top, 1)} м · подошва ≈{fmtM(surf.size[0], 0)}×{fmtM(surf.size[1], 0)} м</span>
+              <span>высота {fmtM(surf.top, 2)} м · основание ≈{fmtM(surf.size[0], surf.size[0] < 10 ? 2 : 1)}×{fmtM(surf.size[1], surf.size[1] < 10 ? 2 : 1)} м</span>
               {/* доля объёма над клетками с точками ARKit; остальное — заполнение (pile.py, support) */}
               {surf.support?.volume_share != null && (
                 <span className={surf.support.volume_share < 0.6 ? 'is-warn' : ''}>
@@ -442,7 +466,8 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
               )}
               {!surf.closed && <span className="is-warn">обход не замкнут — объём ненадёжен</span>}
               {surf.closed && (surf.groundSource === 'points' || surf.groundSource === 'flat') && <span className="is-warn">земля найдена по точкам, не по траектории</span>}
-              <span>по точкам VIO, предварительно · для сыпучих куч</span>
+              <span>{data?.reconstruction ? `По ${data.reconstruction.photo_count} фото · масштаб ARKit · внешняя форма` : 'По точкам VIO, предварительно · для сыпучих куч'}</span>
+              {data?.reconstruction && <span>Для упаковок внешний объём включает оболочку и пустоты.</span>}
             </div>
           )}
         </div>
