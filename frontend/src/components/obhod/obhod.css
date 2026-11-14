@@ -525,10 +525,7 @@
 .ks-map.is-3d .ks-map__terrain { opacity: .28; filter: blur(2px) saturate(.6); }
 /* реальный обход без спутника: не подкладываем чужой карьер — нейтральная сетка */
 .ks-scope .ks-map.is-plain .ks-map__terrain, :root[data-theme='dark'] .ks-scope .ks-map.is-plain .ks-map__terrain {
-  background: radial-gradient(circle at 50% 55%, transparent 0 60%, rgba(0,0,0,.04) 100%),
-    repeating-linear-gradient(0deg, var(--line-2) 0 1px, transparent 1px 40px),
-    repeating-linear-gradient(90deg, var(--line-2) 0 1px, transparent 1px 40px),
-    var(--card-bg);
+  background: radial-gradient(circle at 50% 55%, transparent 0 60%, rgba(0,0,0,.04) 100%), var(--card-bg);
   opacity: .9;
 }
 /* обход не выбран: фото карьера чуть приглушено, подсказка по центру */
@@ -853,3 +850,5 @@
 .ks-cloud__vol { display: flex; flex-direction: column; gap: 1px; font-family: var(--font-mono); font-size: 10px; line-height: 14px; color: var(--muted); }
 .ks-cloud__vol b { font-size: 15px; line-height: 20px; font-weight: 600; color: var(--map-ink, inherit); }
 .ks-cloud__vol .is-warn { color: #b0662a; }
+
+.ks-cloud__metric { position: absolute; right: 12px; bottom: 6px; z-index: 2; font-size: 10px; color: var(--muted); pointer-events: none; }

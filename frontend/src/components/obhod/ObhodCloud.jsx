@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useReducedMotion } from 'motion/react'
+import { metricStep } from './mapGeometry.js'
 import { estimationWarning } from './estimationQuality.js'
 
 /* 3D-вид обхода: облако точек кучи, крутится само, тянется мышью/пальцем.
@@ -84,7 +85,7 @@ function normalizeArkit({ points, cameras, pile, surface }) {
     closed: surf.closed, groundSource: surf.plane.source, hold: surf.plane.hold, foot: surf.foot,
     support: surf.support || null,
   } : null
-  return { positions, colors, roi, height: top || 0.4, count: n, cameras: cams, surface: surfaceN }
+  return { positions, colors, roi, height: top || 0.4, count: n, cameras: cams, surface: surfaceN, metersPerUnit: r }
 }
 
 /* Сетка высот → треугольники. Клетки вне маски (там нет данных) не рисуем,
@@ -187,6 +188,7 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
   const host = useRef(null)
   const [status, setStatus] = useState('loading')
   const [touched, setTouched] = useState(false)
+  const [gridMeters, setGridMeters] = useState(null)
   const [surf, setSurf] = useState(null)        // { volume, area, top } — есть поверхность
   const [view, setView] = useState('surface')   // 'surface' | 'points'
   const viewRef = useRef(view)
@@ -199,7 +201,7 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
     if (!el || (!src && !data)) return
     let disposed = false, raf = 0
     const cleanup = []
-    setStatus('loading'); setSurf(null)
+    setStatus('loading'); setSurf(null); setGridMeters(null)
 
     ;(async () => {
       const THREE = await import('three')
@@ -278,9 +280,17 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
 
       // земля: кольца-засечки как у геодезической разметки + мягкая тень
       const lineCol = new THREE.Color(dark ? '#3a3d38' : '#cfc8b8')
-      const grid = new THREE.PolarGridHelper(hero ? 1.5 : 1.55, hero ? 24 : 12, hero ? 5 : 5, 128, lineCol, lineCol)
+      let grid
+      if (!hero && cloud.metersPerUnit) {
+        const stepM = metricStep(0.3 * cloud.metersPerUnit)
+        const half = Math.ceil(1.55 * cloud.metersPerUnit / stepM)
+        grid = new THREE.GridHelper(2 * half * stepM / cloud.metersPerUnit, 2 * half, lineCol, lineCol)
+        setGridMeters(stepM)
+      } else {
+        grid = new THREE.PolarGridHelper(hero ? 1.5 : 1.55, hero ? 24 : 12, 5, 128, lineCol, lineCol)
+      }
       grid.material.transparent = true; grid.material.opacity = dark ? (hero ? .7 : .55) : 0.8
-      grid.position.y = -0.025
+      grid.position.y = !hero && cloud.metersPerUnit ? 0.003 : -0.025
       scene.add(grid)
       cleanup.push(() => { grid.geometry.dispose(); grid.material.dispose() })
 
@@ -400,6 +410,7 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
   return (
     <div className="ks-cloud">
       <div className="ks-cloud__gl" ref={host} />
+      {gridMeters != null && <span className="ks-cloud__metric">Шаг сетки: {String(gridMeters).replace('.', ',')} м (ARKit)</span>}
       {status === 'loading' && !hero && <div className="ks-cloud__msg"><span className="ks-cloud__spin" />Загружаем облако точек…</div>}
       {status === 'error' && !hero && <div className="ks-cloud__msg">Облако не загрузилось. Попробуйте позже.</div>}
       {status === 'ready' && !hero && <div className={'ks-cloud__hint' + (touched ? ' is-gone' : '')}>↻ Потяните, чтобы повернуть</div>}

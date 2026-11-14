@@ -3,7 +3,7 @@ import { useReducedMotion } from 'motion/react'
 import { Plus, Minus, Camera, Play, Pause, Map as MapIcon, Box, MapPin } from 'lucide-react'
 import { DEMO_MAP } from './demo'
 import ObhodSatellite, { YMAPS_KEY } from './ObhodSatellite'
-import { fitTrack, NICE } from './mapGeometry'
+import { fitTrack, NICE, metricGrid } from './mapGeometry'
 
 const ObhodCloud = lazy(() => import('./ObhodCloud'))
 
@@ -215,6 +215,7 @@ export default function ObhodMap({ demo = false, track = null, loading = false, 
     scale = null
   }
 
+  const grid = real && !real.onSat ? metricGrid(real, viewport.width, viewport.height) : null
   const is3d = view === '3d'
   const switchView = (v) => { if (v !== view) { rp.stop(); setView(v) } }
 
@@ -225,6 +226,10 @@ export default function ObhodMap({ demo = false, track = null, loading = false, 
         : <div className="ks-map__terrain" />}
       {!is3d && (
         <svg className="ks-map__svg" viewBox={`0 0 ${demo ? W : viewport.width} ${demo ? H : viewport.height}`} style={demo ? undefined : { width: '100%', height: '100%', left: 0, marginLeft: 0 }} aria-hidden>
+          {grid && <g stroke="var(--line-2)" strokeWidth="1">
+            {grid.xs.map(x => <line key={`x${x}`} x1={x} x2={x} y1={0} y2={viewport.height} />)}
+            {grid.ys.map(y => <line key={`y${y}`} x1={0} x2={viewport.width} y1={y} y2={y} />)}
+          </g>}
           {body}
           {frames && body && (
             <g className={'ks-replay' + (rp.started ? ' is-on' : '')}>
@@ -292,6 +297,7 @@ export default function ObhodMap({ demo = false, track = null, loading = false, 
 
           <ul className="ks-map__legend">
             <li><i className="dot dot--sel" />Выбранный обход</li>
+            {grid && <li>Клетка: {String(grid.stepM).replace('.', ',')} × {String(grid.stepM).replace('.', ',')} м</li>}
             {demo && <li><i className="dot dot--other" />Другие обходы</li>}
             <li><i className="cam"><Camera size={10} strokeWidth={2} /></i>Точки съёмки</li>
           </ul>

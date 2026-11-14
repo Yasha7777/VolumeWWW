@@ -1,3 +1,4 @@
+import { cloudViewData } from './cloudData.js'
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../api'
 import { DEMO_OBHODS, DEMO_CLOUDS } from './demo'
@@ -152,7 +153,7 @@ export function useCloud(scan, demo) {
         const nc = c?.cameras?.length || 0
         const v = n
           ? {
-              data: { points: c.points, cameras: c.cameras || null, pile: c.pile || null, surface: c.surface || null },
+              data: cloudViewData(c),
               title: scan.title,
               meta: `Облако ARKit · в расчёте ${used.toLocaleString('ru-RU')} ${plural(used, 'точка', 'точки', 'точек')} · ${nc} ${plural(nc, 'кадр', 'кадра', 'кадров')}`,
             }
