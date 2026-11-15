@@ -455,6 +455,7 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
           {view === 'surface' && (
             <div className="ks-cloud__vol" title={data?.reconstruction ? 'Внешняя форма по фотографиям, масштаб по траектории ARKit. Абсолютная точность независимо не подтверждена.' : 'Предварительно: по точкам ARKit, без реконструкции. Диапазон — от неточности уровня земли.'}>
               <b>≈ {fmtVol(surf.volume)} м³</b>
+              {data?.reconstruction?.target_description && <span>{data.reconstruction.target_description}</span>}
               <span>при изменении уровня земли{data?.reconstruction ? ' на ±2 см' : ''}: {fmtVol(surf.range[0])}–{fmtVol(surf.range[1])} м³; это не полная погрешность</span>
               {surf.foot && <span className="is-warn">у подошвы слой {fmtM(surf.foot.lift * 100, 0)} см: если это земля — ≈ {fmtVol(surf.foot.volume)} м³</span>}
               <span>высота {fmtM(surf.top, 2)} м · основание ≈{fmtM(surf.size[0], surf.size[0] < 10 ? 2 : 1)}×{fmtM(surf.size[1], surf.size[1] < 10 ? 2 : 1)} м</span>
@@ -468,6 +469,7 @@ export default function ObhodCloud({ src, data, theme = 'light', onReady, varian
               {surf.closed && (surf.groundSource === 'points' || surf.groundSource === 'flat') && <span className="is-warn">земля найдена по точкам, не по траектории</span>}
               <span>{data?.reconstruction ? `По ${data.reconstruction.photo_count} фото · масштаб ARKit · внешняя форма` : 'По точкам VIO, предварительно · для сыпучих куч'}</span>
               {data?.reconstruction && <span>Для упаковок внешний объём включает оболочку и пустоты.</span>}
+              {data?.reconstruction?.quality_notice && <span className="is-warn">{data.reconstruction.quality_notice}</span>}
             </div>
           )}
         </div>

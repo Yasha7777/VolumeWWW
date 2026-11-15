@@ -82,6 +82,27 @@ class MeshVolumeTests(unittest.TestCase):
         np.testing.assert_allclose(cameras,points)
         self.assertLess(errors.max(),1e-10)
 
+    def test_footprint_separates_touching_packages(self):
+        H=np.ones((100,100));H[:,50:]=3
+        M=measure.polygon_mask(H.shape,np.array([-1.,-1.]),.02,[[-1,-1],[0,-1],[0,1],[-1,1]])
+        self.assertAlmostEqual(float(H[M].sum()*.02**2),2.)
+
+    def test_clipped_mesh_does_not_extend_to_neighbour(self):
+        V=np.array([[-2,1,-2],[2,1,-2],[2,1,2],[-2,1,2]],float);F=np.array([[0,1,2],[0,2,3]])
+        P,Q=measure.clip_mesh(V,F,[[-.5,-.5],[.5,-.5],[.5,.5],[-.5,.5]])
+        self.assertLessEqual(np.abs(P[:,[0,2]]).max(),.50000001)
+        H=measure.rasterize(P,Q,np.zeros(3),np.array([-1.,-1.]),2.,.02)
+        self.assertAlmostEqual(float(np.nansum(H)*.02**2),1.,places=6)
+
+    def test_ground_uses_area_not_dense_vertices_on_small_object(self):
+        V=np.array([[-2,0,-2],[2,0,-2],[2,0,2],[-2,0,2],[-.2,.1,-.2],[.2,.1,-.2],[.2,.1,.2],[-.2,.1,.2]])
+        F=np.array([[0,1,2],[0,2,3],[4,5,6],[4,6,7]])
+        # Many duplicate vertices change no surface area.
+        V=np.r_[V,np.repeat(V[4:8],500,axis=0)]
+        plane,info=measure.fit_ground(V,np.zeros(2),np.zeros(3),1.8,faces=F)
+        np.testing.assert_allclose(plane,np.zeros(3),atol=1e-9)
+        self.assertEqual(info['sampling'],'area_grid_10cm')
+
     def test_straight_camera_path_is_rejected(self):
         P=np.c_[np.arange(20),np.zeros((20,2))]
         with self.assertRaises(ValueError):

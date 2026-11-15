@@ -225,7 +225,7 @@ export const api = {
   getScanTrack: (id) => req(`/scans/${id}/track`),
 
   // Разреженное облако ARKit обхода: { points: [[x,y,z]…], cameras: [[x,y,z]…] }, метры, y вверх.
-  getScanCloud: (id) => req(`/scans/${id}/cloud`),
+  getScanCloud: (id) => req(`/scans/${id}/cloud?photogrammetry=true`),
 
   // Анализ обхода: бэкенд заводит строку analyses (scan_id) из кадров обхода
   // и отправляет его на расчётный сервер вместе с данными ARKit по кадрам.

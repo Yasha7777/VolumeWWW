@@ -67,10 +67,21 @@ def align(poses, scan):
     return s, R, t, Q, errors
 
 
-def fit_ground(vertices, gaze, seed, radius):
+def fit_ground(vertices, gaze, seed, radius, faces=None):
     d = np.linalg.norm(vertices[:, [0, 2]] - gaze, axis=1)
     h = vertices[:, 1] - np.c_[vertices[:, 0], vertices[:, 2], np.ones(len(vertices))] @ seed
     ground = vertices[(d < radius) & (np.abs(h) < .15)]
+    if faces is not None:
+        # Mesh vertices are denser on rough objects than on flat ground. Sample
+        # equal horizontal area instead of letting tessellation choose the base.
+        step = .10
+        lo = gaze-radius
+        heights = rasterize(vertices, faces, seed, lo, radius*2, step)
+        iz, ix = np.nonzero(np.isfinite(heights) & (np.abs(heights) < .15))
+        xz = np.c_[lo[0]+(ix+.5)*step, lo[1]+(iz+.5)*step]
+        y = heights[iz,ix] + np.c_[xz,np.ones(len(xz))] @ seed
+        ground = np.c_[xz[:,0],y,xz[:,1]]
+        ground = ground[np.linalg.norm(xz-gaze,axis=1) < radius]
     if len(ground) < 100:
         raise ValueError('Insufficient reconstructed ground')
     X = np.c_[ground[:, 0], ground[:, 2], np.ones(len(ground))]
@@ -84,7 +95,7 @@ def fit_ground(vertices, gaze, seed, radius):
     sectors = np.unique(np.floor((np.arctan2(delta[:, 1], delta[:, 0]) + np.pi) / (np.pi / 4)).astype(int) % 8)
     if len(sectors) < 6 or sigma > .04:
         raise ValueError('Ground is uneven or insufficiently observed around target')
-    return coef, {'sigma_m': float(sigma), 'samples': int(keep.sum()), 'sectors': len(sectors)}
+    return coef, {'sigma_m': float(sigma), 'samples': int(keep.sum()), 'sectors': len(sectors), 'sampling': 'area_grid_10cm' if faces is not None else 'mesh_vertices'}
 
 
 def rasterize(vertices, faces, plane, lo, span, cell):
@@ -139,6 +150,56 @@ def target_mask(H, cell, seeds=None):
     return mask
 
 
+def convex_polygon(polygon):
+    P=np.asarray(polygon,float)
+    if P.ndim != 2 or P.shape[1] != 2 or len(P)<3 or not np.isfinite(P).all():
+        raise ValueError('Invalid footprint polygon')
+    edge=np.roll(P,-1,axis=0)-P
+    turns=edge[:,0]*np.roll(edge,-1,axis=0)[:,1]-edge[:,1]*np.roll(edge,-1,axis=0)[:,0]
+    if (turns>1e-9).all():return P
+    if (turns<-1e-9).all():return P[::-1]
+    raise ValueError('Footprint must be strictly convex')
+
+
+def polygon_mask(shape, lo, cell, polygon):
+    P=convex_polygon(polygon)
+    z,x=np.indices(shape)
+    X=lo[0]+(x+.5)*cell;Z=lo[1]+(z+.5)*cell
+    M=np.ones(shape,bool)
+    for a,b in zip(P,np.roll(P,-1,axis=0)):
+        e=b-a;M &= e[0]*(Z-a[1])-e[1]*(X-a[0]) >= -1e-9
+    return M
+
+
+def clip_mesh(vertices, faces, polygon):
+    P=convex_polygon(polygon);out=[];triangles=[];lookup={}
+    for face in faces:
+        poly=list(vertices[face])
+        for a,b in zip(P,np.roll(P,-1,axis=0)):
+            edge=b-a
+            def side(v):return edge[0]*(v[2]-a[1])-edge[1]*(v[0]-a[0])
+            clipped=[]
+            if not poly:break
+            prev=poly[-1];ds=side(prev)
+            for curr in poly:
+                de=side(curr)
+                if (ds>=0)!=(de>=0):clipped.append(prev+(curr-prev)*(ds/(ds-de)))
+                if de>=0:clipped.append(curr)
+                prev,ds=curr,de
+            poly=clipped
+        if len(poly)<3:continue
+        ids=[]
+        for vertex in poly:
+            key=tuple(np.round(vertex,9))
+            if key not in lookup:lookup[key]=len(out);out.append(vertex)
+            ids.append(lookup[key])
+        for i in range(1,len(ids)-1):
+            face=[ids[0],ids[i],ids[i+1]]
+            if len(set(face))==3:triangles.append(face)
+    if not triangles:raise ValueError('No mesh in selected footprint')
+    return np.asarray(out),np.asarray(triangles,int)
+
+
 def dimensions(mask, lo, cell):
     z, x = np.nonzero(mask)
     xz = np.c_[lo[0]+(x+.5)*cell, lo[1]+(z+.5)*cell]
@@ -158,6 +219,10 @@ def main():
     p.add_argument('--scan-id', required=True)
     p.add_argument('--seed-cloud', type=Path, required=True)
     p.add_argument('--roi-radius', type=float, default=2.5)
+    p.add_argument('--target-polygon', type=Path, help='Reviewed convex footprint in XZ metres; separates touching objects')
+    p.add_argument('--target-description', default='')
+    p.add_argument('--quality-notice', default='')
+    p.add_argument('--ground-sampling', choices=['area','vertices'], default='area')
     p.add_argument('--target-seeds', type=Path, help='Explicit XZ metre coordinates of separate objects to sum; inspect each object first')
     p.add_argument('--reviewed', action='store_true', help='Only after inspecting source photos, ground, segmentation and model')
     args = p.parse_args()
@@ -171,7 +236,7 @@ def main():
     s, R, t, cameras, errors = align(poses, scan)
     mesh = json.loads((args.folder / 'mesh.json').read_text())
     V, F = np.array(mesh['vertices']) @ R*s+t, np.array(mesh['faces'], int)
-    ground, ground_info = fit_ground(V, gaze, seed, args.roi_radius)
+    ground, ground_info = fit_ground(V, gaze, seed, args.roi_radius, faces=F if args.ground_sampling == 'area' else None)
     lo, span = gaze-args.roi_radius, args.roi_radius*2
     target_seeds = json.loads(args.target_seeds.read_text()) if args.target_seeds else None
     if target_seeds is not None:
@@ -180,11 +245,26 @@ def main():
             raise ValueError('Target seeds must be finite XZ metre pairs')
         if np.any(target_seeds <= lo) or np.any(target_seeds >= lo+span):
             raise ValueError('Target seeds outside ROI')
+    polygon = json.loads(args.target_polygon.read_text()) if args.target_polygon else None
+    if polygon is not None:
+        polygon = convex_polygon(polygon).tolist()
+        if target_seeds is not None:
+            raise ValueError('Choose a polygon or component seeds, not both')
+        if np.any(np.array(polygon) <= lo) or np.any(np.array(polygon) >= lo+span):
+            raise ValueError('Selection extends outside reconstruction ROI')
     checks = []
     for cell in (.02, .04, .08):
         heights = rasterize(V, F, ground, lo, span, cell)
         pixel_seeds = None if target_seeds is None else ((target_seeds-lo)/cell-.5)[:, ::-1]
-        mask = target_mask(heights, cell, pixel_seeds)
+        if polygon is None:
+            mask = target_mask(heights, cell, pixel_seeds)
+        else:
+            selection = polygon_mask(heights.shape, lo, cell, polygon)
+            if np.any(selection & ~np.isfinite(heights)):
+                raise ValueError('Selected object has missing surface')
+            mask = selection & (heights > .07)
+            if not mask.any():
+                raise ValueError('No elevated target in selection')
         volume = float(heights[mask].sum()*cell*cell)
         checks.append({'cell_m': cell, 'volume_m3': volume})
         if cell == .04:
@@ -208,6 +288,9 @@ def main():
     faces = F[selected]
     used, inverse = np.unique(faces, return_inverse=True)
     pv = V[used]
+    display_faces = inverse.reshape(-1,3)
+    if polygon is not None:
+        pv, display_faces = clip_mesh(pv, display_faces, polygon)
     # Point view is also from this reconstruction, not unrelated VIO features.
     keep_points = np.linspace(0, len(pv)-1, min(6000, len(pv))).astype(int)
     points = pv[keep_points]
@@ -221,7 +304,7 @@ def main():
         'center': center.tolist(), 'R': max(size)*1.2, 'hull': hull,
         'grid': {'nx': H.shape[1], 'nz': H.shape[0], 'cell': cell, 'x0': float(lo[0]+cell/2), 'z0': float(lo[1]+cell/2),
                  'h': np.where(M, np.round(np.nan_to_num(H)*100, 2), -1).ravel().tolist()},
-        'mesh': {'vertices': np.round(pv, 6).tolist(), 'faces': inverse.reshape(-1, 3).tolist()},
+        'mesh': {'vertices': np.round(pv, 6).tolist(), 'faces': display_faces.tolist()},
         'volume': volume, 'range': [max(0., volume-area*.02), volume+area*.02],
         'area': area, 'top': float(np.quantile(H[M], .99)), 'size': size,
         'closed': bool(old.get('closed')), 'support': None, 'foot': None,
@@ -231,6 +314,7 @@ def main():
             'photo_count': len(scan['frames']), 'aligned_cameras': len(cameras), 'camera_p95_m': float(np.quantile(errors, .95)),
             'camera_rms_m': float(np.sqrt(np.mean(errors**2))), 'scale_to_arkit_m': float(s),
             'ground': ground_info, 'grid_checks': checks, 'base_sensitivity_m': .02,
+            'worker_revision': 2, 'target_polygon_m': polygon, 'target_description': args.target_description, 'quality_notice': args.quality_notice,
             'target_seeds_m': None if target_seeds is None else target_seeds.tolist(),
             'roi_radius_m': args.roi_radius, 'ground_seed': seed.tolist(), 'gaze': gaze.tolist()}
     cloud = {'schema_version': 1, 'reconstruction': meta, 'surface': surface,

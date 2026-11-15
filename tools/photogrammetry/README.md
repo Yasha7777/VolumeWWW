@@ -40,7 +40,14 @@ No supplier volumes or title-derived quantities enter the calculation.
    object and supply `--target-seeds seeds.json`: a list of `[x,z]` coordinates
    in ARKit metres. These select individual components; the gap between them is
    never filled or added to the total. One nearest component is the default,
-   suitable for one pile, **not** automatically the sum of a group.
+   suitable for one pile, **not** automatically the sum of a group. For touching
+   packages use an explicitly reviewed `--target-polygon polygon.json` (convex
+   XZ metre region). The region must enclose the actual object, including its
+   overhang, while excluding neighbours. It is a selection region, not a ground
+   contact outline: clipping at the pallet's wooden base can remove real walls.
+   Include `--target-description` and `--quality-notice` to disclose the chosen
+   object and hidden/manual boundaries in the website. The actual mesh is clipped
+   at this region; unobserved walls are not invented.
 5. With existing site service credentials in `SUPABASE_URL` and
    `SUPABASE_SERVICE_KEY`, publish the separate reviewed artifact:
 
@@ -58,7 +65,9 @@ No supplier volumes or title-derived quantities enter the calculation.
 6. Deploy the site changes. With the currently cached Docker images, run
    `bash deploy_cached.sh` after pulling the repository. A full page reload clears
    the frontend's session cloud cache. The server chooses reviewed photo geometry
-   before `cloud.v7.json` and exposes method/photo count explicitly.
+   before `cloud.v7.json` for clients requesting `?photogrammetry=true`, and
+   exposes method/photo count explicitly. Older clients retain their VIO response
+   so they cannot mislabel a photo model or omit its selection/quality notices.
 
 ## What is measured
 
@@ -67,7 +76,10 @@ proper similarity transform. At least ten cameras must register, all source
 frames must match, and inconsistent maps/poses are rejected. This establishes
 ARKit scale; small residuals do **not** establish independent absolute accuracy.
 
-The ground plane is fitted to reconstructed triangles near the recorded ground.
+The ground plane is fitted near the recorded ground. Worker revision 2 samples
+uniform 10 cm horizontal areas of the mesh instead of its vertices: rough
+surfaces have more triangles and must not receive more weight just because of
+mesh tessellation. `--ground-sampling vertices` reproduces revision 1.
 A height integral uses the upper mesh intersection at each horizontal XZ cell (Y is up). The target
 is the elevated connected component nearest the recorded camera-gaze centre.
 There is no harmonic interpolation of empty cells. Three discretisations are

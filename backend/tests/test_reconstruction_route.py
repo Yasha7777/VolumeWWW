@@ -36,7 +36,7 @@ class ReconstructionRouteTests(unittest.TestCase):
 
     def test_photo_artifact_wins_over_cached_preliminary_volume(self):
         self.storage.download.return_value=json.dumps(artifact()).encode()
-        response=self.client.get('/scans/scan/cloud')
+        response=self.client.get('/scans/scan/cloud?photogrammetry=true')
         self.assertEqual(response.status_code,200)
         self.assertEqual(response.json()['surface']['volume'],1.1)
         self.storage.download.assert_called_once_with('scans/scan/reconstruction.v1.json')
@@ -44,14 +44,20 @@ class ReconstructionRouteTests(unittest.TestCase):
     def test_missing_or_unreviewed_artifact_falls_back_to_existing_cache(self):
         for first in [OSError('not found'),json.dumps(dict(artifact(),reconstruction={'reviewed':False})).encode()]:
             self.storage.download.side_effect=[first,json.dumps({'points':[[0,0,0]],'surface':None}).encode()]
-            response=self.client.get('/scans/scan/cloud')
+            response=self.client.get('/scans/scan/cloud?photogrammetry=true')
             self.assertEqual(response.status_code,200)
             self.assertIsNone(response.json()['surface'])
             self.assertTrue(self.storage.download.call_args.args[0].endswith('cloud.v7.json'))
 
+    def test_legacy_client_does_not_receive_a_differently_labelled_method(self):
+        self.storage.download.return_value=json.dumps({'points':[[0,0,0]],'surface':None}).encode()
+        response=self.client.get('/scans/scan/cloud')
+        self.assertEqual(response.status_code,200)
+        self.storage.download.assert_called_once_with('scans/scan/cloud.v7.json')
+
     def test_unauthorised_scan_never_reads_reconstruction(self):
         self.owner_mock.side_effect=HTTPException(404,'Обход не найден')
-        self.assertEqual(self.client.get('/scans/scan/cloud').status_code,404)
+        self.assertEqual(self.client.get('/scans/scan/cloud?photogrammetry=true').status_code,404)
         self.storage.download.assert_not_called()
 
 

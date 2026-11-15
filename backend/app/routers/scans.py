@@ -478,20 +478,24 @@ CLOUD_VERSION = 7   # 7: проверенная фотореконструкци
 
 
 @router.get("/{scan_id}/cloud")
-def scan_cloud(scan_id: str, request: Request, current_user: dict = Depends(get_current_user)):
+def scan_cloud(scan_id: str, request: Request, current_user: dict = Depends(get_current_user),
+               photogrammetry: bool = False):
     scan = _get_scan(scan_id, current_user, cols="id, storage_prefix")
     from ..reconstruction import ARTIFACT_NAME, validate_reconstruction
     # Source scans and previous caches remain untouched. Only the offline worker
     # with service credentials can publish this separately reviewed artifact.
-    try:
-        raw = supabase.storage.from_(COLMAP_BUCKET).download(f"{scan['storage_prefix']}/{ARTIFACT_NAME}")
-    except Exception:
-        raw = None
-    if raw is not None:
+    # Older clients label every surface as VIO and cannot show selection limits.
+    # Only clients explicitly requesting this format receive photo geometry.
+    if photogrammetry:
         try:
-            return _json_response(request, validate_reconstruction(json.loads(raw), scan_id))
-        except (ValueError, TypeError, KeyError, AttributeError):
-            logger.warning("Некорректная фотореконструкция обхода %s; используем ARKit", scan_id)
+            raw = supabase.storage.from_(COLMAP_BUCKET).download(f"{scan['storage_prefix']}/{ARTIFACT_NAME}")
+        except Exception:
+            raw = None
+        if raw is not None:
+            try:
+                return _json_response(request, validate_reconstruction(json.loads(raw), scan_id))
+            except (ValueError, TypeError, KeyError, AttributeError):
+                logger.warning("Некорректная фотореконструкция обхода %s; используем ARKit", scan_id)
     cached = f"{scan['storage_prefix']}/cloud.v{CLOUD_VERSION}.json"
     try:
         return _json_response(request, json.loads(supabase.storage.from_(COLMAP_BUCKET).download(cached)))
