@@ -109,3 +109,23 @@ node --test frontend/tests/*.test.js
 The worker tests use exact boxes/tilted ground, missing roofs, disconnected
 neighbours, known camera transformations and degenerate trajectories. They verify
 numerical behaviour, not real-world measurement accuracy.
+
+## Diagnosing rejected camera maps
+
+For a rejected scan, retain the original global residual and inspect independent,
+non-overlapping camera windows:
+
+```sh
+python tools/photogrammetry/audit_alignment.py /absolute/result \
+  --scan /absolute/scan.json --output /absolute/alignment-audit.json
+python tools/photogrammetry/test_audit_alignment.py
+```
+
+The report compares original camera poses with final capture anchors, records
+missing registrations and anchor fallbacks, and never bridges missing frames.
+Its local residual/extent filter selects diagnostic windows only. A consistent
+local scale can coexist with a globally broken map; local scale drift can also
+remain despite a small residual in every short window. Neither result authorises
+measurement export or replaces the existing global alignment, surface coverage
+and ground checks. It does not produce a reconstructed volume or an accuracy
+bound. Do not substitute local residuals into artifact global-residual fields.
